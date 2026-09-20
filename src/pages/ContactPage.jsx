@@ -30,8 +30,8 @@ export default function ContactPage() {
 
   const faqs = [
     {
-      q: "How does the \"Pay After Visa Approval\" policy work?",
-      a: "With Mr Visa, you pay zero upfront facilitation charges. Our team prepares, submits, and tracks your application through official diplomatic channels. You only pay the service fee once your visa approval grant is officially issued."
+      q: "How does Mr Visa process my visa application?",
+      a: "Our experienced visa specialists rigorously verify your documents against current consulate regulations, format submissions to exact embassy standards, and track your application in real-time through official channels until delivery."
     },
     {
       q: "How early before my travel date should I submit my application?",

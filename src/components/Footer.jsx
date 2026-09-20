@@ -51,7 +51,7 @@ export default function Footer() {
         <div className="pt-8 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs font-medium text-[#64748B]">
           <p>© {new Date().getFullYear()} Mr Visa. All rights reserved.</p>
           <p className="text-slate-400">
-            Pay After Visa Approval • Premium Global Visa Facilitation
+            Premium Global Visa Facilitation
           </p>
         </div>
       </div>

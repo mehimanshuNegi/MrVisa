@@ -24,8 +24,8 @@ export default function AboutPage() {
   const pillars = [
     {
       icon: HeartHandshake,
-      title: "Pay After Approval",
-      description: "Our hallmark guarantee: we work tirelessly on your application, and you only pay once your visa is approved."
+      title: "Dedicated Guidance",
+      description: "Our committed visa specialists work diligently on your application, ensuring thorough preparation from start to finish."
     },
     {
       icon: Globe,

@@ -27,7 +27,7 @@ import {
   Edit3,
   Loader2
 } from 'lucide-react';
-import { visaService, applicationService } from '../services';
+import { visaService, countryService, applicationService } from '../services';
 import { APPLICATION_STATUS, REQUIRED_ACTION } from '../models/status';
 
 export default function VisaApplicationPage() {
@@ -37,18 +37,35 @@ export default function VisaApplicationPage() {
   // Find destination matching URL param via visaService
   const [destination, setDestination] = useState(null);
   const [isLoadingVisa, setIsLoadingVisa] = useState(true);
+  const [loadError, setLoadError] = useState(null);
 
   useEffect(() => {
     let isMounted = true;
     async function loadVisaData() {
       setIsLoadingVisa(true);
+      setLoadError(null);
       try {
-        const found = await visaService.getVisaById(countryParam);
+        let found = await visaService.getVisaById(countryParam);
+        if (!found) {
+          // Fallback: check if countryParam matches a country record with visas
+          const countryData = await countryService.getCountryById(countryParam);
+          if (countryData && Array.isArray(countryData.visas) && countryData.visas.length > 0) {
+            found = await visaService.getVisaById(countryData.visas[0]);
+          }
+        }
+
         if (isMounted) {
-          setDestination(found);
+          if (found) {
+            setDestination(found);
+          } else {
+            setLoadError(`We couldn't locate visa details for "${countryParam}".`);
+          }
         }
       } catch (e) {
         console.warn('Failed to load visa in application page:', e);
+        if (isMounted) {
+          setLoadError('Failed to load visa details. Please try again.');
+        }
       } finally {
         if (isMounted) {
           setIsLoadingVisa(false);
@@ -123,66 +140,17 @@ export default function VisaApplicationPage() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }, [currentStep, isSubmitted]);
 
-  if (isLoadingVisa) {
-    return (
-      <div className="bg-[#F8FAFC] min-h-[70vh] flex flex-col items-center justify-center text-center px-6">
-        <Loader2 size={36} className="animate-spin text-[#2563EB] mb-3" />
-        <p className="text-sm font-bold text-[#082B61]">Loading visa application...</p>
-      </div>
-    );
-  }
-
-  if (!destination) {
-    return (
-      <div className="bg-white min-h-[70vh] flex flex-col items-center justify-center text-center px-6">
-        <h2 className="text-3xl font-extrabold text-[#123B7A]">Destination Not Found</h2>
-        <p className="text-base text-[#64748B] mt-2 mb-6">
-          We couldn't locate visa details for "{countryParam}".
-        </p>
-        <Link
-          to="/visa"
-          className="inline-flex items-center gap-2 px-6 py-3 rounded-full bg-[#2563EB] text-white text-sm font-bold shadow-md hover:bg-[#123B7A] transition-colors"
-        >
-          <ArrowLeft size={16} />
-          <span>Browse All Visa Destinations</span>
-        </Link>
-      </div>
-    );
-  }
-
-  const {
-    displayName,
-    flagUrl,
-    flagEmoji,
-    visaType = 'E-Visa',
-    stayPeriod = '60 Days',
-    guaranteedDate = '24 Sep 2026, 4:00 PM',
-    fees = '₹2,990'
-  } = destination;
-
-  const baseFeeNum = fees ? parseInt(fees.replace(/[^0-9]/g, ''), 10) || 2990 : 2990;
-  const totalFee = baseFeeNum * travellers.length;
-  const embassyFeePerPerson = Math.round(baseFeeNum * 0.7);
-  const serviceFeePerPerson = baseFeeNum - embassyFeePerPerson;
-  const totalEmbassyFee = embassyFeePerPerson * travellers.length;
-  const totalServiceFee = serviceFeePerPerson * travellers.length;
-
-  const effectiveActiveId = travellers.some((t) => t.id === activeTravellerId)
-    ? activeTravellerId
-    : travellers[0]?.id || '';
-  const activeTraveller = travellers.find((t) => t.id === effectiveActiveId) || travellers[0];
-  const activeIndex = travellers.findIndex((t) => t.id === effectiveActiveId);
-
-  // Dynamic document requirements per selected visa destination
+  // Dynamic document requirements per selected visa destination (Declared unconditionally at top of component!)
   const requiredDocs = React.useMemo(() => {
     if (destination?.documentsRequired && destination.documentsRequired.length > 0) {
       return destination.documentsRequired.map((doc, idx) => {
-        const lower = doc.name.toLowerCase();
-        let id = `doc_${idx}`;
-        let title = doc.name;
-        let subtitle = 'PDF, JPG or PNG (Max 5 MB)';
-        let guidance = doc.detail || 'Upload a clear, readable copy.';
-        let errorMsg = `${doc.name} is required`;
+        const docName = typeof doc === 'string' ? doc : (doc?.name || doc?.title || 'Document');
+        const lower = docName.toLowerCase();
+        let id = doc?.id || `doc_${idx}`;
+        let title = docName;
+        let subtitle = doc?.subtitle || 'PDF, JPG or PNG (Max 5 MB)';
+        let guidance = doc?.detail || doc?.guidance || 'Upload a clear, readable copy.';
+        let errorMsg = `${docName} is required`;
 
         if (lower.includes('passport')) {
           id = 'passport';
@@ -212,7 +180,7 @@ export default function VisaApplicationPage() {
 
         return {
           id,
-          name: doc.name,
+          name: docName,
           title,
           subtitle,
           guidance,
@@ -240,6 +208,62 @@ export default function VisaApplicationPage() {
       }
     ];
   }, [destination]);
+
+  // Loading State Guard
+  if (isLoadingVisa) {
+    return (
+      <div className="bg-[#F8FAFC] min-h-[70vh] flex flex-col items-center justify-center text-center px-6">
+        <Loader2 size={36} className="animate-spin text-[#2563EB] mb-3" />
+        <p className="text-sm font-bold text-[#082B61]">Loading visa application...</p>
+      </div>
+    );
+  }
+
+  // Not Found State Guard
+  if (!destination) {
+    return (
+      <div className="bg-white min-h-[70vh] flex flex-col items-center justify-center text-center px-6">
+        <div className="w-16 h-16 rounded-full bg-blue-50 text-[#2563EB] flex items-center justify-center mb-4">
+          <AlertCircle size={32} />
+        </div>
+        <h2 className="text-2xl sm:text-3xl font-extrabold text-[#082B61]">Destination Not Found</h2>
+        <p className="text-sm text-[#64748B] mt-2 mb-6 max-w-md">
+          {loadError || `We couldn't locate visa details for "${countryParam}". Please choose a destination from our visa catalogue.`}
+        </p>
+        <Link
+          to="/visa"
+          className="inline-flex items-center gap-2 px-6 py-3 rounded-full bg-[#2563EB] text-white text-xs sm:text-sm font-bold shadow-md hover:bg-[#123B7A] transition-colors"
+        >
+          <ArrowLeft size={16} />
+          <span>Browse All Visa Destinations</span>
+        </Link>
+      </div>
+    );
+  }
+
+  const {
+    displayName = destination?.countryName || countryParam || 'Visa',
+    flagUrl = '',
+    flagEmoji = '🌍',
+    visaType = 'E-Visa',
+    stayPeriod = '60 Days',
+    guaranteedDate = '24 Sep 2026, 4:00 PM',
+    fees = destination?.price || '₹2,990'
+  } = destination || {};
+
+  const rawFeeStr = typeof fees === 'number' ? String(fees) : (fees || '₹2,990');
+  const baseFeeNum = parseInt(rawFeeStr.replace(/[^0-9]/g, ''), 10) || 2990;
+  const totalFee = baseFeeNum * travellers.length;
+  const embassyFeePerPerson = Math.round(baseFeeNum * 0.7);
+  const serviceFeePerPerson = baseFeeNum - embassyFeePerPerson;
+  const totalEmbassyFee = embassyFeePerPerson * travellers.length;
+  const totalServiceFee = serviceFeePerPerson * travellers.length;
+
+  const effectiveActiveId = travellers.some((t) => t.id === activeTravellerId)
+    ? activeTravellerId
+    : travellers[0]?.id || '';
+  const activeTraveller = travellers.find((t) => t.id === effectiveActiveId) || travellers[0] || {};
+  const activeIndex = travellers.findIndex((t) => t.id === effectiveActiveId);
 
   // ------------------------------------------------------------------
   // FIELD VALIDATION RULES (Precise, readable messages)

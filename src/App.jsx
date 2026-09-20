@@ -14,6 +14,8 @@ import AdminLayout from './pages/admin/AdminLayout';
 import AdminApplicationsPage from './pages/admin/AdminApplicationsPage';
 import AdminVisasPage from './pages/admin/AdminVisasPage';
 import AdminCountriesPage from './pages/admin/AdminCountriesPage';
+import ErrorBoundary from './components/ErrorBoundary';
+import { FilterProvider } from './context/FilterContext';
 
 function ScrollToTop() {
   const { pathname } = useLocation();
@@ -42,7 +44,14 @@ function AppContent() {
           <Route path="/" element={<HomePage />} />
           <Route path="/visa" element={<VisaPage />} />
           <Route path="/visa/:country" element={<CountryDetailPage />} />
-          <Route path="/visa/:country/apply" element={<VisaApplicationPage />} />
+          <Route
+            path="/visa/:country/apply"
+            element={
+              <ErrorBoundary>
+                <VisaApplicationPage />
+              </ErrorBoundary>
+            }
+          />
           <Route path="/account" element={<AccountPage />} />
           <Route path="/my-account" element={<AccountPage />} />
           <Route path="/about" element={<AboutPage />} />
@@ -73,9 +82,14 @@ function AppContent() {
 export default function App() {
   return (
     <BrowserRouter>
-      <ScrollToTop />
-      <AppContent />
+      <ErrorBoundary>
+        <FilterProvider>
+          <ScrollToTop />
+          <AppContent />
+        </FilterProvider>
+      </ErrorBoundary>
     </BrowserRouter>
   );
 }
+
 

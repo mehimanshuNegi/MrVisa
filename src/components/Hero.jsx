@@ -1,5 +1,4 @@
 import React from 'react';
-import { ShieldCheck } from 'lucide-react';
 import heroBg from '../assets/hero-bg.png';
 
 export default function Hero() {
@@ -33,12 +32,7 @@ export default function Hero() {
 
       {/* HERO CONTENT: Left Side Only */}
       <div className="relative z-20 max-w-[1440px] mx-auto px-6 lg:px-12 w-full">
-        <div className="max-w-xl space-y-4 sm:space-y-5">
-          
-          {/* Small Eyebrow */}
-          <p className="text-xs font-bold tracking-[0.2em] text-[#1479F5] uppercase drop-shadow-sm">
-            YOUR VISA • OUR SUPPORT • A BIGGER TOMORROW
-          </p>
+        <div className="max-w-xl space-y-3 sm:space-y-4">
 
           {/* Main Heading */}
           <h1 className="text-3xl sm:text-4xl lg:text-[50px] font-extrabold text-[#082B61] leading-[1.1] tracking-tight">
@@ -46,26 +40,10 @@ export default function Hero() {
             with <span className="text-[#1479F5]">Mr Visa</span>
           </h1>
 
-          {/* Subtitle */}
-          <p className="text-base sm:text-lg font-medium text-[#082B61]/85">
-            Simple. Reliable. Visa Support.
+          {/* Tagline */}
+          <p className="text-base sm:text-lg font-semibold text-[#1479F5] tracking-tight">
+            On time, every time.
           </p>
-
-          {/* Rounded Trust Badge & Guarantee */}
-          <div className="pt-1 sm:pt-2">
-            <div className="inline-flex items-center gap-3 px-4 py-2 rounded-full bg-white/95 backdrop-blur-md border border-[#1479F5]/30 text-[#082B61] shadow-sm">
-              <div className="w-5 h-5 rounded-full bg-[#1479F5] text-white flex items-center justify-center flex-shrink-0">
-                <ShieldCheck size={14} strokeWidth={2.5} />
-              </div>
-              <span className="text-xs sm:text-sm font-bold tracking-tight">
-                Pay After Visa Approval
-              </span>
-            </div>
-
-            <p className="text-xs sm:text-sm text-[#082B61]/80 font-medium mt-2 pl-1">
-              No upfront payment. Just your dream, our support.
-            </p>
-          </div>
 
         </div>
       </div>

@@ -1,10 +1,11 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { ShieldCheck, Loader2, AlertCircle, RefreshCw } from 'lucide-react';
+import { Loader2, AlertCircle, RefreshCw } from 'lucide-react';
 import VisaFilterBar from '../components/VisaFilterBar';
 import VisaGrid from '../components/VisaGrid';
 import EmptyState from '../components/EmptyState';
-import { visaService } from '../services';
+import { visaService, normalizeVisaType, normalizeCountryName } from '../services';
+import { useFilter } from '../context/FilterContext';
 
 export default function VisaPage() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -17,10 +18,17 @@ export default function VisaPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState(null);
 
-  const [selectedCountry, setSelectedCountry] = useState('Any Country');
-  const [selectedVisaType, setSelectedVisaType] = useState(initialType);
+  const {
+    selectedCountry,
+    setSelectedCountry,
+    selectedVisaType,
+    setSelectedVisaType,
+    selectedDate,
+    setSelectedDate,
+    resetFilters: resetContextFilters
+  } = useFilter();
+
   const [selectedDocument, setSelectedDocument] = useState('Any Documents');
-  const [selectedDate, setSelectedDate] = useState('');
   const [searchQuery, setSearchQuery] = useState(initialSearch);
 
   // Load visas from service layer
@@ -46,8 +54,10 @@ export default function VisaPage() {
   useEffect(() => {
     const s = searchParams.get('search');
     const t = searchParams.get('type');
-    if (s) setSearchQuery(s);
-    if (t) setSelectedVisaType(t);
+    const c = searchParams.get('country');
+    if (s !== null) setSearchQuery(s);
+    if (t !== null) setSelectedVisaType(t);
+    if (c !== null) setSelectedCountry(c === 'All Countries' ? 'Any Country' : c);
   }, [searchParams]);
 
   // Frontend filtering logic
@@ -58,18 +68,23 @@ export default function VisaPage() {
       const matchesSearch =
         !q ||
         (v.displayName && v.displayName.toLowerCase().includes(q)) ||
+        (v.countryName && v.countryName.toLowerCase().includes(q)) ||
+        (v.countryId && v.countryId.toLowerCase().includes(q)) ||
         (v.country && v.country.toLowerCase().includes(q));
 
       // 2. Destination filter (dropdown)
+      const filterCountry = normalizeCountryName(selectedCountry);
       const matchesCountry =
-        selectedCountry === 'Any Country' ||
-        (v.displayName && v.displayName.toLowerCase() === selectedCountry.toLowerCase()) ||
-        (v.countryName && v.countryName.toLowerCase() === selectedCountry.toLowerCase());
+        filterCountry === 'all' ||
+        (v.displayName && v.displayName.toLowerCase() === filterCountry) ||
+        (v.countryName && v.countryName.toLowerCase() === filterCountry) ||
+        (v.countryId && v.countryId.toLowerCase() === filterCountry) ||
+        (v.country && v.country.toLowerCase() === filterCountry);
 
-      // 3. Visa type filter
-      const matchesType =
-        selectedVisaType === 'All Visa Types' ||
-        (v.visaType && v.visaType.toLowerCase().includes(selectedVisaType.toLowerCase()));
+      // 3. Visa type filter (Exact data-driven comparison)
+      const filterType = normalizeVisaType(selectedVisaType);
+      const itemType = normalizeVisaType(v.visaType);
+      const matchesVisaType = filterType === 'all' || itemType === filterType;
 
       // 4. Document requirement filter
       const matchesDoc =
@@ -77,15 +92,13 @@ export default function VisaPage() {
         (v.documentCategory &&
           v.documentCategory.toLowerCase() === selectedDocument.toLowerCase());
 
-      return matchesSearch && matchesCountry && matchesType && matchesDoc;
+      return matchesSearch && matchesCountry && matchesVisaType && matchesDoc;
     });
   }, [visasList, searchQuery, selectedCountry, selectedVisaType, selectedDocument]);
 
   const handleResetFilters = () => {
-    setSelectedCountry('Any Country');
-    setSelectedVisaType('All Visa Types');
+    resetContextFilters();
     setSelectedDocument('Any Documents');
-    setSelectedDate('');
     setSearchQuery('');
     setSearchParams({});
   };
@@ -138,12 +151,6 @@ export default function VisaPage() {
                 {filteredVisas.length} {filteredVisas.length === 1 ? 'destination' : 'destinations'} available
               </span>
             )}
-          </div>
-
-          {/* Guarantee Badge */}
-          <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-white border border-slate-200/90 shadow-sm text-xs font-bold text-[#123B7A] self-start sm:self-auto">
-            <ShieldCheck size={14} className="text-[#2563EB] flex-shrink-0" />
-            <span>100% Pay After Visa Approval Guarantee</span>
           </div>
         </div>
 

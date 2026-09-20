@@ -8,6 +8,7 @@
 import { mockVisas } from '../data/mockVisas';
 import { isMockMode } from './apiConfig';
 import { apiClient } from './apiClient';
+import { normalizeVisaType, normalizeCountryName } from './destinationFilter';
 
 /**
  * Normalizes raw visa data from API or Mock into a consistent frontend model
@@ -203,15 +204,18 @@ class VisaService {
           v.country.toLowerCase().includes(cleanQuery);
 
         // 2. Country filter
+        const filterCountry = normalizeCountryName(country);
         const matchesCountry =
-          country === 'Any Country' ||
-          v.displayName.toLowerCase() === country.toLowerCase() ||
-          v.country.toLowerCase() === country.toLowerCase();
+          filterCountry === 'all' ||
+          (v.displayName && v.displayName.toLowerCase() === filterCountry) ||
+          (v.countryName && v.countryName.toLowerCase() === filterCountry) ||
+          (v.countryId && v.countryId.toLowerCase() === filterCountry) ||
+          (v.country && v.country.toLowerCase() === filterCountry);
 
-        // 3. Visa type filter
-        const matchesType =
-          visaType === 'All Visa Types' ||
-          v.visaType.toLowerCase().includes(visaType.toLowerCase());
+        // 3. Visa type filter (Exact data-driven comparison)
+        const filterType = normalizeVisaType(visaType);
+        const itemType = normalizeVisaType(v.visaType);
+        const matchesType = filterType === 'all' || itemType === filterType;
 
         // 4. Document requirement filter
         const matchesDoc =

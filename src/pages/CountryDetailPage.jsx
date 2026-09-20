@@ -206,14 +206,14 @@ export default function CountryDetailPage() {
       location: 'Mumbai',
       rating: 5,
       date: '3 days ago',
-      comment: `Incredible experience applying for my ${displayName} visa. Approved 8 hours earlier than the guaranteed delivery time! The Pay After Approval feature gives total peace of mind.`
+      comment: `Incredible experience applying for my ${displayName} visa. Approved 8 hours earlier than the expected delivery time! The smooth process gives total peace of mind.`
     },
     {
       name: 'Priyanka Verma',
       location: 'Bengaluru',
       rating: 5,
       date: '1 week ago',
-      comment: `Zero paperwork hassles. Took photo of my passport on my phone, Mr Visa team formatted everything cleanly. Received official e-visa without paying anything upfront!`
+      comment: `Zero paperwork hassles. Took photo of my passport on my phone, Mr Visa team formatted everything cleanly. Received official e-visa promptly!`
     },
     {
       name: 'Anand Patel',
@@ -228,12 +228,8 @@ export default function CountryDetailPage() {
   const allFaqs = [
     ...faqs,
     {
-      q: 'How does Mr Visa "Pay After Visa Approval" guarantee work?',
-      a: 'With Mr Visa, you pay zero service fee upfront. You only submit your traveler details and digital passport copy. Once the official embassy grants your electronic visa approval, we send you the confirmation and you settle the payment to download your official travel authorization.'
-    },
-    {
-      q: `What is the guaranteed delivery date for ${displayName}?`,
-      a: `Your visa is guaranteed on or before ${guaranteedDate}. We monitor consular queues in real time and expedite processing immediately upon document submission.`
+      q: `What is the delivery timeline for ${displayName}?`,
+      a: `Your visa is expected on or before ${guaranteedDate}. We monitor consular queues in real time and expedite processing immediately upon document submission.`
     },
     {
       q: 'Do I need to visit any embassy or physical visa center?',
@@ -283,7 +279,7 @@ export default function CountryDetailPage() {
               </h1>
 
               <p className="text-sm sm:text-base text-slate-600 font-medium leading-relaxed">
-                {shortDescription || `Quick, guaranteed electronic visa for travelers. Fast verification and Pay After Visa Approval.`}
+                {shortDescription || `Quick, verified electronic visa for travelers. Fast verification and direct consular tracking.`}
               </p>
 
               {/* Immediate Hero Action Row */}
@@ -296,30 +292,6 @@ export default function CountryDetailPage() {
                   <span>Apply Now</span>
                   <ArrowRight size={16} strokeWidth={2.5} />
                 </button>
-                <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-700 bg-emerald-50 px-3.5 py-2 rounded-full border border-emerald-200/70">
-                  <ShieldCheck size={16} className="text-emerald-600" />
-                  <span>Pay After Visa Approval Guarantee</span>
-                </div>
-              </div>
-            </div>
-
-            {/* Quick Guarantee Badge on Hero */}
-            <div className="flex-shrink-0">
-              <div className="inline-flex items-center gap-3.5 px-5 py-4 rounded-2xl bg-[#F5F9FF] border border-[#2563EB]/20 shadow-sm text-left">
-                <div className="w-11 h-11 rounded-xl bg-[#2563EB] text-white flex items-center justify-center font-bold shadow-sm">
-                  <ShieldCheck size={24} />
-                </div>
-                <div>
-                  <div className="text-[11px] font-bold text-[#123B7A] uppercase tracking-wider">
-                    Mr Visa Assurance
-                  </div>
-                  <div className="text-sm font-black text-[#2563EB]">
-                    Pay After Visa Approval
-                  </div>
-                  <div className="text-xs text-slate-500 font-medium mt-0.5">
-                    Guaranteed delivery on-time
-                  </div>
-                </div>
               </div>
             </div>
           </div>
@@ -505,7 +477,7 @@ export default function CountryDetailPage() {
                     Explore {displayName} Hassle-Free
                   </h3>
                   <p className="text-xs sm:text-sm text-slate-200 mt-1 max-w-lg">
-                    Submit your documents online with our Pay After Visa Approval guarantee.
+                    Submit your documents online with fast digital verification and tracking.
                   </p>
                 </div>
               </div>
@@ -681,11 +653,11 @@ export default function CountryDetailPage() {
                         Visa Approved!
                       </h3>
                       <p className="text-xs text-slate-600 font-medium mt-2 leading-relaxed">
-                        E-visa delivered via email & WhatsApp. Pay only after your visa is officially granted.
+                        Official e-visa delivered straight to your email & WhatsApp ready for departure.
                       </p>
                     </div>
                     <div className="mt-4 pt-3 border-t border-[#2563EB]/20 text-[11px] font-black text-[#2563EB] uppercase tracking-wider">
-                      Pay After Approval
+                      Instant Download
                     </div>
                   </div>
 
@@ -707,7 +679,7 @@ export default function CountryDetailPage() {
                   </h3>
 
                   <p className="text-sm text-slate-200 mt-2 font-medium leading-relaxed">
-                    Know exactly when your visa is expected before you apply. Backed by our Pay After Visa Approval policy so you never take any financial risk.
+                    Know exactly when your visa is expected before you apply. Reliable processing backed by direct consulate coordination.
                   </p>
 
                   <div className="mt-6 flex flex-wrap items-center gap-4 text-xs font-bold text-slate-200">
@@ -717,7 +689,7 @@ export default function CountryDetailPage() {
                     </div>
                     <div className="flex items-center gap-1.5">
                       <CheckCircle2 size={16} className="text-emerald-400" />
-                      <span>Zero Advance Charge</span>
+                      <span>Verified Document Review</span>
                     </div>
                     <div className="flex items-center gap-1.5">
                       <CheckCircle2 size={16} className="text-emerald-400" />
@@ -756,12 +728,12 @@ export default function CountryDetailPage() {
                   </thead>
                   <tbody className="divide-y divide-slate-100">
                     <tr>
-                      <td className="py-3.5 px-4 font-bold text-[#082B61]">Payment Terms</td>
-                      <td className="py-3.5 px-4 font-bold text-emerald-700 bg-[#F5F9FF]">
-                        Pay After Visa Approval
+                      <td className="py-3.5 px-4 font-bold text-[#082B61]">Pricing & Fees</td>
+                      <td className="py-3.5 px-4 font-bold text-[#082B61] bg-[#F5F9FF]">
+                        Transparent, all-inclusive
                       </td>
                       <td className="py-3.5 px-4 text-slate-500">
-                        100% advance non-refundable
+                        Hidden extra charges
                       </td>
                     </tr>
                     <tr>
@@ -914,7 +886,7 @@ export default function CountryDetailPage() {
             
             <div className="bg-white rounded-3xl p-6 sm:p-7 border border-slate-200/90 shadow-[0_8px_30px_rgba(8,43,97,0.06)]">
               
-              {/* Delivery Guarantee Pill */}
+              {/* Delivery Schedule Pill */}
               <div className="p-3.5 rounded-2xl bg-[#F5F9FF] border border-[#2563EB]/25 mb-6 flex items-start gap-3">
                 <Clock size={18} className="text-[#2563EB] flex-shrink-0 mt-0.5" />
                 <div>
@@ -923,9 +895,6 @@ export default function CountryDetailPage() {
                   </div>
                   <div className="text-sm font-black text-[#082B61]">
                     On or before {guaranteedDate}
-                  </div>
-                  <div className="text-[11px] text-[#2563EB] font-bold mt-0.5">
-                    Guaranteed on-time or service fee refunded
                   </div>
                 </div>
               </div>
@@ -1004,18 +973,7 @@ export default function CountryDetailPage() {
                 </div>
               </div>
 
-              {/* Pay After Visa Approval Guarantee Banner */}
-              <div className="p-3.5 rounded-2xl bg-emerald-50/80 border border-emerald-200/80 mb-6 flex items-start gap-2.5">
-                <ShieldCheck size={18} className="text-emerald-600 flex-shrink-0 mt-0.5" />
-                <div>
-                  <div className="text-xs font-black text-emerald-900">
-                    Pay After Visa Approval Guarantee
-                  </div>
-                  <div className="text-[11px] text-emerald-700 font-medium mt-0.5 leading-relaxed">
-                    Zero advance payment today. Submit documents now and settle fees only after your visa is officially granted.
-                  </div>
-                </div>
-              </div>
+
 
               {/* CTA Button */}
               <button
@@ -1092,18 +1050,7 @@ export default function CountryDetailPage() {
             <div className="p-6">
               {!isSubmitted ? (
                 <form onSubmit={handleModalSubmit} className="space-y-4">
-                  {/* Pay After Approval Guarantee Reminder */}
-                  <div className="p-3.5 rounded-2xl bg-emerald-50 border border-emerald-200 flex items-start gap-3">
-                    <ShieldCheck size={20} className="text-emerald-600 flex-shrink-0 mt-0.5" />
-                    <div>
-                      <div className="text-xs font-black text-emerald-900">
-                        Pay After Visa Approval Guarantee
-                      </div>
-                      <div className="text-[11px] text-emerald-700 font-medium mt-0.5 leading-relaxed">
-                        Submit application now. Settle payment only after your official {displayName} visa is granted.
-                      </div>
-                    </div>
-                  </div>
+
 
                   {/* Number of Travellers in Modal */}
                   <div>
@@ -1215,7 +1162,7 @@ export default function CountryDetailPage() {
                       <span className="font-black text-[#082B61]">{guaranteedDate}</span>
                     </div>
                     <div className="text-right">
-                      <span className="font-bold text-slate-500">Pay After Approval:</span>{' '}
+                      <span className="font-bold text-slate-500">Total Fee:</span>{' '}
                       <span className="font-black text-[#2563EB]">₹{totalFee.toLocaleString('en-IN')}</span>
                     </div>
                   </div>
@@ -1260,8 +1207,8 @@ export default function CountryDetailPage() {
                       <span className="font-bold text-[#2563EB]">{guaranteedDate}</span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-slate-500">Payment Terms:</span>
-                      <span className="font-bold text-emerald-700">Pay After Visa Approval</span>
+                      <span className="text-slate-500">Service Status:</span>
+                      <span className="font-bold text-[#082B61]">Document Review Pending</span>
                     </div>
                   </div>
 

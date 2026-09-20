@@ -8,3 +8,4 @@ export { applicationService, normalizeApplication, normalizeDocument, normalizeT
 export { userService, normalizeUserProfile } from './userService';
 export { apiClient, ApiError, tokenStore } from './apiClient';
 export { API_CONFIG, isMockMode } from './apiConfig';
+export { filterDestinations, searchCountryDestinations, normalizeVisaType, normalizeCountryName } from './destinationFilter';

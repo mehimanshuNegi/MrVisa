@@ -311,7 +311,7 @@ export default function CountryDetailPage() {
   const docCount = documentsRequired.length > 0 ? documentsRequired.length : 1;
 
   return (
-    <div className="bg-[#FAFBFD] min-h-screen text-[#0F172A] selection:bg-[#2563EB]/15 selection:text-[#123B7A]">
+    <div className="bg-[#FAFBFD] min-h-screen text-[#0F172A] selection:bg-[#2563EB]/15 selection:text-[#123B7A] pb-24 sm:pb-28 lg:pb-0">
       
       {/* TOP COMPACT HERO BANNER */}
       <section className="bg-white border-b border-slate-100 pt-6 pb-8 lg:pt-8 lg:pb-10">
@@ -384,8 +384,8 @@ export default function CountryDetailPage() {
                 </div>
               )}
 
-              {/* Immediate Hero Action Row */}
-              <div className="pt-2 flex flex-wrap items-center gap-4">
+              {/* Immediate Hero Action Row - Shown on tablet/desktop, hidden on mobile to prioritize Fees Card */}
+              <div className="pt-2 hidden sm:flex flex-wrap items-center gap-4">
                 <button
                   type="button"
                   onClick={handleApplyClick}
@@ -401,10 +401,10 @@ export default function CountryDetailPage() {
         </div>
       </section>
 
-      {/* 1. STICKY VISA DETAILS NAVIGATION WITH TRANSITIONING START APPLICATION CTA */}
+      {/* 1. STICKY VISA DETAILS NAVIGATION WITH TRANSITIONING START APPLICATION CTA (Desktop Only) */}
       <nav 
         aria-label="Visa Details Sections"
-        className="sticky top-[74px] lg:top-[76px] z-30 bg-white/95 backdrop-blur-md border-b border-slate-200/80 shadow-[0_2px_8px_rgba(0,0,0,0.03)]"
+        className="hidden lg:block sticky top-[74px] lg:top-[76px] z-30 bg-white/95 backdrop-blur-md border-b border-slate-200/80 shadow-[0_2px_8px_rgba(0,0,0,0.03)]"
       >
         <div className="max-w-[1360px] mx-auto px-4 sm:px-6 lg:px-12 flex items-center justify-between gap-4">
           
@@ -453,12 +453,12 @@ export default function CountryDetailPage() {
         </div>
       </nav>
 
-      {/* MAIN CONTENT AREA: TWO COLUMNS (Content Sections + Sticky Sidebar) */}
-      <div className="max-w-[1360px] mx-auto px-6 lg:px-12 py-10 lg:py-14">
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 lg:gap-12 items-start">
+      {/* MAIN CONTENT AREA: TWO COLUMNS (Content Sections + Sticky Sidebar on Desktop; Fees Card first on Mobile) */}
+      <div className="max-w-[1360px] mx-auto px-4 sm:px-6 lg:px-12 py-6 sm:py-8 lg:py-14">
+        <div className="flex flex-col lg:grid lg:grid-cols-12 gap-8 sm:gap-10 lg:gap-12 items-start">
           
-          {/* LEFT COLUMN: SCROLLABLE SECTIONS (8 cols on desktop) */}
-          <div className="lg:col-span-7 xl:col-span-8 space-y-16 sm:space-y-20">
+          {/* CONTENT COLUMN: SCROLLABLE SECTIONS (Order 2 on Mobile, Order 1 on Desktop) */}
+          <div className="w-full order-2 lg:order-1 lg:col-span-7 xl:col-span-8 flex flex-col space-y-10 sm:space-y-14 lg:space-y-20">
             
             {/* SUCCESS NOTIFICATION IF TRIGGERED */}
             {appliedSuccess && (
@@ -474,7 +474,7 @@ export default function CountryDetailPage() {
             )}
 
             {/* SECTION 1: VISA INFO */}
-            <section id="visa-info" className="scroll-mt-36 transition-all duration-300">
+            <section id="visa-info" className="order-1 scroll-mt-36 transition-all duration-300">
               <div className="mb-6">
                 <h2 className="text-2xl sm:text-3xl font-black text-[#082B61] tracking-tight">
                   Visa Information
@@ -537,8 +537,8 @@ export default function CountryDetailPage() {
 
               </div>
 
-              {/* Quick Inline Apply CTA Banner for Visa Info Section */}
-              <div className="mb-8 p-4 sm:p-5 rounded-2xl bg-[#F5F9FF] border border-[#2563EB]/25 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-sm">
+              {/* Quick Inline Apply CTA Banner for Visa Info Section (Hidden on mobile to prioritize clean scanning) */}
+              <div className="mb-8 hidden sm:flex items-center justify-between gap-4 p-4 sm:p-5 rounded-2xl bg-[#F5F9FF] border border-[#2563EB]/25 shadow-sm">
                 <div className="flex items-center gap-3.5">
                   <div className="w-10 h-10 rounded-xl bg-[#2563EB] text-white flex items-center justify-center font-bold flex-shrink-0 shadow-sm">
                     <ShieldCheck size={22} />
@@ -555,7 +555,7 @@ export default function CountryDetailPage() {
                 <button
                   type="button"
                   onClick={handleApplyClick}
-                  className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-2.5 rounded-full bg-[#2563EB] hover:bg-[#082B61] text-white text-xs sm:text-sm font-extrabold shadow-md shadow-[#2563EB]/25 hover:shadow-lg transition-all duration-200 cursor-pointer active:scale-95 whitespace-nowrap"
+                  className="inline-flex items-center justify-center gap-2 px-6 py-2.5 rounded-full bg-[#2563EB] hover:bg-[#082B61] text-white text-xs sm:text-sm font-extrabold shadow-md shadow-[#2563EB]/25 hover:shadow-lg transition-all duration-200 cursor-pointer active:scale-95 whitespace-nowrap"
                 >
                   <span>Apply Now</span>
                   <ArrowRight size={15} strokeWidth={2.5} />
@@ -563,7 +563,7 @@ export default function CountryDetailPage() {
               </div>
 
               {/* Destination Photo & Quick Highlight */}
-              <div className="rounded-3xl overflow-hidden border border-slate-200/90 shadow-sm relative h-64 sm:h-80 bg-slate-100">
+              <div className="rounded-3xl overflow-hidden border border-slate-200/90 shadow-sm relative h-48 sm:h-64 lg:h-80 bg-slate-100">
                 <img
                   src={image}
                   alt={`${displayName} scenic`}
@@ -586,7 +586,7 @@ export default function CountryDetailPage() {
             </section>
 
             {/* SECTION 2: DOCUMENTS */}
-            <section id="documents" className="scroll-mt-36 transition-all duration-300">
+            <section id="documents" className="order-2 scroll-mt-36 transition-all duration-300">
               <div className="mb-6 flex flex-col sm:flex-row sm:items-end justify-between gap-4">
                 <div>
                   <h2 className="text-2xl sm:text-3xl font-black text-[#082B61] tracking-tight">
@@ -674,7 +674,7 @@ export default function CountryDetailPage() {
             </section>
 
             {/* SECTION 3: VISA PROCESS */}
-            <section id="visa-process" className="scroll-mt-36 transition-all duration-300">
+            <section id="visa-process" className="order-4 lg:order-3 scroll-mt-36 transition-all duration-300">
               <div className="mb-8">
                 <h2 className="text-2xl sm:text-3xl font-black text-[#082B61] tracking-tight">
                   Visa Process
@@ -803,7 +803,7 @@ export default function CountryDetailPage() {
             </section>
 
             {/* 7. TRUST & COMPARISON SECTION */}
-            <section className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200/90 shadow-sm">
+            <section className="order-5 lg:order-4 bg-white rounded-3xl p-6 sm:p-8 border border-slate-200/90 shadow-sm">
               <div className="mb-6">
                 <span className="text-xs font-extrabold text-[#2563EB] tracking-widest uppercase block mb-1">
                   Why NimuFly
@@ -871,7 +871,7 @@ export default function CountryDetailPage() {
             </section>
 
             {/* SECTION 4: REVIEWS */}
-            <section id="reviews" className="scroll-mt-36 transition-all duration-300">
+            <section id="reviews" className="order-6 lg:order-5 scroll-mt-36 transition-all duration-300">
               <div className="mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div>
                   <h2 className="text-2xl sm:text-3xl font-black text-[#082B61] tracking-tight">
@@ -939,7 +939,7 @@ export default function CountryDetailPage() {
             </section>
 
             {/* SECTION 5: FAQS */}
-            <section id="faqs" className="scroll-mt-36 transition-all duration-300">
+            <section id="faqs" className="order-3 lg:order-6 scroll-mt-36 transition-all duration-300">
               <div className="mb-6">
                 <h2 className="text-2xl sm:text-3xl font-black text-[#082B61] tracking-tight">
                   Frequently Asked Questions
@@ -983,8 +983,8 @@ export default function CountryDetailPage() {
 
           </div>
 
-          {/* RIGHT COLUMN: APPLICATION / PAYMENT PANEL (Normal page content flow) */}
-          <aside ref={pricingCardRef} className="lg:col-span-5 xl:col-span-4 space-y-5">
+          {/* RIGHT COLUMN: APPLICATION / PAYMENT PANEL (Order 1 on Mobile, Order 2 on Desktop) */}
+          <aside ref={pricingCardRef} className="w-full order-1 lg:order-2 lg:col-span-5 xl:col-span-4 space-y-5 lg:sticky lg:top-36">
             
             <div className="bg-white rounded-3xl p-6 sm:p-7 border border-slate-200/90 shadow-[0_8px_30px_rgba(8,43,97,0.06)]">
               
@@ -1094,8 +1094,8 @@ export default function CountryDetailPage() {
 
             </div>
 
-            {/* Support Callout */}
-            <div className="bg-white rounded-2xl p-5 border border-slate-200/80 shadow-sm flex items-center gap-4">
+            {/* Support Callout - Hidden on mobile to keep breathing room after fees card */}
+            <div className="hidden lg:flex bg-white rounded-2xl p-5 border border-slate-200/80 shadow-sm items-center gap-4">
               <div className="w-10 h-10 rounded-xl bg-[#F5F9FF] text-[#2563EB] flex items-center justify-center flex-shrink-0">
                 <HelpCircle size={20} />
               </div>
@@ -1111,6 +1111,33 @@ export default function CountryDetailPage() {
 
           </aside>
 
+        </div>
+      </div>
+
+      {/* FIXED MOBILE BOTTOM BAR - START APPLICATION */}
+      <div className="lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-md border-t border-slate-200/90 shadow-[0_-4px_25px_rgba(8,43,97,0.08)] px-4 py-3 sm:px-6">
+        <div className="max-w-md mx-auto flex items-center justify-between gap-3">
+          <div className="min-w-0">
+            <span className="block text-[10px] font-extrabold text-slate-400 uppercase tracking-wider truncate">
+              Total Payable
+            </span>
+            <div className="flex items-baseline gap-1.5">
+              <span className="text-xl sm:text-2xl font-black text-[#2563EB]">
+                ₹{totalFee.toLocaleString('en-IN')}
+              </span>
+              <span className="text-[10px] text-slate-500 font-bold truncate">
+                ({travellerCount} {travellerCount === 1 ? 'traveller' : 'travellers'})
+              </span>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={handleApplyClick}
+            className="inline-flex items-center justify-center gap-1.5 px-5 sm:px-6 py-2.5 sm:py-3 rounded-full bg-[#2563EB] hover:bg-[#082B61] text-white text-xs sm:text-sm font-extrabold shadow-md shadow-[#2563EB]/25 hover:shadow-lg transition-all duration-200 cursor-pointer active:scale-95 whitespace-nowrap group flex-shrink-0"
+          >
+            <span>Start Application</span>
+            <ArrowRight size={15} strokeWidth={2.5} className="group-hover:translate-x-0.5 transition-transform" />
+          </button>
         </div>
       </div>
 

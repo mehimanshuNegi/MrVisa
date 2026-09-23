@@ -1,6 +1,6 @@
 /**
  * Centralized API Client & HTTP Transport
- * Prepares Mr Visa for authenticated backend API requests.
+ * Prepares NimuFly for authenticated backend API requests.
  * When VITE_DATA_SOURCE=api, all network requests flow through this client.
  */
 

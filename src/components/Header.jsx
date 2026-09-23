@@ -280,17 +280,17 @@ export default function Header() {
           isScrolled ? 'h-[74px] lg:h-[76px]' : 'h-[84px] lg:h-[88px]'
         }`}
       >
-        {/* LEFT: Unified Brand Lockup [ MASCOT ] + Mr Visa */}
+        {/* LEFT: Unified Brand Lockup [ MASCOT ] + NimuFly */}
         <div className="flex items-center gap-3 xl:gap-5 flex-shrink-0">
           <Link
             to="/"
             className="flex items-center gap-2.5 sm:gap-3 focus:outline-none group py-1"
-            aria-label="Mr Visa Home"
+            aria-label="NimuFly Home"
           >
             {/* Mascot */}
             <img
               src="/mrvisa-mascot.png"
-              alt="Mr Visa Mascot"
+              alt="NimuFly Mascot"
               className={`w-auto object-contain flex-shrink-0 transition-all duration-300 group-hover:scale-[1.03] ${
                 isScrolled ? 'h-[46px] sm:h-[54px] lg:h-[58px]' : 'h-[54px] sm:h-[62px] lg:h-[68px]'
               }`}
@@ -299,7 +299,7 @@ export default function Header() {
             {/* Brand Typography Lockup */}
             <div className="flex flex-col justify-center select-none">
               <span className="text-2xl sm:text-3xl lg:text-[29px] font-extrabold text-[#123B7A] tracking-tight leading-none">
-                Mr Visa
+                NimuFly
               </span>
               <span className="text-[11.5px] sm:text-[12.5px] font-bold tracking-[0.03em] text-[#2563EB] mt-1.5 leading-none">
                 On Time, Every Time.

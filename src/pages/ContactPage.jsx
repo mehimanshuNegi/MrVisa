@@ -30,7 +30,7 @@ export default function ContactPage() {
 
   const faqs = [
     {
-      q: "How does Mr Visa process my visa application?",
+      q: "How does NimuFly process my visa application?",
       a: "Our experienced visa specialists rigorously verify your documents against current consulate regulations, format submissions to exact embassy standards, and track your application in real-time through official channels until delivery."
     },
     {
@@ -43,7 +43,7 @@ export default function ContactPage() {
     },
     {
       q: "Are visa approvals issued directly by official embassies?",
-      a: "Yes, 100%. Mr Visa is an accredited visa facilitation agency. All issued e-visas and stamp approvals originate straight from the respective country's Ministry of Foreign Affairs and Immigration Directorate."
+      a: "Yes, 100%. NimuFly is an accredited visa facilitation agency. All issued e-visas and stamp approvals originate straight from the respective country's Ministry of Foreign Affairs and Immigration Directorate."
     },
     {
       q: "Can I apply for group or family visas simultaneously?",
@@ -128,7 +128,7 @@ export default function ContactPage() {
                     Email Inquiries
                   </span>
                   <span className="block text-base font-bold text-[#0B2A63] mt-0.5">
-                    support@mrvisa.com
+                    support@nimufly.com
                   </span>
                   <span className="block text-xs text-[#64748B] mt-0.5">
                     Guaranteed response within 2 hours
@@ -146,7 +146,7 @@ export default function ContactPage() {
                     Main Office
                   </span>
                   <span className="block text-base font-bold text-[#0B2A63] mt-0.5">
-                    Mr Visa Global Hub, Suite 400
+                    NimuFly Global Hub, Suite 400
                   </span>
                   <span className="block text-xs text-[#64748B] mt-0.5">
                     42 Boulevard Financial Center, London & Dubai

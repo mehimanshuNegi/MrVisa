@@ -44,8 +44,17 @@ function AppContent() {
           <Route path="/" element={<HomePage />} />
           <Route path="/visa" element={<VisaPage />} />
           <Route path="/visa/:country" element={<CountryDetailPage />} />
+          <Route path="/visa/:country/:visaId" element={<CountryDetailPage />} />
           <Route
             path="/visa/:country/apply"
+            element={
+              <ErrorBoundary>
+                <VisaApplicationPage />
+              </ErrorBoundary>
+            }
+          />
+          <Route
+            path="/visa/:country/:visaId/apply"
             element={
               <ErrorBoundary>
                 <VisaApplicationPage />

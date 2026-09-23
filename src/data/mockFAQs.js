@@ -5,7 +5,7 @@
 
 export const GENERAL_FAQS = [
   {
-    q: 'How does Mr Visa process my visa online?',
+    q: 'How does NimuFly process my visa online?',
     a: 'Simply select your destination, fill in minimal traveller details, upload clear document scans, and pay securely. Our verified immigration experts inspect your application before final submission to foreign consulates.'
   },
   {

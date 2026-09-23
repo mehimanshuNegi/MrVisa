@@ -513,6 +513,7 @@ export default function AccountPage() {
                 const statusCfg = getStatusConfig(app.status);
                 const isVisaReady = app.status === APPLICATION_STATUS.VISA_ISSUED || statusCfg.defaultAction === REQUIRED_ACTION.VIEW_VISA;
                 const isActionReq = statusCfg.isActionRequired || app.requiredAction === REQUIRED_ACTION.UPDATE_PHOTO;
+                const isRejected = app.status === APPLICATION_STATUS.REJECTED || app.status === 'REJECTED' || statusCfg.isRejected;
 
                 return (
                   <div
@@ -609,6 +610,33 @@ export default function AccountPage() {
                       </div>
                     )}
 
+                    {/* Application Rejected Professional Callout */}
+                    {isRejected && (
+                      <div className="p-4 rounded-2xl bg-rose-50/80 border border-rose-200/90 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                        <div className="flex items-start gap-2.5">
+                          <div className="w-7 h-7 rounded-full bg-rose-600 text-white flex items-center justify-center shadow-xs flex-shrink-0 mt-0.5">
+                            <X size={15} strokeWidth={2.8} />
+                          </div>
+                          <div>
+                            <span className="text-xs font-black text-rose-900 block">
+                              Application Rejected
+                            </span>
+                            <span className="text-xs text-rose-700 font-medium block mt-0.5">
+                              {app.adminMessage || 'The visa application was declined upon consular review.'}
+                            </span>
+                          </div>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => setSelectedApp(app)}
+                          className="px-4 py-1.5 rounded-full bg-rose-600 hover:bg-rose-700 text-white text-xs font-extrabold shadow-sm transition-all cursor-pointer whitespace-nowrap self-start sm:self-auto"
+                        >
+                          View Application →
+                        </button>
+                      </div>
+                    )}
+
                     {/* Additional Info Notice with Dynamic Admin Message */}
                     {isActionReq && (
                       <div className="p-3.5 rounded-2xl bg-red-50/70 border border-red-200 flex items-center justify-between">
@@ -684,6 +712,7 @@ export default function AccountPage() {
       {selectedApp && (() => {
         const selectedStatusCfg = getStatusConfig(selectedApp.status);
         const isVisaReady = selectedApp.status === APPLICATION_STATUS.VISA_ISSUED || selectedStatusCfg.defaultAction === REQUIRED_ACTION.VIEW_VISA;
+        const isRejected = selectedApp.status === APPLICATION_STATUS.REJECTED || selectedApp.status === 'REJECTED' || selectedStatusCfg.isRejected;
 
         return (
           <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4">
@@ -737,11 +766,24 @@ export default function AccountPage() {
                 </div>
               </div>
 
+              {/* Rejection Notice in Modal */}
+              {isRejected && (
+                <div className="p-4 rounded-2xl bg-rose-50 border border-rose-200 text-xs">
+                  <div className="flex items-center gap-2 font-black text-rose-900 mb-1">
+                    <X size={14} strokeWidth={2.8} className="text-rose-600" />
+                    <span>Application Rejected</span>
+                  </div>
+                  <p className="text-rose-700 font-medium leading-relaxed">
+                    {selectedApp.adminMessage || 'The visa application was declined upon consular review.'}
+                  </p>
+                </div>
+              )}
+
               {/* ====================================================
                   APPLICATION STATUS TIMELINE
                   - Application Submitted (✓)
                   - Documents Verified (✓)
-                  - Application Processing (● in Mr Visa blue)
+                  - Application Processing (● in NimuFly blue)
                   - Visa Issued (○)
                   ==================================================== */}
               <div className="space-y-3">
@@ -826,10 +868,14 @@ export default function AccountPage() {
                     )}
                   </div>
 
-                  {/* Stage 4: Visa Issued */}
+                  {/* Stage 4: Visa Issued or Rejected */}
                   <div className="flex items-center justify-between text-xs">
                     <div className="flex items-center gap-2.5">
-                      {isVisaReady ? (
+                      {isRejected ? (
+                        <span className="w-5 h-5 rounded-full bg-rose-600 text-white flex items-center justify-center">
+                          <X size={12} strokeWidth={3} />
+                        </span>
+                      ) : isVisaReady ? (
                         <span className="w-5 h-5 rounded-full bg-emerald-600 text-white flex items-center justify-center">
                           <Check size={12} strokeWidth={3} />
                         </span>
@@ -839,13 +885,15 @@ export default function AccountPage() {
                         </span>
                       )}
                       <span className={`font-bold ${
-                        isVisaReady ? 'text-emerald-800 font-black' : 'text-slate-400'
+                        isRejected ? 'text-rose-700 font-black' : isVisaReady ? 'text-emerald-800 font-black' : 'text-slate-400'
                       }`}>
-                        Visa Issued
+                        {isRejected ? 'Application Rejected' : 'Visa Issued'}
                       </span>
                     </div>
 
-                    {isVisaReady ? (
+                    {isRejected ? (
+                      <span className="text-rose-700 font-extrabold text-xs">✗</span>
+                    ) : isVisaReady ? (
                       <span className="text-emerald-700 font-extrabold text-xs">✓</span>
                     ) : (
                       <span className="text-slate-300 font-bold text-xs">○</span>

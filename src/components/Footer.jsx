@@ -16,15 +16,15 @@ export default function Footer() {
 
           {/* Brand Lockup */}
           <div className="flex items-center">
-            <Link to="/" className="flex items-center gap-3.5 focus:outline-none group" aria-label="Mr Visa Home">
+            <Link to="/" className="flex items-center gap-3.5 focus:outline-none group" aria-label="NimuFly Home">
               <img
                 src="/mrvisa-mascot.png"
-                alt="Mr Visa Mascot"
+                alt="NimuFly Mascot"
                 className="h-16 w-auto object-contain flex-shrink-0 transition-transform group-hover:scale-105"
               />
               <div className="flex flex-col justify-center">
                 <span className="text-2xl font-extrabold text-[#123B7A] tracking-tight leading-none">
-                  Mr Visa
+                  NimuFly
                 </span>
                 <span className="text-xs font-semibold tracking-wider text-[#2563EB] mt-1.5 leading-none">
                   On Time, Every Time.
@@ -49,7 +49,7 @@ export default function Footer() {
 
         {/* Copyright */}
         <div className="pt-8 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs font-medium text-[#64748B]">
-          <p>© {new Date().getFullYear()} Mr Visa. All rights reserved.</p>
+          <p>© {new Date().getFullYear()} NimuFly. All rights reserved.</p>
           <p className="text-slate-400">
             Premium Global Visa Facilitation
           </p>

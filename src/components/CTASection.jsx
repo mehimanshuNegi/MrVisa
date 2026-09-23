@@ -19,7 +19,7 @@ export default function CTASection() {
                 Ready for your next journey?
               </h2>
               <p className="text-lg font-bold text-[#1479F5]">
-                Let Mr Visa Take You There
+                Let NimuFly Take You There
               </p>
               <div className="pt-2">
                 <Link

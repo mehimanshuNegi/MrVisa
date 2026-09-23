@@ -1,6 +1,6 @@
 /**
  * Core Domain Entities & Schemas
- * Standard structure for all entities across Mr Visa
+ * Standard structure for all entities across NimuFly
  * Ready for future Database and Backend API mapping
  */
 

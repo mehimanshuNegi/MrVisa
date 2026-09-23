@@ -37,7 +37,7 @@ export default function Hero() {
           {/* Main Heading */}
           <h1 className="text-3xl sm:text-4xl lg:text-[50px] font-extrabold text-[#082B61] leading-[1.1] tracking-tight">
             Explore the World <br />
-            with <span className="text-[#1479F5]">Mr Visa</span>
+            with <span className="text-[#1479F5]">NimuFly</span>
           </h1>
 
           {/* Tagline */}

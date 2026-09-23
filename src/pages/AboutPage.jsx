@@ -51,13 +51,13 @@ export default function AboutPage() {
         {/* HERO SECTION */}
         <div className="max-w-3xl mb-16 lg:mb-24">
           <p className="text-xs font-bold tracking-[0.2em] text-[#1479F5] uppercase mb-3">
-            ABOUT MR VISA
+            ABOUT NIMUFLY
           </p>
           <h1 className="text-4xl sm:text-5xl font-extrabold text-[#0B2A63] tracking-tight leading-[1.15]">
             Making Visa Applications Simpler
           </h1>
           <p className="text-lg sm:text-xl text-[#64748B] font-medium mt-5 leading-relaxed">
-            At Mr Visa, we believe international travel should be centered around the wonder of discovery, not the anxiety of complex government bureaucracy. We streamline the entire visa lifecycle through transparent requirements, verified guidance, and our traveler-first promise.
+            At NimuFly, we believe international travel should be centered around the wonder of discovery, not the anxiety of complex government bureaucracy. We streamline the entire visa lifecycle through transparent requirements, verified guidance, and our traveler-first promise.
           </p>
         </div>
 
@@ -95,11 +95,11 @@ export default function AboutPage() {
           </div>
         </section>
 
-        {/* WHY CHOOSE MR VISA */}
+        {/* WHY CHOOSE NIMUFLY */}
         <section className="mb-20 lg:mb-28">
           <div className="mb-10 pb-4 border-b border-slate-100">
             <h2 className="text-2xl sm:text-3xl font-extrabold text-[#0B2A63] tracking-tight">
-              Why Choose Mr Visa?
+              Why Choose NimuFly?
             </h2>
             <p className="text-base text-[#64748B] font-medium mt-1">
               A modern service built upon honesty, clarity, and traveler satisfaction

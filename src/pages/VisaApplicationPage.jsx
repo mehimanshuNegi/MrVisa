@@ -4,7 +4,6 @@ import {
   ArrowLeft,
   ArrowRight,
   CheckCircle2,
-  Users,
   FileText,
   CreditCard,
   Plus,
@@ -13,25 +12,20 @@ import {
   Check,
   Smartphone,
   Clock,
-  Sparkles,
-  Download,
   AlertCircle,
   QrCode,
   X,
   RefreshCw,
   Lock,
-  ShieldCheck,
-  Building2,
-  ExternalLink,
-  ChevronRight,
   Edit3,
+  Building2,
   Loader2
 } from 'lucide-react';
 import { visaService, countryService, applicationService } from '../services';
 import { APPLICATION_STATUS, REQUIRED_ACTION } from '../models/status';
 
 export default function VisaApplicationPage() {
-  const { country: countryParam } = useParams();
+  const { country: countryParam, visaId: visaParam } = useParams();
   const location = useLocation();
 
   // Find destination matching URL param via visaService
@@ -45,9 +39,24 @@ export default function VisaApplicationPage() {
       setIsLoadingVisa(true);
       setLoadError(null);
       try {
-        let found = await visaService.getVisaById(countryParam);
-        if (!found) {
-          // Fallback: check if countryParam matches a country record with visas
+        let found = null;
+        // 1. Try explicit visaParam if provided
+        if (visaParam) {
+          found = await visaService.getVisaById(visaParam);
+        }
+        // 2. Try countryParam directly as visa ID or countryId
+        if (!found && countryParam) {
+          found = await visaService.getVisaById(countryParam);
+        }
+        // 3. Try finding all visas for this country
+        if (!found && countryParam) {
+          const countryVisas = await visaService.getVisasByCountry(countryParam);
+          if (countryVisas && countryVisas.length > 0) {
+            found = countryVisas[0];
+          }
+        }
+        // 4. Fallback: check if countryParam matches a country record with linked visas
+        if (!found && countryParam) {
           const countryData = await countryService.getCountryById(countryParam);
           if (countryData && Array.isArray(countryData.visas) && countryData.visas.length > 0) {
             found = await visaService.getVisaById(countryData.visas[0]);
@@ -58,7 +67,7 @@ export default function VisaApplicationPage() {
           if (found) {
             setDestination(found);
           } else {
-            setLoadError(`We couldn't locate visa details for "${countryParam}".`);
+            setLoadError(`We couldn't locate visa details for "${countryParam || visaParam}".`);
           }
         }
       } catch (e) {
@@ -74,7 +83,7 @@ export default function VisaApplicationPage() {
     }
     loadVisaData();
     return () => { isMounted = false; };
-  }, [countryParam]);
+  }, [countryParam, visaParam]);
 
   // Extract initial traveller count if provided from Visa Details page
   const queryParams = new URLSearchParams(location.search);
@@ -132,9 +141,6 @@ export default function VisaApplicationPage() {
 
   const [activeTravellerId, setActiveTravellerId] = useState(travellers[0]?.id || '');
 
-  // Touched map to track user interaction: { [`${travellerId}_${field}`]: true }
-  const [touched, setTouched] = useState({});
-
   // Scroll to top on step or submission change
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -152,30 +158,37 @@ export default function VisaApplicationPage() {
         let guidance = doc?.detail || doc?.guidance || 'Upload a clear, readable copy.';
         let errorMsg = `${docName} is required`;
 
-        if (lower.includes('passport')) {
-          id = 'passport';
-          title = 'Passport';
-          subtitle = 'PDF, JPG or PNG';
-          guidance = 'Make sure all four corners are visible.';
-          errorMsg = 'Passport document is required';
-        } else if (lower.includes('photo') || lower.includes('portrait')) {
+        // Check Photograph FIRST to prevent "Passport-Size Photograph" matching generic "passport"
+        if (lower.includes('photo') || lower.includes('portrait')) {
           id = 'photo';
-          title = 'Photograph';
-          subtitle = 'Recent passport-size photograph';
-          guidance = 'Use a clear recent passport-size photo.';
+          title = 'Passport-Size Photograph';
+          subtitle = 'Recent color passport-size photograph';
+          guidance = 'Recent colored photo with white background, 35mm x 45mm.';
           errorMsg = 'Please upload a valid photograph';
+        } else if (lower.includes('passport')) {
+          id = 'passport';
+          title = 'Passport Front & Back';
+          subtitle = 'PDF, JPG or PNG (Max 5 MB)';
+          guidance = 'Clear scan of bio and address page. All 4 corners visible.';
+          errorMsg = 'Passport document is required';
         } else if (lower.includes('ticket') || lower.includes('flight')) {
           id = 'flight_ticket';
           title = 'Confirmed Flight Ticket';
-          subtitle = 'PDF, JPG or PNG';
+          subtitle = 'PDF, JPG or PNG (Max 5 MB)';
           guidance = 'Confirmed return or onward flight itinerary.';
           errorMsg = 'Confirmed flight ticket is required';
-        } else if (lower.includes('itinerary') || lower.includes('hotel')) {
+        } else if (lower.includes('itinerary') || lower.includes('hotel') || lower.includes('booking')) {
           id = 'itinerary';
           title = 'Travel Itinerary';
-          subtitle = 'Hotel booking or trip plan';
+          subtitle = 'Hotel booking or trip plan (Max 5 MB)';
           guidance = 'Hotel reservation or trip itinerary.';
           errorMsg = 'Travel itinerary is required';
+        } else if (lower.includes('bank') || lower.includes('statement')) {
+          id = 'bank_statement';
+          title = 'Bank Statement';
+          subtitle = 'PDF (Max 5 MB)';
+          guidance = 'Last 3-6 months official bank statement.';
+          errorMsg = 'Bank statement is required';
         }
 
         return {
@@ -192,18 +205,18 @@ export default function VisaApplicationPage() {
     return [
       {
         id: 'passport',
-        name: 'Passport',
-        title: 'Passport',
-        subtitle: 'PDF, JPG or PNG',
-        guidance: 'Make sure all four corners are visible.',
+        name: 'Passport Front & Back',
+        title: 'Passport Front & Back',
+        subtitle: 'PDF, JPG or PNG (Max 5 MB)',
+        guidance: 'Clear scan of bio and address page. All 4 corners visible.',
         errorMsg: 'Passport document is required'
       },
       {
         id: 'photo',
-        name: 'Photograph',
-        title: 'Photograph',
-        subtitle: 'Recent passport-size photograph',
-        guidance: 'Use a clear recent passport-size photo.',
+        name: 'Passport-Size Photograph',
+        title: 'Passport-Size Photograph',
+        subtitle: 'Recent color passport-size photograph',
+        guidance: 'Recent colored photo with white background, 35mm x 45mm.',
         errorMsg: 'Please upload a valid photograph'
       }
     ];
@@ -228,15 +241,25 @@ export default function VisaApplicationPage() {
         </div>
         <h2 className="text-2xl sm:text-3xl font-extrabold text-[#082B61]">Destination Not Found</h2>
         <p className="text-sm text-[#64748B] mt-2 mb-6 max-w-md">
-          {loadError || `We couldn't locate visa details for "${countryParam}". Please choose a destination from our visa catalogue.`}
+          {loadError || `We couldn't locate visa details for "${countryParam || visaParam}". Please choose a destination from our visa catalogue.`}
         </p>
-        <Link
-          to="/visa"
-          className="inline-flex items-center gap-2 px-6 py-3 rounded-full bg-[#2563EB] text-white text-xs sm:text-sm font-bold shadow-md hover:bg-[#123B7A] transition-colors"
-        >
-          <ArrowLeft size={16} />
-          <span>Browse All Visa Destinations</span>
-        </Link>
+        <div className="flex flex-wrap items-center justify-center gap-3">
+          {countryParam && (
+            <Link
+              to={`/visa/${countryParam}`}
+              className="inline-flex items-center gap-2 px-6 py-3 rounded-full bg-[#082B61] text-white text-xs sm:text-sm font-bold shadow-md hover:bg-[#123B7A] transition-colors"
+            >
+              <ArrowLeft size={16} />
+              <span>Return to Visa Details</span>
+            </Link>
+          )}
+          <Link
+            to="/visa"
+            className="inline-flex items-center gap-2 px-6 py-3 rounded-full bg-[#2563EB] text-white text-xs sm:text-sm font-bold shadow-md hover:bg-[#123B7A] transition-colors"
+          >
+            <span>Browse All Visa Destinations</span>
+          </Link>
+        </div>
       </div>
     );
   }
@@ -250,6 +273,10 @@ export default function VisaApplicationPage() {
     guaranteedDate = '24 Sep 2026, 4:00 PM',
     fees = destination?.price || '₹2,990'
   } = destination || {};
+
+  const visaBackLink = countryParam && visaParam
+    ? `/visa/${countryParam}/${visaParam}`
+    : (countryParam ? `/visa/${countryParam}` : `/visa/${destination.id}`);
 
   const rawFeeStr = typeof fees === 'number' ? String(fees) : (fees || '₹2,990');
   const baseFeeNum = parseInt(rawFeeStr.replace(/[^0-9]/g, ''), 10) || 2990;
@@ -480,10 +507,6 @@ export default function VisaApplicationPage() {
     );
   };
 
-  const handleFieldBlur = (_field) => {
-    // Blur handler reserved for future extensions
-  };
-
   const scrollToField = (travellerId, fieldKey) => {
     setActiveTravellerId(travellerId);
     setTimeout(() => {
@@ -576,7 +599,8 @@ export default function VisaApplicationPage() {
       passport: 'Passport.pdf',
       photo: 'Passport_Photo.jpg',
       flight_ticket: 'Flight_Ticket.pdf',
-      itinerary: 'Travel_Itinerary.pdf'
+      itinerary: 'Travel_Itinerary.pdf',
+      bank_statement: 'Bank_Statement.pdf'
     };
     const sampleName = mockNames[docId] || `${docId.toUpperCase()}.pdf`;
     const mockFile = {
@@ -704,7 +728,7 @@ export default function VisaApplicationPage() {
     //   key: 'YOUR_RAZORPAY_KEY_ID',
     //   amount: totalFee * 100, // paise
     //   currency: 'INR',
-    //   name: 'Mr Visa',
+    //   name: 'NimuFly',
     //   description: `${displayName} ${visaType} Application (${applicationId})`,
     //   order_id: backendOrderId,
     //   prefill: {
@@ -734,8 +758,11 @@ export default function VisaApplicationPage() {
 
       // Save application record via applicationService
       try {
+        const primaryTraveller = travellers[0] || {};
         const newApp = {
           id: applicationId,
+          applicationId: applicationId,
+          userId: 'usr_mock_01',
           visaId: destination.id,
           countryId: destination.countryId || destination.id,
           countryName: displayName,
@@ -745,24 +772,39 @@ export default function VisaApplicationPage() {
           travellerCount: travellers.length,
           travellers: travellers.map((t, idx) => ({
             id: t.id || `trav_${idx + 1}`,
+            travellerId: t.id || `trav_${idx + 1}`,
             name: `${t.firstName} ${t.lastName}`.trim() || 'Applicant',
             firstName: t.firstName,
             lastName: t.lastName,
+            email: t.email || (idx === 0 ? primaryTraveller.email : ''),
+            phone: t.phone || (idx === 0 ? primaryTraveller.phone : ''),
             passportNumber: t.passportNumber || 'Pending',
+            placeOfIssue: t.placeOfIssue || '—',
+            issueDate: t.issueDate || '—',
+            expiryDate: t.expiryDate || '—',
             nationality: t.nationality || 'Indian',
             dob: t.dob || '—',
-            gender: t.gender || '—'
+            dateOfBirth: t.dob || '—',
+            gender: t.gender || '—',
+            docs: t.docs || {}
           })),
-          documents: requiredDocs.map((d, idx) => ({
-            id: `doc_${idx + 1}`,
-            name: d.title,
-            status: 'Verified'
-          })),
+          documents: requiredDocs.map((d, idx) => {
+            const isUploaded = !!primaryTraveller.docs?.[d.id];
+            return {
+              id: `doc_${idx + 1}`,
+              documentId: `doc_${idx + 1}`,
+              name: d.title,
+              documentType: d.title,
+              status: isUploaded ? 'Verified' : 'Pending',
+              verificationStatus: isUploaded ? 'Verified' : 'Pending'
+            };
+          }),
           submittedDate: new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }),
           status: APPLICATION_STATUS.APPLICATION_RECEIVED,
           requiredAction: REQUIRED_ACTION.NONE,
           adminMessage: 'Application received and securely registered with consulate queue.',
           expectedDate: guaranteedDate,
+          expectedCompletion: guaranteedDate,
           amountPaid: `₹${totalFee.toLocaleString('en-IN')}`,
           amount: `₹${totalFee.toLocaleString('en-IN')}`
         };
@@ -817,20 +859,20 @@ export default function VisaApplicationPage() {
             
             {/* Left: Exact Mascot Logo & Back Button */}
             <div className="flex items-center gap-3 sm:gap-4">
-              {/* Official Mr Visa Brand Lockup (Exactly matching Header.jsx) */}
+              {/* Official NimuFly Brand Lockup (Exactly matching Header.jsx) */}
               <Link
                 to="/"
                 className="flex items-center gap-2 sm:gap-3 focus:outline-none group select-none pr-3 sm:pr-4 border-r border-slate-200"
-                aria-label="Mr Visa Home"
+                aria-label="NimuFly Home"
               >
                 <img
                   src="/mrvisa-mascot.png"
-                  alt="Mr Visa Mascot"
+                  alt="NimuFly Mascot"
                   className="h-10 sm:h-11 w-auto object-contain flex-shrink-0 transition-all duration-300 group-hover:scale-[1.03]"
                 />
                 <div className="flex flex-col justify-center select-none">
                   <span className="text-xl sm:text-2xl font-extrabold text-[#123B7A] tracking-tight leading-none">
-                    Mr Visa
+                    NimuFly
                   </span>
                   <span className="text-[10px] sm:text-[11px] font-bold tracking-[0.03em] text-[#2563EB] mt-1 leading-none">
                     On Time, Every Time.
@@ -841,7 +883,7 @@ export default function VisaApplicationPage() {
               {/* ← Back Button */}
               {currentStep === 'travellers' ? (
                 <Link
-                  to={`/visa/${destination.id}`}
+                  to={visaBackLink}
                   className="inline-flex items-center gap-1.5 text-xs font-bold text-slate-500 hover:text-[#082B61] transition-colors py-1 px-2 rounded-lg hover:bg-slate-100/70"
                 >
                   <ArrowLeft size={14} />
@@ -971,7 +1013,7 @@ export default function VisaApplicationPage() {
                   <span>View Details</span>
                 </button>
                 <Link
-                  to={`/visa/${destination.id}`}
+                  to={visaBackLink}
                   className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-full bg-white border border-slate-200 hover:border-slate-300 text-slate-500 hover:text-[#082B61] text-xs font-bold transition-all cursor-pointer"
                 >
                   <span>Back to Visa</span>
@@ -2119,7 +2161,7 @@ export default function VisaApplicationPage() {
 
                       {travellers.map((t, idx) => {
                         const isPrimary = idx === 0;
-                        const docEntries = Object.entries(t.docs || {}).filter(([_, d]) => d && !d.error);
+                        const docEntries = Object.entries(t.docs || {}).filter(([, d]) => d && !d.error);
 
                         return (
                           <div
@@ -2564,7 +2606,7 @@ export default function VisaApplicationPage() {
             <div>
               {currentStep === 'travellers' ? (
                 <Link
-                  to={`/visa/${destination.id}`}
+                  to={visaBackLink}
                   className="inline-flex items-center gap-1.5 px-4 py-2 rounded-full border border-slate-200 hover:border-slate-300 text-xs font-bold text-slate-500 hover:text-[#082B61] transition-colors"
                 >
                   <ArrowLeft size={14} />

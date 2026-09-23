@@ -9,6 +9,7 @@ import { mockVisas } from '../data/mockVisas';
 import { isMockMode } from './apiConfig';
 import { apiClient } from './apiClient';
 import { normalizeVisaType, normalizeCountryName } from './destinationFilter';
+import { countryService, generateSlug } from './countryService';
 
 /**
  * Normalizes raw visa data from API or Mock into a consistent frontend model
@@ -156,18 +157,93 @@ class VisaService {
   }
 
   /**
-   * Create a new visa offering
+   * Create a new visa offering with automatic slug generation, country linking, and validation
    */
   async createVisa(visaData) {
-    const normalized = normalizeVisa({
-      ...visaData,
-      id: visaData.id || `${visaData.countryId || 'visa'}-${Date.now().toString(36)}`
-    });
+    const countryName = String(visaData.countryName || visaData.displayName || '').trim();
+    const countryId = String(visaData.countryId || generateSlug(countryName)).trim().toLowerCase();
+    const visaType = String(visaData.visaType || 'Tourist Visa').trim();
+    const stayPeriod = String(visaData.stayPeriod || visaData.validity || '30 Days').trim();
+    const priceVal = String(visaData.price || visaData.fees || '₹0').trim();
+    const formattedPrice = priceVal.startsWith('₹') ? priceVal : `₹${priceVal}`;
+
+    const baseSlug = generateSlug(`${countryId}-${stayPeriod}-${visaType}`) || `${countryId}-${generateSlug(visaType)}`;
 
     if (isMockMode()) {
       const all = await this.getAllVisas();
+      let uniqueId = visaData.id ? generateSlug(visaData.id) : baseSlug;
+      let counter = 1;
+      while (all.some((v) => v.id.toLowerCase() === uniqueId.toLowerCase())) {
+        uniqueId = `${baseSlug}-${counter++}`;
+      }
+
+      // Fetch country metadata if available to auto-fill flag and name
+      let flagEmoji = visaData.flagEmoji || '🌍';
+      let flagUrl = visaData.flagUrl || '';
+      try {
+        const country = await countryService.getCountryById(countryId);
+        if (country) {
+          if (!flagEmoji || flagEmoji === '🌍') flagEmoji = country.flagEmoji || '🌍';
+          if (!flagUrl) flagUrl = country.flagUrl || '';
+        }
+      } catch (e) {
+        // ignore
+      }
+
+      const normalized = normalizeVisa({
+        ...visaData,
+        id: uniqueId,
+        countryId,
+        country: countryName.toUpperCase() || countryId.toUpperCase(),
+        countryName: countryName || countryId,
+        displayName: countryName || countryId,
+        visaType,
+        stayPeriod,
+        validity: visaData.validity || '90 Days',
+        entryType: visaData.entryType || 'Single Entry',
+        processingTime: visaData.processingTime || '3–5 Days',
+        price: formattedPrice,
+        fees: formattedPrice,
+        image: visaData.image || 'https://images.unsplash.com/photo-1488646953014-85cb44e25828?auto=format&fit=crop&w=1000&q=85',
+        flagEmoji,
+        flagUrl,
+        travelPurpose: visaData.travelPurpose || 'Tourism',
+        documentCategory: visaData.documentCategory || 'Only Passport',
+        documentsSummary: visaData.documentsSummary || 'Passport, Photograph',
+        shortDescription: visaData.shortDescription || visaData.description || `Explore ${countryName} with fast online ${visaType} processing.`,
+        description: visaData.description || visaData.shortDescription || `Explore ${countryName} with fast online ${visaType} processing.`,
+        documentsRequired: Array.isArray(visaData.documentsRequired) && visaData.documentsRequired.length > 0
+          ? visaData.documentsRequired
+          : Array.isArray(visaData.documents) && visaData.documents.length > 0
+          ? visaData.documents
+          : ['Passport Front & Back Scan', 'Passport Size Photo'],
+        documents: Array.isArray(visaData.documents) && visaData.documents.length > 0
+          ? visaData.documents
+          : Array.isArray(visaData.documentsRequired) && visaData.documentsRequired.length > 0
+          ? visaData.documentsRequired
+          : ['Passport Front & Back Scan', 'Passport Size Photo'],
+        faqs: Array.isArray(visaData.faqs) ? visaData.faqs : [],
+        status: visaData.status || 'ACTIVE'
+      });
+
       const updatedList = [normalized, ...all.filter((v) => v.id !== normalized.id)];
       this._setStoredVisas(updatedList);
+
+      // Link to country record in countryService
+      try {
+        const country = await countryService.getCountryById(countryId);
+        if (country) {
+          const currentVisas = Array.isArray(country.visas) ? country.visas : [];
+          if (!currentVisas.includes(uniqueId)) {
+            await countryService.updateCountry(country.id, {
+              visas: [...currentVisas, uniqueId]
+            });
+          }
+        }
+      } catch (err) {
+        console.warn('Failed to link visa to country:', err);
+      }
+
       return normalized;
     }
 
@@ -186,6 +262,28 @@ class VisaService {
     if (!visa) throw new Error(`Visa ${id} not found`);
     const newStatus = visa.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE';
     return this.updateVisa(id, { status: newStatus });
+  }
+
+  /**
+   * Deactivate a visa (mark status as INACTIVE)
+   */
+  async deactivateVisa(id) {
+    return this.updateVisa(id, { status: 'INACTIVE' });
+  }
+
+  /**
+   * Delete / Soft-delete a visa
+   */
+  async deleteVisa(id) {
+    if (isMockMode()) {
+      const all = await this.getAllVisas();
+      // Soft-delete to preserve historic customer application references
+      const updated = all.map((v) => (v.id === id ? { ...v, status: 'INACTIVE' } : v));
+      this._setStoredVisas(updated);
+      return true;
+    }
+    await apiClient(`/visas/${encodeURIComponent(id)}`, { method: 'DELETE' });
+    return true;
   }
 
   /**

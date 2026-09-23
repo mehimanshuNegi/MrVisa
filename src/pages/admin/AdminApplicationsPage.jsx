@@ -36,6 +36,7 @@ const STATUS_FILTER_OPTIONS = [
   'Processing',
   'Approved',
   'Visa Issued',
+  'Rejected',
   'Completed'
 ];
 
@@ -616,6 +617,7 @@ export default function AdminApplicationsPage() {
                       <option value={APPLICATION_STATUS.PROCESSING}>Processing</option>
                       <option value={APPLICATION_STATUS.APPROVED}>Approved</option>
                       <option value={APPLICATION_STATUS.VISA_ISSUED}>Visa Issued</option>
+                      <option value={APPLICATION_STATUS.REJECTED}>Rejected</option>
                       <option value={APPLICATION_STATUS.COMPLETED}>Completed</option>
                     </select>
                   </div>

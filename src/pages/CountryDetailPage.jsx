@@ -25,12 +25,14 @@ import {
   User,
   Loader2
 } from 'lucide-react';
-import { visaService } from '../services';
+import { visaService, countryService } from '../services';
 
 export default function CountryDetailPage() {
-  const { country: countryParam } = useParams();
+  const { country: countryParam, visaId: visaParam } = useParams();
   const navigate = useNavigate();
   const [destination, setDestination] = useState(null);
+  const [countryData, setCountryData] = useState(null);
+  const [availableVisas, setAvailableVisas] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState(null);
 
@@ -54,16 +56,53 @@ export default function CountryDetailPage() {
     travelDate: ''
   });
 
-  // Load destination from visaService
+  // Load destination and country from services
   useEffect(() => {
     let isMounted = true;
     async function loadVisaData() {
       setIsLoading(true);
       setLoadError(null);
       try {
-        const data = await visaService.getVisaById(countryParam);
+        // 1. Fetch country info if countryParam corresponds to a country
+        let fetchedCountry = await countryService.getCountryById(countryParam);
+
+        // 2. Fetch all visas for this country
+        let countryVisas = await visaService.getVisasByCountry(countryParam);
+        if ((!countryVisas || countryVisas.length === 0) && fetchedCountry?.id) {
+          countryVisas = await visaService.getVisasByCountry(fetchedCountry.id);
+        }
+
+        // 3. Resolve active visa
+        let selectedVisa = null;
+        if (visaParam) {
+          selectedVisa = await visaService.getVisaById(visaParam);
+        }
+        if (!selectedVisa) {
+          // Check if countryParam itself directly matches a visa ID
+          selectedVisa = await visaService.getVisaById(countryParam);
+        }
+        if (!selectedVisa && countryVisas && countryVisas.length > 0) {
+          selectedVisa = countryVisas[0];
+        }
+
+        // If selectedVisa was found and country was not, try finding country via selectedVisa.countryId
+        if (selectedVisa && !fetchedCountry && selectedVisa.countryId) {
+          fetchedCountry = await countryService.getCountryById(selectedVisa.countryId);
+          if (!countryVisas || countryVisas.length === 0) {
+            countryVisas = await visaService.getVisasByCountry(selectedVisa.countryId);
+          }
+        }
+
         if (isMounted) {
-          setDestination(data);
+          setCountryData(fetchedCountry);
+          setAvailableVisas(countryVisas || []);
+          if (selectedVisa) {
+            setDestination(selectedVisa);
+          } else if (fetchedCountry) {
+            setDestination(null);
+          } else {
+            setLoadError('Destination not found.');
+          }
         }
       } catch (err) {
         if (isMounted) {
@@ -77,7 +116,7 @@ export default function CountryDetailPage() {
     }
     loadVisaData();
     return () => { isMounted = false; };
-  }, [countryParam]);
+  }, [countryParam, visaParam]);
 
   // Parse numerical fee
   const baseFeeNum = destination?.fees || destination?.price
@@ -139,7 +178,8 @@ export default function CountryDetailPage() {
 
   const handleApplyClick = () => {
     if (destination) {
-      navigate(`/visa/${destination.id}/apply?travellers=${travellerCount}`, {
+      const countrySlug = countryParam || destination.countryId || destination.country?.toLowerCase();
+      navigate(`/visa/${countrySlug}/${destination.id}/apply?travellers=${travellerCount}`, {
         state: { travellerCount }
       });
     }
@@ -160,6 +200,37 @@ export default function CountryDetailPage() {
       <div className="bg-[#F8FAFC] min-h-[70vh] flex flex-col items-center justify-center text-center px-6">
         <Loader2 size={36} className="animate-spin text-[#2563EB] mb-3" />
         <p className="text-sm font-bold text-[#082B61]">Loading visa details...</p>
+      </div>
+    );
+  }
+
+  if (!destination && countryData) {
+    return (
+      <div className="bg-white min-h-[70vh] flex flex-col items-center justify-center text-center px-6">
+        <div className="w-16 h-16 rounded-2xl bg-blue-50 flex items-center justify-center text-3xl mb-4 shadow-sm border border-blue-100">
+          {countryData.flagEmoji || '🌍'}
+        </div>
+        <h2 className="text-3xl font-extrabold text-[#123B7A]">
+          {countryData.name} Visa Services
+        </h2>
+        <p className="text-base text-[#64748B] mt-2 mb-6 max-w-md">
+          {countryData.description || `Visa offerings for ${countryData.name} are currently being configured by our consular operations team.`}
+        </p>
+        <div className="flex flex-wrap gap-3 justify-center">
+          <Link
+            to="/visa"
+            className="inline-flex items-center gap-2 px-6 py-3 rounded-full bg-[#2563EB] text-white text-sm font-bold shadow-md hover:bg-[#123B7A] transition-colors"
+          >
+            <ArrowLeft size={16} />
+            <span>Browse All Visa Destinations</span>
+          </Link>
+          <Link
+            to="/contact"
+            className="inline-flex items-center gap-2 px-6 py-3 rounded-full bg-slate-100 text-[#082B61] text-sm font-bold hover:bg-slate-200 transition-colors"
+          >
+            <span>Inquire Directly</span>
+          </Link>
+        </div>
       </div>
     );
   }
@@ -213,7 +284,7 @@ export default function CountryDetailPage() {
       location: 'Bengaluru',
       rating: 5,
       date: '1 week ago',
-      comment: `Zero paperwork hassles. Took photo of my passport on my phone, Mr Visa team formatted everything cleanly. Received official e-visa promptly!`
+      comment: `Zero paperwork hassles. Took photo of my passport on my phone, NimuFly team formatted everything cleanly. Received official e-visa promptly!`
     },
     {
       name: 'Anand Patel',
@@ -281,6 +352,37 @@ export default function CountryDetailPage() {
               <p className="text-sm sm:text-base text-slate-600 font-medium leading-relaxed">
                 {shortDescription || `Quick, verified electronic visa for travelers. Fast verification and direct consular tracking.`}
               </p>
+
+              {/* Multi-Visa Offering Switcher if multiple visas exist for this destination */}
+              {availableVisas.length > 1 && (
+                <div className="pt-2">
+                  <span className="block text-[11px] font-extrabold uppercase tracking-wider text-slate-500 mb-2">
+                    Select Visa Type / Duration:
+                  </span>
+                  <div className="flex flex-wrap gap-2">
+                    {availableVisas.map((v) => {
+                      const isSelected = v.id === destination.id;
+                      return (
+                        <button
+                          key={v.id}
+                          type="button"
+                          onClick={() => {
+                            setDestination(v);
+                            navigate(`/visa/${countryParam}/${v.id}`, { replace: true });
+                          }}
+                          className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                            isSelected
+                              ? 'bg-[#082B61] text-white shadow-sm ring-2 ring-[#082B61]/20'
+                              : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                          }`}
+                        >
+                          {v.stayPeriod || v.visaType || v.displayName} — {v.fees || v.price}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
 
               {/* Immediate Hero Action Row */}
               <div className="pt-2 flex flex-wrap items-center gap-4">
@@ -617,7 +719,7 @@ export default function CountryDetailPage() {
                         Application Review
                       </h3>
                       <p className="text-xs text-slate-500 font-medium mt-2 leading-relaxed">
-                        Mr Visa experts verify details against immigration requirements to guarantee zero rejection.
+                        NimuFly experts verify details against immigration requirements to guarantee zero rejection.
                       </p>
                     </div>
                     <div className="mt-4 pt-3 border-t border-slate-100 text-[11px] font-bold text-[#2563EB]">
@@ -671,7 +773,7 @@ export default function CountryDetailPage() {
                 <div className="relative z-10 max-w-xl">
                   <div className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-white/15 backdrop-blur-md text-xs font-bold text-white mb-4">
                     <ShieldCheck size={16} className="text-emerald-400" />
-                    <span>Mr Visa On-Time Commitment</span>
+                    <span>NimuFly On-Time Commitment</span>
                   </div>
 
                   <h3 className="text-2xl sm:text-3xl font-black tracking-tight leading-tight text-white">
@@ -704,10 +806,10 @@ export default function CountryDetailPage() {
             <section className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200/90 shadow-sm">
               <div className="mb-6">
                 <span className="text-xs font-extrabold text-[#2563EB] tracking-widest uppercase block mb-1">
-                  Why Mr Visa
+                  Why NimuFly
                 </span>
                 <h3 className="text-2xl font-black text-[#082B61] tracking-tight">
-                  Why 100,000+ travelers trust Mr Visa
+                  Why 100,000+ travelers trust NimuFly
                 </h3>
                 <p className="text-xs sm:text-sm text-slate-500 font-medium mt-1">
                   See how we compare to traditional travel agents and offline visa centers
@@ -721,7 +823,7 @@ export default function CountryDetailPage() {
                     <tr className="border-b border-slate-200">
                       <th className="py-3 px-4 font-bold text-slate-500">Feature</th>
                       <th className="py-3 px-4 font-extrabold text-[#2563EB] bg-[#F5F9FF] rounded-t-xl">
-                        Mr Visa
+                        NimuFly
                       </th>
                       <th className="py-3 px-4 font-bold text-slate-500">Traditional Agents</th>
                     </tr>
@@ -964,7 +1066,7 @@ export default function CountryDetailPage() {
                   <span className="font-bold text-emerald-600">Included (₹0)</span>
                 </div>
                 <div className="flex items-center justify-between">
-                  <span>Mr Visa Priority Assistance</span>
+                  <span>NimuFly Priority Assistance</span>
                   <span className="font-bold text-emerald-600">Included</span>
                 </div>
                 <div className="pt-2 flex items-center justify-between text-sm font-extrabold text-[#082B61]">

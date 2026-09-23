@@ -10,6 +10,7 @@ export const APPLICATION_STATUS = Object.freeze({
   ADDITIONAL_INFORMATION_REQUIRED: 'ADDITIONAL_INFORMATION_REQUIRED',
   APPROVED: 'APPROVED',
   VISA_ISSUED: 'VISA_ISSUED',
+  REJECTED: 'REJECTED',
   COMPLETED: 'COMPLETED'
 });
 
@@ -31,7 +32,7 @@ export const STATUS_CONFIG = Object.freeze({
     badgeText: 'text-[#1479F5]',
     badgeBorder: 'border-blue-200/60',
     dotColor: 'bg-[#1479F5]',
-    timelineStep: 1, // 1: Submitted, 2: Documents, 3: Processing, 4: Visa Issued
+    timelineStep: 1, // 1: Submitted, 2: Documents, 3: Processing, 4: Visa Issued/Rejected
     defaultAction: REQUIRED_ACTION.VIEW_APPLICATION,
     actionLabel: 'View Application →',
     isActionRequired: false
@@ -91,6 +92,18 @@ export const STATUS_CONFIG = Object.freeze({
     actionLabel: 'View Visa →',
     isActionRequired: false
   },
+  [APPLICATION_STATUS.REJECTED]: {
+    label: 'Rejected',
+    badgeBg: 'bg-rose-50/90',
+    badgeText: 'text-rose-700',
+    badgeBorder: 'border-rose-200/80',
+    dotColor: 'bg-rose-600',
+    timelineStep: 4,
+    defaultAction: REQUIRED_ACTION.VIEW_APPLICATION,
+    actionLabel: 'View Application →',
+    isActionRequired: false,
+    isRejected: true
+  },
   [APPLICATION_STATUS.COMPLETED]: {
     label: 'Completed',
     badgeBg: 'bg-slate-50',
@@ -138,6 +151,10 @@ export function getStatusConfig(status) {
       return STATUS_CONFIG[APPLICATION_STATUS.APPROVED];
     case 'visa issued':
       return STATUS_CONFIG[APPLICATION_STATUS.VISA_ISSUED];
+    case 'rejected':
+    case 'application rejected':
+    case 'declined':
+      return STATUS_CONFIG[APPLICATION_STATUS.REJECTED];
     case 'completed':
       return STATUS_CONFIG[APPLICATION_STATUS.COMPLETED];
     default:

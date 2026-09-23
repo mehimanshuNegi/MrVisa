@@ -23,7 +23,7 @@ export default function Footer() {
                 className="h-16 w-auto object-contain flex-shrink-0 transition-transform group-hover:scale-105"
               />
               <div className="flex flex-col justify-center">
-                <span className="text-2xl font-extrabold text-[#123B7A] tracking-tight leading-none">
+                <span className="text-2xl font-extrabold text-[#2563EB] tracking-tight leading-none">
                   NimuFly
                 </span>
                 <span className="text-xs font-semibold tracking-wider text-[#2563EB] mt-1.5 leading-none">

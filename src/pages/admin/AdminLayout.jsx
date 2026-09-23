@@ -17,7 +17,7 @@ export default function AdminLayout() {
           {/* Brand & Admin Lockup */}
           <div className="flex items-center gap-4 sm:gap-6">
             <Link to="/admin/applications" className="flex items-center gap-2 group">
-              <span className="text-xl sm:text-2xl font-black text-[#082B61] tracking-tight">
+              <span className="text-xl sm:text-2xl font-black text-[#2563EB] tracking-tight">
                 NimuFly
               </span>
               <span className="px-2 py-0.5 rounded-md bg-blue-50 border border-blue-200 text-[#2563EB] text-[10px] font-extrabold uppercase tracking-wider">

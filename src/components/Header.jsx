@@ -298,7 +298,7 @@ export default function Header() {
 
             {/* Brand Typography Lockup */}
             <div className="flex flex-col justify-center select-none">
-              <span className="text-2xl sm:text-3xl lg:text-[29px] font-extrabold text-[#123B7A] tracking-tight leading-none">
+              <span className="text-2xl sm:text-3xl lg:text-[29px] font-extrabold text-[#2563EB] tracking-tight leading-none">
                 NimuFly
               </span>
               <span className="text-[11.5px] sm:text-[12.5px] font-bold tracking-[0.03em] text-[#2563EB] mt-1.5 leading-none">

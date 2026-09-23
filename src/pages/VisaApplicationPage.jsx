@@ -871,7 +871,7 @@ export default function VisaApplicationPage() {
                   className="h-10 sm:h-11 w-auto object-contain flex-shrink-0 transition-all duration-300 group-hover:scale-[1.03]"
                 />
                 <div className="flex flex-col justify-center select-none">
-                  <span className="text-xl sm:text-2xl font-extrabold text-[#123B7A] tracking-tight leading-none">
+                  <span className="text-xl sm:text-2xl font-extrabold text-[#2563EB] tracking-tight leading-none">
                     NimuFly
                   </span>
                   <span className="text-[10px] sm:text-[11px] font-bold tracking-[0.03em] text-[#2563EB] mt-1 leading-none">

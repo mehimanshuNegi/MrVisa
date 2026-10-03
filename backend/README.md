@@ -96,7 +96,6 @@ backend/
 │   │   └── visa.validator.js
 │   ├── app.js              # Express app configuration & middleware pipeline
 │   └── server.js           # Server entry point with graceful shutdown
-├── .env.example
 ├── package.json
 └── README.md
 ```
@@ -145,17 +144,17 @@ npm install
 ```
 
 ### 2. Configure Environment
-Copy `.env.example` to `.env`:
+Create a `.env` file in the `backend/` directory with your local configuration:
 ```bash
-cp .env.example .env
+touch .env
 ```
 
 Ensure your MongoDB instance is running locally or provide a connection URI:
 ```env
 PORT=5000
-MONGODB_URI=mongodb://127.0.0.1:27017/nimufly
-JWT_ACCESS_SECRET=your_super_secret_access_key_min_32_chars
-JWT_REFRESH_SECRET=your_super_secret_refresh_key_min_32_chars
+MONGODB_URI=your_mongodb_connection_uri
+JWT_ACCESS_SECRET=your_jwt_access_secret_key
+JWT_REFRESH_SECRET=your_jwt_refresh_secret_key
 ```
 
 ### 3. Seed Database & Migrate Excel

@@ -17,9 +17,10 @@ import {
   RefreshCw,
   User,
   LogOut,
-  Link2
+  Link2,
+  Plane
 } from 'lucide-react';
-import { applicationService, userService, authService, tokenStore } from '../services';
+import { applicationService, userService, authService, tokenStore, dummyTicketService } from '../services';
 import { APPLICATION_STATUS, REQUIRED_ACTION, getStatusConfig } from '../models/status';
 
 export default function AccountPage() {
@@ -45,8 +46,10 @@ export default function AccountPage() {
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [isSavingProfile, setIsSavingProfile] = useState(false);
 
-  // Applications list
+  // Applications and Dummy Tickets list
   const [applications, setApplications] = useState([]);
+  const [myDummyTickets, setMyDummyTickets] = useState([]);
+  const [accountTab, setAccountTab] = useState('visas'); // 'visas' | 'tickets'
 
   // Modal / details states
   const [selectedApp, setSelectedApp] = useState(null);
@@ -77,13 +80,15 @@ export default function AccountPage() {
     setIsLoading(true);
     setLoadError(null);
     try {
-      const [loadedApps, userProfile] = await Promise.all([
+      const [loadedApps, userProfile, loadedTickets] = await Promise.all([
         applicationService.getApplications(),
-        userService.getProfile()
+        userService.getProfile(),
+        dummyTicketService.getMyRequests().catch(() => [])
       ]);
       setApplications(loadedApps);
       setProfile(userProfile);
       setFormData(userProfile);
+      setMyDummyTickets(Array.isArray(loadedTickets) ? loadedTickets : []);
     } catch (err) {
       console.error('Failed to load account data:', err);
       if (err.status === 401) {
@@ -101,6 +106,7 @@ export default function AccountPage() {
     await authService.logout();
     setIsAuthenticated(false);
     setApplications([]);
+    setMyDummyTickets([]);
     setProfile({
       firstName: '',
       lastName: '',
@@ -587,72 +593,185 @@ export default function AccountPage() {
             Data-Driven application cards
             ======================================================== */}
         <section aria-labelledby="applications-heading" className="space-y-4">
-          <div className="flex items-center justify-between pb-2">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-2 gap-3">
             <div>
               <h2 id="applications-heading" className="text-base sm:text-lg font-black text-[#082B61]">
-                My Applications
+                My Bookings & Requests
               </h2>
               <span className="text-xs text-slate-400 font-medium">
-                Live visa status, submissions, and issued permits
+                Live visa applications, embassy dummy ticket bookings, and permits
               </span>
             </div>
-            
-            {applications.length > 0 && !isLoading && (
-              <span className="text-xs font-bold text-slate-500 bg-slate-100 px-3 py-1 rounded-full">
-                {applications.length} {applications.length === 1 ? 'Application' : 'Applications'}
-              </span>
-            )}
-          </div>
 
-          {/* Loading State */}
-          {isLoading ? (
-            <div className="bg-white rounded-3xl p-12 border border-slate-200/80 text-center space-y-3">
-              <Loader2 size={28} className="animate-spin text-[#2563EB] mx-auto" />
-              <p className="text-xs sm:text-sm font-bold text-[#082B61]">Loading your visa applications...</p>
-            </div>
-          ) : loadError ? (
-            /* Error State */
-            <div className="bg-white rounded-3xl p-8 border border-red-200 text-center space-y-3">
-              <AlertCircle size={28} className="text-red-500 mx-auto" />
-              <p className="text-sm font-bold text-red-700">{loadError}</p>
+            <div className="flex items-center gap-2 bg-slate-100 p-1 rounded-xl self-start sm:self-auto">
               <button
                 type="button"
-                onClick={loadAccountData}
-                className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-[#2563EB] text-white text-xs font-bold"
+                onClick={() => setAccountTab('visas')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                  accountTab === 'visas'
+                    ? 'bg-white text-[#2563EB] shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
               >
-                <RefreshCw size={13} />
-                <span>Retry</span>
+                Visa Applications ({applications.length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setAccountTab('tickets')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                  accountTab === 'tickets'
+                    ? 'bg-white text-[#2563EB] shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                Dummy Tickets ({myDummyTickets.length})
               </button>
             </div>
-          ) : applications.length === 0 ? (
-            /* ========================================================
-               EMPTY STATE
-               ======================================================== */
-            <div className="bg-white rounded-3xl p-10 sm:p-14 text-center border border-slate-200/80 shadow-xs space-y-4">
-              <div className="w-14 h-14 mx-auto rounded-2xl bg-blue-50/70 border border-blue-100 flex items-center justify-center text-[#2563EB]">
-                <FileText size={26} />
-              </div>
-              <div className="space-y-1">
-                <h3 className="text-base sm:text-lg font-black text-[#082B61]">
-                  No applications yet
-                </h3>
-                <p className="text-xs sm:text-sm text-slate-400 font-medium">
-                  Your visa applications will appear here.
-                </p>
-              </div>
-              <Link
-                to="/visa"
-                className="inline-flex items-center gap-2 px-6 py-2.5 rounded-full bg-[#2563EB] hover:bg-[#123B7A] text-white text-xs font-extrabold transition-all shadow-xs"
-              >
-                <span>Explore Visas</span>
-                <span>→</span>
-              </Link>
+          </div>
+
+          {/* DUMMY TICKETS TAB CONTENT */}
+          {accountTab === 'tickets' && (
+            <div>
+              {isLoading ? (
+                <div className="bg-white rounded-3xl p-12 border border-slate-200/80 text-center space-y-3">
+                  <Loader2 size={28} className="animate-spin text-[#2563EB] mx-auto" />
+                  <p className="text-xs sm:text-sm font-bold text-[#082B61]">Loading your dummy ticket requests...</p>
+                </div>
+              ) : myDummyTickets.length === 0 ? (
+                <div className="bg-white rounded-3xl p-10 sm:p-14 text-center border border-slate-200/80 shadow-xs space-y-4">
+                  <div className="w-14 h-14 mx-auto rounded-2xl bg-blue-50/70 border border-blue-100 flex items-center justify-center text-[#2563EB]">
+                    <Plane size={26} />
+                  </div>
+                  <div className="space-y-1">
+                    <h3 className="text-base sm:text-lg font-black text-[#082B61]">
+                      No dummy ticket requests yet
+                    </h3>
+                    <p className="text-xs sm:text-sm text-slate-400 font-medium">
+                      Your verified airline PNR itinerary reservations will appear here.
+                    </p>
+                  </div>
+                  <Link
+                    to="/dummy-tickets"
+                    className="inline-flex items-center gap-2 px-6 py-2.5 rounded-full bg-[#2563EB] hover:bg-[#123B7A] text-white text-xs font-extrabold transition-all shadow-xs"
+                  >
+                    <span>Request Flight Reservation</span>
+                    <span>→</span>
+                  </Link>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {myDummyTickets.map((ticket) => (
+                    <div
+                      key={ticket._id || ticket.id}
+                      className="bg-white rounded-2xl border border-slate-200 p-5 shadow-2xs hover:border-blue-200 transition-all space-y-3"
+                    >
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-xl bg-blue-50 text-[#2563EB] flex items-center justify-center shrink-0">
+                            <Plane size={18} />
+                          </div>
+                          <div>
+                            <span className="font-mono text-xs font-bold text-[#2563EB] block">
+                              {ticket.requestId}
+                            </span>
+                            <h4 className="text-sm font-bold text-[#082B61]">
+                              {ticket.flight?.from} → {ticket.flight?.to} ({ticket.tripType})
+                            </h4>
+                          </div>
+                        </div>
+
+                        <span className="px-3 py-1 rounded-full text-xs font-bold self-start sm:self-auto bg-blue-50 text-blue-700 border border-blue-200">
+                          {ticket.status}
+                        </span>
+                      </div>
+
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-2 border-t border-slate-100 text-xs">
+                        <div>
+                          <span className="text-[10px] text-slate-400 font-semibold block">Departure</span>
+                          <span className="font-bold text-[#082B61]">{ticket.flight?.departureDate}</span>
+                        </div>
+                        {ticket.tripType === 'Return' && ticket.flight?.returnDate && (
+                          <div>
+                            <span className="text-[10px] text-slate-400 font-semibold block">Return</span>
+                            <span className="font-bold text-[#082B61]">{ticket.flight?.returnDate}</span>
+                          </div>
+                        )}
+                        <div>
+                          <span className="text-[10px] text-slate-400 font-semibold block">Passengers</span>
+                          <span className="font-bold text-[#082B61]">
+                            {ticket.travellers?.length || 1} {ticket.travellers?.length === 1 ? 'Passenger' : 'Passengers'}
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-[10px] text-slate-400 font-semibold block">Delivery Channel</span>
+                          <span className="font-bold text-[#2563EB]">{ticket.deliveryMethod || 'WhatsApp'}</span>
+                        </div>
+                      </div>
+
+                      {ticket.adminNotes && (
+                        <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-600">
+                          <span className="font-bold text-[#082B61]">Booking Note:</span> {ticket.adminNotes}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
-          ) : (
-            /* ========================================================
-               APPLICATIONS LIST
-               ======================================================== */
-            <div className="space-y-4">
+          )}
+
+          {/* VISA APPLICATIONS TAB CONTENT */}
+          {accountTab === 'visas' && (
+            <div>
+              {/* Loading State */}
+              {isLoading ? (
+                <div className="bg-white rounded-3xl p-12 border border-slate-200/80 text-center space-y-3">
+                  <Loader2 size={28} className="animate-spin text-[#2563EB] mx-auto" />
+                  <p className="text-xs sm:text-sm font-bold text-[#082B61]">Loading your visa applications...</p>
+                </div>
+              ) : loadError ? (
+                /* Error State */
+                <div className="bg-white rounded-3xl p-8 border border-red-200 text-center space-y-3">
+                  <AlertCircle size={28} className="text-red-500 mx-auto" />
+                  <p className="text-sm font-bold text-red-700">{loadError}</p>
+                  <button
+                    type="button"
+                    onClick={loadAccountData}
+                    className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-[#2563EB] text-white text-xs font-bold"
+                  >
+                    <RefreshCw size={13} />
+                    <span>Retry</span>
+                  </button>
+                </div>
+              ) : applications.length === 0 ? (
+                /* ========================================================
+                   EMPTY STATE
+                   ======================================================== */
+                <div className="bg-white rounded-3xl p-10 sm:p-14 text-center border border-slate-200/80 shadow-xs space-y-4">
+                  <div className="w-14 h-14 mx-auto rounded-2xl bg-blue-50/70 border border-blue-100 flex items-center justify-center text-[#2563EB]">
+                    <FileText size={26} />
+                  </div>
+                  <div className="space-y-1">
+                    <h3 className="text-base sm:text-lg font-black text-[#082B61]">
+                      No applications yet
+                    </h3>
+                    <p className="text-xs sm:text-sm text-slate-400 font-medium">
+                      Your visa applications will appear here.
+                    </p>
+                  </div>
+                  <Link
+                    to="/visa"
+                    className="inline-flex items-center gap-2 px-6 py-2.5 rounded-full bg-[#2563EB] hover:bg-[#123B7A] text-white text-xs font-extrabold transition-all shadow-xs"
+                  >
+                    <span>Explore Visas</span>
+                    <span>→</span>
+                  </Link>
+                </div>
+              ) : (
+                /* ========================================================
+                   APPLICATIONS LIST
+                   ======================================================== */
+                <div className="space-y-4">
               {applications.map((app) => {
                 const statusCfg = getStatusConfig(app.status);
                 const isVisaReady = app.status === APPLICATION_STATUS.VISA_ISSUED || statusCfg.defaultAction === REQUIRED_ACTION.VIEW_VISA;
@@ -844,6 +963,8 @@ export default function AccountPage() {
                   </div>
                 );
               })}
+            </div>
+          )}
             </div>
           )}
         </section>

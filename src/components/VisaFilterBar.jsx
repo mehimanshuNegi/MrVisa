@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { 
   MapPin, 
   FileCheck2, 
@@ -41,6 +41,7 @@ export default function VisaFilterBar({
   const [docOpen, setDocOpen] = useState(false);
   const [countrySearchInput, setCountrySearchInput] = useState('');
   const [allVisas, setAllVisas] = useState([]);
+  const [countriesList, setCountriesList] = useState([]);
 
   const countryHoverTimerRef = useRef(null);
   const typeHoverTimerRef = useRef(null);
@@ -84,8 +85,14 @@ export default function VisaFilterBar({
 
   useEffect(() => {
     let isMounted = true;
-    visaService.getAllVisas().then((data) => {
-      if (isMounted && data) setAllVisas(data);
+    Promise.all([
+      visaService.getAllVisas(),
+      countryService.getAllCountries()
+    ]).then(([visas, countries]) => {
+      if (isMounted) {
+        if (visas) setAllVisas(visas);
+        if (countries) setCountriesList(countries);
+      }
     }).catch(() => {});
     return () => { 
       isMounted = false;
@@ -124,8 +131,19 @@ export default function VisaFilterBar({
     selectedDate !== '' || 
     searchQuery !== '';
 
+  const countryOptions = useMemo(() => {
+    if (countriesList.length > 0) {
+      const activeNames = countriesList
+        .filter((c) => c.status === 'ACTIVE' || c.isActive !== false)
+        .map((c) => c.displayName || c.name)
+        .filter(Boolean);
+      return ['Any Country', ...Array.from(new Set(activeNames))];
+    }
+    return countryService.getSearchCountries();
+  }, [countriesList]);
+
   // Filtered countries inside the dropdown search
-  const filteredCountryList = searchCountries.filter((c) =>
+  const filteredCountryList = countryOptions.filter((c) =>
     c.toLowerCase().includes(countrySearchInput.toLowerCase())
   );
 

@@ -54,7 +54,7 @@ export function normalizeCountry(raw) {
     flag: flagEmoji,
     flagEmoji,
     flagUrl,
-    image: raw.image || raw.imageUrl || 'https://images.unsplash.com/photo-1488646953014-85cb44e25828?auto=format&fit=crop&w=1000&q=85',
+    image: raw.image || raw.imageUrl || '',
     description: raw.description || '',
     visas: Array.isArray(raw.visas) ? raw.visas.map((v) => (typeof v === 'object' && v !== null ? (v.slug || v.id || v._id) : v)) : [],
     status: raw.status || (raw.isActive === false ? 'INACTIVE' : 'ACTIVE'),
@@ -137,14 +137,6 @@ class CountryService {
       return normalizeCountry(raw.data || raw);
     } catch (err) {
       if (err?.status === 404) {
-        const mockFound = mockCountries.find(
-          (c) =>
-            c.id.toLowerCase() === cleanId ||
-            c.aliasId?.toLowerCase() === cleanId ||
-            c.name.toLowerCase() === cleanId ||
-            c.code?.toLowerCase() === cleanId
-        );
-        if (mockFound) return normalizeCountry(mockFound);
         return null;
       }
       throw err;
@@ -259,9 +251,9 @@ class CountryService {
   getSearchCountries() {
     const list = this._cachedCountries && this._cachedCountries.length > 0 ? this._cachedCountries : this._getStoredCountries();
     if (list && list.length > 0) {
-      return ['Any Country', ...list.filter((c) => c.status === 'ACTIVE' || c.isActive !== false).map((c) => c.name)];
+      return ['Any Country', ...list.filter((c) => c.status === 'ACTIVE' || c.isActive !== false).map((c) => c.displayName || c.name)];
     }
-    return [...searchCountriesList];
+    return isMockMode() ? [...searchCountriesList] : ['Any Country'];
   }
 }
 

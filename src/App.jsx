@@ -93,7 +93,7 @@ function AppContent() {
             <Route index element={<Navigate to="/admin/applications" replace />} />
             <Route path="applications" element={<AdminApplicationsPage />} />
             <Route path="visas" element={<AdminVisasPage />} />
-            <Route path="countries" element={<AdminCountriesPage />} />
+            <Route path="countries" element={<Navigate to="/admin/visas" replace />} />
             <Route path="documentation" element={<AdminDocumentationPage />} />
             <Route path="dummy-tickets" element={<AdminDummyTicketsPage />} />
           </Route>

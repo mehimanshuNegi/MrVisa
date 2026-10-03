@@ -1,12 +1,79 @@
 /**
  * Dummy Ticket Client Data Access Service
  * Communicates with backend REST API endpoints via apiClient.
- * No hardcoded business/catalog data in frontend.
+ * Single source of truth: MongoDB Atlas
  */
 
 import { apiClient } from './apiClient';
 
 class DummyTicketServiceApiClient {
+  // ==========================================
+  // CUSTOMER BOOKING REQUESTS
+  // ==========================================
+
+  /**
+   * Submit a new dummy ticket booking request
+   */
+  async submitRequest(data) {
+    const raw = await apiClient('/dummy-tickets/requests', {
+      method: 'POST',
+      body: data
+    });
+    return raw?.data || raw;
+  }
+
+  /**
+   * Fetch customer's own dummy ticket requests
+   */
+  async getMyRequests(email = null) {
+    const raw = await apiClient('/dummy-tickets/requests/my', {
+      params: email ? { email } : {}
+    });
+    return Array.isArray(raw) ? raw : raw?.data || [];
+  }
+
+  /**
+   * Fetch all dummy ticket requests (Admin only)
+   */
+  async getAllRequests(params = {}) {
+    const raw = await apiClient('/dummy-tickets/requests', { params });
+    return raw?.data || raw;
+  }
+
+  /**
+   * Fetch single request by ID (Admin or Customer owner)
+   */
+  async getRequestById(id) {
+    if (!id) return null;
+    const raw = await apiClient(`/dummy-tickets/requests/${encodeURIComponent(id)}`);
+    return raw?.data || raw;
+  }
+
+  /**
+   * Update request status & admin notes (Admin only)
+   */
+  async updateRequestStatus(id, { status, adminNotes }) {
+    const raw = await apiClient(`/dummy-tickets/requests/${encodeURIComponent(id)}/status`, {
+      method: 'PATCH',
+      body: { status, adminNotes }
+    });
+    return raw?.data || raw;
+  }
+
+  /**
+   * Soft-delete request (Admin only)
+   */
+  async deleteRequest(id) {
+    await apiClient(`/dummy-tickets/requests/${encodeURIComponent(id)}`, {
+      method: 'DELETE'
+    });
+    return true;
+  }
+
+  // ==========================================
+  // DUMMY TICKET SERVICE PACKAGES / CATALOG
+  // ==========================================
+
   /**
    * Fetch all active dummy ticket packages/services
    */

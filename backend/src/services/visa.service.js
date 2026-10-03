@@ -46,6 +46,7 @@ class VisaService {
     visaType = '',
     documentCategory = '',
     status = 'ALL',
+    isPopular = undefined,
     page = 1,
     limit = 50,
     includeDeleted = false
@@ -55,6 +56,10 @@ class VisaService {
 
     if (status === 'ACTIVE') filter.isActive = true;
     if (status === 'INACTIVE') filter.isActive = false;
+
+    if (isPopular !== undefined && isPopular !== 'ALL' && isPopular !== 'All') {
+      filter.isPopular = isPopular === true || isPopular === 'true';
+    }
 
     if (visaType && visaType !== 'All Visa Types' && visaType !== 'all') {
       filter.visaType = { $regex: new RegExp(`^${escapeRegex(visaType)}$`, 'i') };
@@ -69,17 +74,20 @@ class VisaService {
       filter.$or = [
         { title: { $regex: q, $options: 'i' } },
         { displayName: { $regex: q, $options: 'i' } },
+        { countryName: { $regex: q, $options: 'i' } },
+        { countryCode: { $regex: q, $options: 'i' } },
         { slug: { $regex: q, $options: 'i' } },
         { description: { $regex: q, $options: 'i' } }
       ];
     }
 
-    // Country filter: can be country name, slug, or ObjectId
+    // Country filter: can be country name, slug, code, or ObjectId
     if (country && country !== 'Any Country' && country !== 'All Countries' && country !== 'all') {
       const safeCountry = escapeRegex(country);
       const countryDoc = await Country.findOne({
         $or: [
           { slug: country.toLowerCase() },
+          { code: country.toUpperCase() },
           { name: { $regex: new RegExp(`^${safeCountry}$`, 'i') } },
           ...(mongoose.Types.ObjectId.isValid(country) ? [{ _id: country }] : [])
         ]
@@ -96,20 +104,25 @@ class VisaService {
     const skip = (Math.max(1, page) - 1) * limit;
     const [visas, total] = await Promise.all([
       Visa.find(filter)
-        .populate('country', 'name displayName slug code flagEmoji flagUrl image')
-        .sort({ 'country.name': 1, createdAt: -1 })
+        .populate('country', 'name displayName slug code flagEmoji flagUrl image isActive isDeleted')
+        .sort({ displayOrder: 1, 'country.name': 1, createdAt: -1 })
         .skip(skip)
         .limit(limit),
       Visa.countDocuments(filter)
     ]);
 
+    // For active customer listings, filter out visas whose country is inactive or soft-deleted
+    const activeFilteredVisas = status === 'ACTIVE'
+      ? visas.filter((v) => v.country && (v.country.isActive !== false) && !v.country.isDeleted)
+      : visas;
+
     return {
-      items: visas,
+      items: activeFilteredVisas,
       pagination: {
         page: Number(page),
         limit: Number(limit),
-        total,
-        totalPages: Math.ceil(total / limit) || 1
+        total: status === 'ACTIVE' ? activeFilteredVisas.length : total,
+        totalPages: Math.ceil((status === 'ACTIVE' ? activeFilteredVisas.length : total) / limit) || 1
       }
     };
   }
@@ -141,7 +154,7 @@ class VisaService {
       };
     }
 
-    let visa = await Visa.findOne(query).populate('country', 'name displayName slug code flagEmoji flagUrl image');
+    let visa = await Visa.findOne(query).populate('country', 'name displayName slug code flagEmoji flagUrl image isActive isDeleted');
     if (visa) return visa;
 
     // Fallback: If not found as visa slug, check if idOrSlug matches a country slug/name
@@ -156,7 +169,7 @@ class VisaService {
 
     if (country) {
       visa = await Visa.findOne({ country: country._id, isDeleted: false, isActive: true })
-        .populate('country', 'name displayName slug code flagEmoji flagUrl image')
+        .populate('country', 'name displayName slug code flagEmoji flagUrl image isActive isDeleted')
         .sort({ createdAt: -1 });
     }
 
@@ -185,18 +198,27 @@ class VisaService {
     if (!country) return [];
 
     return Visa.find({ country: country._id, isDeleted: false, isActive: true })
-      .populate('country', 'name displayName slug code flagEmoji flagUrl image')
+      .populate('country', 'name displayName slug code flagEmoji flagUrl image isActive isDeleted')
       .sort({ createdAt: -1 });
   }
 
   /**
-   * Create a new visa offering
+   * Create a new visa offering (Unified Destination & Visa management)
    */
   async createVisa(visaData, req = null) {
-    // 1. Resolve Country
+    // 1. Resolve or Auto-create Country (No duplicate countries!)
     let countryDoc = null;
+    const cleanCode = String(visaData.countryCode || visaData.code || '').trim().toUpperCase();
+    const cleanName = String(visaData.countryName || visaData.country || '').trim();
     const targetCountryRef = visaData.countryId || visaData.country;
-    if (targetCountryRef) {
+
+    // Strategy A: Find by ISO Code if provided
+    if (cleanCode && cleanCode.length >= 2) {
+      countryDoc = await Country.findOne({ code: cleanCode });
+    }
+
+    // Strategy B: Find by countryId (slug or ObjectId)
+    if (!countryDoc && targetCountryRef) {
       const safeCountryId = escapeRegex(String(targetCountryRef));
       countryDoc = await Country.findOne({
         $or: [
@@ -207,15 +229,53 @@ class VisaService {
       });
     }
 
-    if (!countryDoc && visaData.countryName) {
-      const safeCountryName = escapeRegex(String(visaData.countryName));
+    // Strategy C: Find by Name
+    if (!countryDoc && cleanName) {
+      const safeCountryName = escapeRegex(cleanName);
       countryDoc = await Country.findOne({
-        name: { $regex: new RegExp(`^${safeCountryName}$`, 'i') }
+        $or: [
+          { name: { $regex: new RegExp(`^${safeCountryName}$`, 'i') } },
+          { displayName: { $regex: new RegExp(`^${safeCountryName}$`, 'i') } }
+        ]
       });
     }
 
-    if (!countryDoc) {
-      throw ApiError.badRequest(`Destination country reference '${visaData.countryId || visaData.countryName}' could not be resolved`);
+    // If country exists: update details and ensure not deleted
+    if (countryDoc) {
+      let changed = false;
+      if (visaData.countryImage && countryDoc.image !== visaData.countryImage.trim()) {
+        countryDoc.image = visaData.countryImage.trim();
+        changed = true;
+      }
+      if (visaData.countryFlag && countryDoc.flagEmoji !== visaData.countryFlag.trim()) {
+        countryDoc.flagEmoji = visaData.countryFlag.trim();
+        changed = true;
+      }
+      if (countryDoc.isDeleted) {
+        countryDoc.isDeleted = false;
+        countryDoc.isActive = true;
+        changed = true;
+      }
+      if (changed) await countryDoc.save();
+    } else {
+      // If country doesn't exist, auto-create it! (Zero duplicate countries, zero manual slug needed)
+      const finalName = cleanName || (cleanCode ? cleanCode : 'Destination');
+      const cBaseSlug = generateSlug(finalName);
+      let cUniqueSlug = cBaseSlug;
+      let cCount = 1;
+      while (await Country.findOne({ slug: cUniqueSlug })) {
+        cUniqueSlug = `${cBaseSlug}-${cCount++}`;
+      }
+      countryDoc = await Country.create({
+        name: finalName,
+        displayName: finalName,
+        code: cleanCode || finalName.slice(0, 3).toUpperCase(),
+        slug: cUniqueSlug,
+        flagEmoji: visaData.countryFlag || visaData.flagEmoji || '🌍',
+        image: visaData.countryImage || '',
+        isActive: true,
+        isDeleted: false
+      });
     }
 
     // 2. Parse and validate pricing (Strictly database driven: missing -> 0)
@@ -251,6 +311,13 @@ class VisaService {
 
     const visa = await Visa.create({
       country: countryDoc._id,
+      countryName: countryDoc.name,
+      countryCode: countryDoc.code,
+      countryFlag: countryDoc.flagEmoji,
+      countryImage: countryDoc.image || '',
+      category: visaData.category || 'Standard',
+      isPopular: Boolean(visaData.isPopular || visaData.popularity),
+      displayOrder: Number(visaData.displayOrder) || 0,
       slug: uniqueSlug,
       title,
       displayName: visaData.displayName || countryName,
@@ -269,7 +336,9 @@ class VisaService {
       travelPurpose: visaData.travelPurpose || 'Tourism',
       requiredDocuments: processedDocs.length > 0 ? processedDocs : ['Passport Front & Back Scan', 'Passport Size Photo'],
       faqs: Array.isArray(visaData.faqs) ? visaData.faqs : [],
-      image: visaData.image || countryDoc.image,
+      image: (typeof visaData.image === 'string' && visaData.image.trim() !== (countryDoc.image || '').trim())
+        ? visaData.image.trim()
+        : '',
       guaranteedDate: visaData.guaranteedDate || '',
       isActive: visaData.status === 'INACTIVE' ? false : visaData.isActive !== false
     });
@@ -282,7 +351,7 @@ class VisaService {
       req
     });
 
-    return Visa.findById(visa._id).populate('country', 'name displayName slug code flagEmoji flagUrl image');
+    return Visa.findById(visa._id).populate('country', 'name displayName slug code flagEmoji flagUrl image isActive isDeleted');
   }
 
   /**
@@ -306,7 +375,55 @@ class VisaService {
       });
       if (countryDoc) {
         visa.country = countryDoc._id;
+        visa.countryName = countryDoc.name;
+        visa.countryCode = countryDoc.code;
+        visa.countryFlag = countryDoc.flagEmoji;
+        visa.countryImage = countryDoc.image || '';
       }
+    }
+
+    if (updates.countryImage !== undefined) {
+      const cImg = String(updates.countryImage).trim();
+      visa.countryImage = cImg;
+      if (visa.country) {
+        await Country.findByIdAndUpdate(visa.country, { $set: { image: cImg } });
+      }
+    }
+
+    if (updates.countryFlag !== undefined) {
+      const cFlag = String(updates.countryFlag).trim();
+      visa.countryFlag = cFlag;
+      if (visa.country) {
+        await Country.findByIdAndUpdate(visa.country, { $set: { flagEmoji: cFlag } });
+      }
+    }
+
+    if (updates.countryName !== undefined) {
+      const cName = String(updates.countryName).trim();
+      if (cName) {
+        visa.countryName = cName;
+      }
+    }
+
+    if (updates.countryCode !== undefined) {
+      const cCode = String(updates.countryCode).trim().toUpperCase();
+      if (cCode) {
+        visa.countryCode = cCode;
+      }
+    }
+
+    if (updates.isPopular !== undefined) {
+      visa.isPopular = Boolean(updates.isPopular);
+    } else if (updates.popularity !== undefined) {
+      visa.isPopular = Boolean(updates.popularity);
+    }
+
+    if (updates.displayOrder !== undefined) {
+      visa.displayOrder = Number(updates.displayOrder) || 0;
+    }
+
+    if (updates.category !== undefined) {
+      visa.category = String(updates.category).trim() || 'Standard';
     }
 
     if (updates.slug) {
@@ -329,7 +446,12 @@ class VisaService {
     if (updates.validity) visa.validity = updates.validity;
     if (updates.entryType) visa.entryType = updates.entryType;
     if (updates.processingTime) visa.processingTime = updates.processingTime;
-    if (updates.image !== undefined) visa.image = updates.image.trim();
+    if (updates.image !== undefined) {
+      const trimmed = typeof updates.image === 'string' ? updates.image.trim() : '';
+      const countryDoc = await Country.findById(visa.country);
+      const countryImg = countryDoc?.image ? countryDoc.image.trim() : '';
+      visa.image = (trimmed && trimmed !== countryImg) ? trimmed : '';
+    }
     if (updates.guaranteedDate !== undefined) visa.guaranteedDate = updates.guaranteedDate;
     if (updates.documentCategory) visa.documentCategory = updates.documentCategory;
     if (updates.documentsSummary) visa.documentsSummary = updates.documentsSummary;
@@ -378,7 +500,7 @@ class VisaService {
       req
     });
 
-    return Visa.findById(visa._id).populate('country', 'name displayName slug code flagEmoji flagUrl image');
+    return Visa.findById(visa._id).populate('country', 'name displayName slug code flagEmoji flagUrl image isActive isDeleted');
   }
 
   /**

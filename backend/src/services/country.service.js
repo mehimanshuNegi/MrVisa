@@ -111,7 +111,7 @@ class CountryService {
       code,
       flagEmoji: countryData.flagEmoji?.trim() || '🌍',
       flagUrl: countryData.flagUrl?.trim() || (code.length === 2 ? `https://flagcdn.com/w80/${code.toLowerCase()}.png` : ''),
-      image: countryData.image?.trim() || 'https://images.unsplash.com/photo-1488646953014-85cb44e25828?auto=format&fit=crop&w=1000&q=85',
+      image: countryData.image?.trim() || '',
       description: countryData.description?.trim() || `Explore visa offerings for ${name}.`,
       isActive: countryData.status === 'INACTIVE' ? false : countryData.isActive !== false
     });
@@ -151,7 +151,20 @@ class CountryService {
     }
     if (updates.flagEmoji) country.flagEmoji = updates.flagEmoji.trim();
     if (updates.flagUrl !== undefined) country.flagUrl = updates.flagUrl.trim();
-    if (updates.image !== undefined) country.image = updates.image.trim();
+    if (updates.image !== undefined) {
+      const newImg = updates.image.trim();
+      if (newImg !== country.image) {
+        const oldImg = country.image;
+        country.image = newImg;
+        // Clean any visas holding old country image so they resolve dynamically to new country image
+        if (oldImg) {
+          await Visa.updateMany(
+            { country: country._id, image: oldImg },
+            { $set: { image: '' } }
+          );
+        }
+      }
+    }
     if (updates.description !== undefined) country.description = updates.description.trim();
 
     if (updates.status !== undefined) {

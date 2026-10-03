@@ -1,38 +1,19 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { ArrowRight, RotateCcw, X } from 'lucide-react';
+import { ArrowRight, RotateCcw, X, Loader2 } from 'lucide-react';
 import DestinationCard from './DestinationCard';
 import { visaService, countryService, filterDestinations } from '../services';
 import { useFilter } from '../context/FilterContext';
-import { mockVisas } from '../data/mockVisas';
-
-// High-definition landmark imagery matching the exact reference design
-const POPULAR_IMAGES = {
-  japan: 'https://images.unsplash.com/photo-1493976040374-85c8e12f0c0e?auto=format&fit=crop&w=800&q=80',
-  'united-arab-emirates': 'https://images.unsplash.com/photo-1512453979798-5ea266f8880c?auto=format&fit=crop&w=800&q=80',
-  thailand: 'https://images.unsplash.com/photo-1552465011-b4e21bf6e79a?auto=format&fit=crop&w=800&q=80',
-  georgia: 'https://images.unsplash.com/photo-1565008447742-97f6f38c985c?auto=format&fit=crop&w=800&q=80',
-  azerbaijan: 'https://images.unsplash.com/photo-1588714477688-cf28a50e94f7?auto=format&fit=crop&w=800&q=80',
-  russia: 'https://images.unsplash.com/photo-1513622470522-26c3c8a854bc?auto=format&fit=crop&w=800&q=80'
-};
-
-// Exact order of popular countries in front as shown in the UI reference
-const POPULAR_ORDER = [
-  'japan',
-  'united-arab-emirates',
-  'thailand',
-  'georgia',
-  'azerbaijan',
-  'russia'
-];
 
 export default function DestinationSection() {
   const [destinationsList, setDestinationsList] = useState([]);
   const [countriesList, setCountriesList] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
   const { selectedCountry, selectedVisaType, hasActiveFilters, resetFilters } = useFilter();
 
   useEffect(() => {
     let isMounted = true;
     async function loadDestinations() {
+      setIsLoading(true);
       try {
         const [visas, countries] = await Promise.all([
           visaService.getAllVisas(),
@@ -44,6 +25,8 @@ export default function DestinationSection() {
         }
       } catch (e) {
         console.warn('Failed to load destinations:', e);
+      } finally {
+        if (isMounted) setIsLoading(false);
       }
     }
     loadDestinations();
@@ -52,26 +35,11 @@ export default function DestinationSection() {
     };
   }, []);
 
-  // Filter and prioritize popular countries in front
+  // Filter and display database-driven destinations directly from MongoDB
   const displayedDestinations = useMemo(() => {
     let allVisas = Array.isArray(destinationsList) ? [...destinationsList] : [];
 
-    // Ensure Japan is present in front if not returned from backend
-    const hasJapan = allVisas.some(
-      (v) => String(v.country || v.displayName || v.countryId || v.id).toLowerCase().includes('japan')
-    );
-    if (!hasJapan) {
-      const japanMock = mockVisas.find((v) => v.id === 'japan');
-      if (japanMock) {
-        allVisas.push({
-          ...japanMock,
-          routeId: 'japan',
-          image: POPULAR_IMAGES.japan
-        });
-      }
-    }
-
-    // Enrich popular cards with reference-matching landmark images if not already configured in DB
+    // Ensure visa image fallback dynamically resolves to its parent country's image if not already set
     allVisas = allVisas.map((v) => {
       if (v.image) return v;
       const matchedCountry = countriesList.find(
@@ -79,12 +47,6 @@ export default function DestinationSection() {
       );
       if (matchedCountry?.image) {
         return { ...v, image: matchedCountry.image };
-      }
-      const cKey = String(v.countryId || v.country || v.displayName || v.id).toLowerCase();
-      for (const [key, img] of Object.entries(POPULAR_IMAGES)) {
-        if (cKey.includes(key) || key.includes(cKey)) {
-          return { ...v, image: img };
-        }
       }
       return v;
     });
@@ -98,22 +60,17 @@ export default function DestinationSection() {
       statusFilter: 'ACTIVE'
     });
 
-    // Sort popular countries to the very front in the exact reference order
-    const sorted = [...filtered].sort((a, b) => {
-      const aKey = String(a.countryId || a.country || a.displayName || a.id).toLowerCase();
-      const bKey = String(b.countryId || b.country || b.displayName || b.id).toLowerCase();
+    // If customer has selected an active filter (country / visa type), show filtered results
+    if (hasActiveFilters) {
+      return filtered;
+    }
 
-      const aIndex = POPULAR_ORDER.findIndex((p) => aKey.includes(p) || p.includes(aKey));
-      const bIndex = POPULAR_ORDER.findIndex((p) => bKey.includes(p) || p.includes(bKey));
-
-      if (aIndex !== -1 && bIndex !== -1) return aIndex - bIndex;
-      if (aIndex !== -1) return -1;
-      if (bIndex !== -1) return 1;
-      return 0;
-    });
-
-    // Homepage displays limited popular cards (6 cards) unless active filter is applied
-    return hasActiveFilters ? sorted : sorted.slice(0, 6);
+    // Homepage logic:
+    // Active visa/destination records -> isPopular === true -> displayOrder -> Popular Visa Destinations
+    // If admin switches Thailand -> Popular ON, it appears. If OFF, it disappears.
+    return filtered
+      .filter((v) => Boolean(v.isPopular))
+      .sort((a, b) => (Number(a.displayOrder) || 0) - (Number(b.displayOrder) || 0));
   }, [destinationsList, countriesList, selectedCountry, selectedVisaType, hasActiveFilters]);
 
   return (
@@ -175,7 +132,11 @@ export default function DestinationSection() {
           POPULAR VISA CARDS ROW:
           6 compact cards across on desktop matching the reference UI
         */}
-        {displayedDestinations.length === 0 ? (
+        {isLoading ? (
+          <div className="flex items-center justify-center py-16">
+            <Loader2 className="w-8 h-8 text-[#1479F5] animate-spin" />
+          </div>
+        ) : displayedDestinations.length === 0 ? (
           <div className="text-center py-12 px-6 rounded-3xl bg-slate-50 border border-slate-200">
             <p className="text-base font-bold text-[#082B61]">
               No visas found for this selection.

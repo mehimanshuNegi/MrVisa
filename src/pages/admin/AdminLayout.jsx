@@ -25,7 +25,6 @@ export default function AdminLayout() {
   const isApplicationsActive =
     location.pathname.includes('/admin/applications') || location.pathname === '/admin';
   const isVisasActive = location.pathname.includes('/admin/visas');
-  const isCountriesActive = location.pathname.includes('/admin/countries');
   const isDocumentationActive = location.pathname.includes('/admin/documentation');
   const isDummyTicketsActive = location.pathname.includes('/admin/dummy-tickets');
 
@@ -87,7 +86,6 @@ export default function AdminLayout() {
   const navLinks = [
     { name: 'Applications', path: '/admin/applications', active: isApplicationsActive, icon: FileText },
     { name: 'Visas', path: '/admin/visas', active: isVisasActive, icon: Globe },
-    { name: 'Countries', path: '/admin/countries', active: isCountriesActive, icon: MapPin },
     { name: 'Documentation', path: '/admin/documentation', active: isDocumentationActive, icon: Layers },
     { name: 'Dummy Tickets', path: '/admin/dummy-tickets', active: isDummyTicketsActive, icon: Plane }
   ];

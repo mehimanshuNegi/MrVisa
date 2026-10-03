@@ -33,7 +33,12 @@ export function normalizeVisa(raw) {
 
   const flagUrl = raw.flagUrl || countryObj?.flagUrl || '';
   const flagEmoji = raw.flagEmoji || countryObj?.flagEmoji || '🌍';
-  const image = raw.image || raw.imageUrl || countryObj?.image || '';
+  const countryImage = (countryObj?.image || raw.countryImage || '').trim();
+  const rawImage = (raw.image || raw.imageUrl || '').trim();
+  const hasCustom = raw.hasCustomImage !== undefined
+    ? Boolean(raw.hasCustomImage && rawImage && rawImage !== countryImage)
+    : Boolean(raw.customImage || (rawImage && countryImage && rawImage !== countryImage));
+  const image = hasCustom ? (raw.customImage || rawImage) : (rawImage || countryImage || '');
 
   const govFee = raw.governmentFee !== undefined && raw.governmentFee !== null && !isNaN(Number(raw.governmentFee))
     ? Number(raw.governmentFee)
@@ -62,6 +67,9 @@ export function normalizeVisa(raw) {
     flagUrl,
     flagEmoji,
     image,
+    countryImage,
+    customImage: hasCustom ? (raw.customImage || rawImage) : '',
+    hasCustomImage: hasCustom,
     visaType: raw.visaType || 'E-Visa',
     validity: raw.validity || '30 Days',
     stayPeriod: raw.stayPeriod || raw.validity || '30 Days',
@@ -94,6 +102,12 @@ export function normalizeVisa(raw) {
       ? raw.requiredDocuments
       : [],
     faqs: Array.isArray(raw.faqs) ? raw.faqs : [],
+    countryCode: raw.countryCode || countryObj?.code || '',
+    countryFlag: flagEmoji,
+    isPopular: Boolean(raw.isPopular),
+    displayOrder: raw.displayOrder || 0,
+    category: raw.category || 'Standard',
+    popularity: Boolean(raw.isPopular),
     status: raw.status || (raw.isActive === false ? 'INACTIVE' : 'ACTIVE'),
     isActive: raw.isActive !== undefined ? raw.isActive : raw.status === 'ACTIVE'
   };
@@ -166,14 +180,6 @@ class VisaService {
       return normalizeVisa(raw.data || raw);
     } catch (err) {
       if (err?.status === 404) {
-        const mockFound = mockVisas.find(
-          (v) =>
-            v.id.toLowerCase() === cleanId ||
-            v.countryId?.toLowerCase() === cleanId ||
-            v.displayName?.toLowerCase() === cleanId ||
-            v.country?.toLowerCase() === cleanId
-        );
-        if (mockFound) return normalizeVisa(mockFound);
         return null;
       }
       throw err;

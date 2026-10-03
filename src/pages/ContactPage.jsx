@@ -17,14 +17,29 @@ import {
 } from 'lucide-react';
 import { countryService } from '../services';
 
-const searchCountries = countryService.getSearchCountries();
-
 export default function ContactPage() {
   const [searchParams] = useSearchParams();
   const shouldOpenAsk = searchParams.get('ask') === 'true';
 
+  const [searchCountries, setSearchCountries] = useState(() => countryService.getSearchCountries() || ['Georgia']);
   const [showForm, setShowForm] = useState(shouldOpenAsk);
   const [formSubmitted, setFormSubmitted] = useState(false);
+
+  useEffect(() => {
+    let isMounted = true;
+    countryService.getAllCountries().then((cList) => {
+      if (isMounted && Array.isArray(cList) && cList.length > 0) {
+        const activeNames = cList
+          .filter((c) => c.status === 'ACTIVE' || c.isActive !== false)
+          .map((c) => c.displayName || c.name)
+          .filter(Boolean);
+        if (activeNames.length > 0) {
+          setSearchCountries(Array.from(new Set(activeNames)));
+        }
+      }
+    }).catch(() => {});
+    return () => { isMounted = false; };
+  }, []);
 
   const [formData, setFormData] = useState({
     fullName: '',

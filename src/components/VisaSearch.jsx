@@ -3,11 +3,11 @@ import { useNavigate, Link } from 'react-router-dom';
 import { MapPin, FileText, Calendar, ChevronDown, ArrowRight, Check, HelpCircle, Shield } from 'lucide-react';
 import { countryService, visaService } from '../services';
 
-const searchCountries = countryService.getSearchCountries();
 const visaTypes = visaService.getVisaTypes();
 
 export default function VisaSearch({ onSearch }) {
   const navigate = useNavigate();
+  const [searchCountries, setSearchCountries] = useState(() => countryService.getSearchCountries() || ['Georgia']);
   const [selectedCountry, setSelectedCountry] = useState('Georgia');
   const [selectedVisaType, setSelectedVisaType] = useState('All Visa Types');
   const [selectedDate, setSelectedDate] = useState('');
@@ -43,6 +43,24 @@ export default function VisaSearch({ onSearch }) {
       setVisaDropdownOpen(false);
     }, 220);
   };
+
+  useEffect(() => {
+    let isMounted = true;
+    countryService.getAllCountries().then((cList) => {
+      if (isMounted && Array.isArray(cList) && cList.length > 0) {
+        const activeNames = cList
+          .filter((c) => c.status === 'ACTIVE' || c.isActive !== false)
+          .map((c) => c.displayName || c.name)
+          .filter(Boolean);
+        if (activeNames.length > 0) {
+          const uniqueNames = Array.from(new Set(activeNames));
+          setSearchCountries(uniqueNames);
+          setSelectedCountry((prev) => (uniqueNames.includes(prev) ? prev : uniqueNames[0]));
+        }
+      }
+    }).catch(() => {});
+    return () => { isMounted = false; };
+  }, []);
 
   useEffect(() => {
     function handleClickOutside(event) {

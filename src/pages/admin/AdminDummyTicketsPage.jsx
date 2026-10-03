@@ -15,7 +15,13 @@ import {
   Trash2,
   Clock,
   Tag,
-  Check
+  Check,
+  Eye,
+  User,
+  Phone,
+  Mail,
+  Calendar,
+  MessageSquare
 } from 'lucide-react';
 import { dummyTicketService } from '../../services';
 import AdminDropdown from '../../components/admin/AdminDropdown';
@@ -24,25 +30,70 @@ import DeleteConfirmationModal from '../../components/admin/DeleteConfirmationMo
 
 const STATUS_FILTER_OPTIONS = [
   { value: 'All', label: 'All Statuses' },
+  { value: 'New', label: 'New' },
+  { value: 'Under Review', label: 'Under Review' },
+  { value: 'Processing', label: 'Processing' },
+  { value: 'Ready', label: 'Ready' },
+  { value: 'Completed', label: 'Completed' },
+  { value: 'Cancelled', label: 'Cancelled' }
+];
+
+const PACKAGE_STATUS_FILTER_OPTIONS = [
+  { value: 'All', label: 'All Statuses' },
   { value: 'Active', label: 'Active Packages' },
   { value: 'Inactive', label: 'Inactive Packages' }
 ];
 
+const REQUEST_STATUSES = ['New', 'Under Review', 'Processing', 'Ready', 'Completed', 'Cancelled'];
+
+function getRequestStatusBadgeStyle(status) {
+  switch (status) {
+    case 'New':
+      return 'bg-blue-50 text-blue-700 border-blue-200';
+    case 'Under Review':
+      return 'bg-amber-50 text-amber-700 border-amber-200';
+    case 'Processing':
+      return 'bg-purple-50 text-purple-700 border-purple-200';
+    case 'Ready':
+      return 'bg-teal-50 text-teal-700 border-teal-200';
+    case 'Completed':
+      return 'bg-emerald-50 text-emerald-700 border-emerald-200';
+    case 'Cancelled':
+      return 'bg-slate-100 text-slate-600 border-slate-200';
+    default:
+      return 'bg-slate-50 text-slate-700 border-slate-200';
+  }
+}
+
 export default function AdminDummyTicketsPage() {
+  const [activeTab, setActiveTab] = useState('requests'); // 'requests' | 'packages'
+
+  // ==========================================
+  // 1. CUSTOMER REQUESTS STATE
+  // ==========================================
+  const [requests, setRequests] = useState([]);
+  const [isLoadingRequests, setIsLoadingRequests] = useState(true);
+  const [requestsError, setRequestsError] = useState(null);
+  const [requestSearchQuery, setRequestSearchQuery] = useState('');
+  const [requestStatusFilter, setRequestStatusFilter] = useState('All');
+
+  // Selected Request Modal State
+  const [selectedRequest, setSelectedRequest] = useState(null);
+  const [selectedReqStatus, setSelectedReqStatus] = useState('');
+  const [selectedReqNotes, setSelectedReqNotes] = useState('');
+  const [isUpdatingRequest, setIsUpdatingRequest] = useState(false);
+  const [requestUpdateSuccess, setRequestUpdateSuccess] = useState(false);
+
+  // ==========================================
+  // 2. PACKAGES & PRICING STATE (For Regression & Catalog)
+  // ==========================================
   const [tickets, setTickets] = useState([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [loadError, setLoadError] = useState(null);
+  const [isLoadingPackages, setIsLoadingPackages] = useState(true);
+  const [packagesError, setPackagesError] = useState(null);
+  const [packageSearchQuery, setPackageSearchQuery] = useState('');
+  const [packageStatusFilter, setPackageStatusFilter] = useState('All');
 
-  // Search & Filter State
-  const [searchQuery, setSearchQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState('All');
-
-  // Delete State
-  const [deleteTargetTicket, setDeleteTargetTicket] = useState(null);
-  const [isDeletingTicket, setIsDeletingTicket] = useState(false);
-  const [deleteError, setDeleteError] = useState(null);
-
-  // Edit Modal State
+  // Package Edit State
   const [editingTicket, setEditingTicket] = useState(null);
   const [editFormData, setEditFormData] = useState({
     title: '',
@@ -57,11 +108,11 @@ export default function AdminDummyTicketsPage() {
     displayOrder: 0,
     status: 'ACTIVE'
   });
-  const [isSaving, setIsSaving] = useState(false);
-  const [saveSuccess, setSaveSuccess] = useState(false);
-  const [saveError, setSaveError] = useState(null);
+  const [isSavingPackage, setIsSavingPackage] = useState(false);
+  const [savePackageSuccess, setSavePackageSuccess] = useState(false);
+  const [savePackageError, setSavePackageError] = useState(null);
 
-  // Add Modal State
+  // Package Add State
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [addFormData, setAddFormData] = useState({
     title: '',
@@ -82,942 +133,913 @@ export default function AdminDummyTicketsPage() {
     displayOrder: 0,
     status: 'ACTIVE'
   });
-  const [isCreating, setIsCreating] = useState(false);
-  const [createError, setCreateError] = useState(null);
+  const [isCreatingPackage, setIsCreatingPackage] = useState(false);
+  const [createPackageError, setCreatePackageError] = useState(null);
 
-  // Banner Message
+  // Package Delete State
+  const [deleteTargetTicket, setDeleteTargetTicket] = useState(null);
+  const [isDeletingTicket, setIsDeletingTicket] = useState(false);
+  const [deleteError, setDeleteError] = useState(null);
+
   const [bannerMessage, setBannerMessage] = useState(null);
 
-  const loadData = async () => {
-    setIsLoading(true);
-    setLoadError(null);
+  // Load Requests from MongoDB Atlas
+  const loadRequests = async () => {
+    setIsLoadingRequests(true);
+    setRequestsError(null);
+    try {
+      const data = await dummyTicketService.getAllRequests({
+        status: requestStatusFilter === 'All' ? undefined : requestStatusFilter,
+        query: requestSearchQuery.trim() || undefined
+      });
+      const items = Array.isArray(data) ? data : data?.items || [];
+      setRequests(items);
+    } catch (err) {
+      console.error('Failed to load dummy ticket requests:', err);
+      setRequestsError('Failed to load booking requests from database.');
+    } finally {
+      setIsLoadingRequests(false);
+    }
+  };
+
+  // Load Packages
+  const loadPackages = async () => {
+    setIsLoadingPackages(true);
+    setPackagesError(null);
     try {
       const data = await dummyTicketService.getAllServices();
       setTickets(Array.isArray(data) ? data : []);
     } catch (err) {
-      console.error('Failed to load dummy tickets:', err);
-      setLoadError('Failed to load dummy ticket services from server.');
+      console.error('Failed to load packages:', err);
+      setPackagesError('Failed to load dummy ticket packages from database.');
     } finally {
-      setIsLoading(false);
+      setIsLoadingPackages(false);
     }
   };
 
   useEffect(() => {
-    loadData();
+    loadRequests();
+    loadPackages();
   }, []);
 
-  const filteredTickets = useMemo(() => {
-    return tickets.filter((t) => {
-      const q = searchQuery.toLowerCase().trim();
+  useEffect(() => {
+    loadRequests();
+  }, [requestStatusFilter]);
+
+  // Filter requests
+  const filteredRequests = useMemo(() => {
+    return requests.filter((req) => {
       const matchesSearch =
-        !q ||
-        t.title?.toLowerCase().includes(q) ||
-        t.slug?.toLowerCase().includes(q) ||
-        t.type?.toLowerCase().includes(q) ||
-        t.shortDescription?.toLowerCase().includes(q);
+        !requestSearchQuery ||
+        req.requestId?.toLowerCase().includes(requestSearchQuery.toLowerCase()) ||
+        req.contact?.email?.toLowerCase().includes(requestSearchQuery.toLowerCase()) ||
+        req.contact?.phone?.includes(requestSearchQuery) ||
+        req.flight?.from?.toLowerCase().includes(requestSearchQuery.toLowerCase()) ||
+        req.flight?.to?.toLowerCase().includes(requestSearchQuery.toLowerCase()) ||
+        req.travellers?.some(
+          (t) =>
+            t.firstName?.toLowerCase().includes(requestSearchQuery.toLowerCase()) ||
+            t.lastName?.toLowerCase().includes(requestSearchQuery.toLowerCase())
+        );
 
       const matchesStatus =
-        statusFilter === 'All' ||
-        (statusFilter === 'Active' && (t.isActive || t.status === 'ACTIVE')) ||
-        (statusFilter === 'Inactive' && (!t.isActive || t.status === 'INACTIVE'));
+        requestStatusFilter === 'All' || req.status === requestStatusFilter;
 
       return matchesSearch && matchesStatus;
     });
-  }, [tickets, searchQuery, statusFilter]);
+  }, [requests, requestSearchQuery, requestStatusFilter]);
 
-  const handleEditClick = (ticket) => {
+  // Open Request Modal
+  const handleOpenRequestModal = (req) => {
+    setSelectedRequest(req);
+    setSelectedReqStatus(req.status || 'New');
+    setSelectedReqNotes(req.adminNotes || '');
+    setRequestUpdateSuccess(false);
+  };
+
+  // Save Request Status / Notes
+  const handleSaveRequestUpdate = async (newStatusOverride = null) => {
+    if (!selectedRequest) return;
+    setIsUpdatingRequest(true);
+    try {
+      const targetStatus = newStatusOverride || selectedReqStatus;
+      const updated = await dummyTicketService.updateRequestStatus(
+        selectedRequest._id || selectedRequest.id,
+        {
+          status: targetStatus,
+          adminNotes: selectedReqNotes
+        }
+      );
+      setSelectedRequest(updated);
+      setSelectedReqStatus(updated.status);
+      setRequests((prev) =>
+        prev.map((r) =>
+          (r._id || r.id) === (updated._id || updated.id) ? updated : r
+        )
+      );
+      setRequestUpdateSuccess(true);
+      setTimeout(() => setRequestUpdateSuccess(false), 2500);
+    } catch (err) {
+      console.error('Failed to update request:', err);
+      alert(err.message || 'Failed to update request');
+    } finally {
+      setIsUpdatingRequest(false);
+    }
+  };
+
+  // Quick mark completed
+  const handleMarkCompleted = async () => {
+    await handleSaveRequestUpdate('Completed');
+  };
+
+  // Package Filter
+  const filteredPackages = useMemo(() => {
+    return tickets.filter((t) => {
+      const matchesSearch =
+        !packageSearchQuery ||
+        t.title?.toLowerCase().includes(packageSearchQuery.toLowerCase()) ||
+        t.shortDescription?.toLowerCase().includes(packageSearchQuery.toLowerCase());
+
+      const matchesStatus =
+        packageStatusFilter === 'All' ||
+        (packageStatusFilter === 'Active' ? t.status === 'ACTIVE' : t.status === 'INACTIVE');
+
+      return matchesSearch && matchesStatus;
+    });
+  }, [tickets, packageSearchQuery, packageStatusFilter]);
+
+  // Package CRUD Handlers
+  const handleOpenEditPackage = (ticket) => {
     setEditingTicket(ticket);
     setEditFormData({
       title: ticket.title || '',
       type: ticket.type || 'Round Trip / Onward Reservation',
       shortDescription: ticket.shortDescription || '',
       description: ticket.description || '',
-      price: ticket.price !== undefined ? ticket.price : 499,
+      price: ticket.price || 499,
       deliveryTime: ticket.deliveryTime || '10–30 Minutes',
       validity: ticket.validity || '2–3 Weeks (Live PNR Verifiable)',
-      features: Array.isArray(ticket.features) ? ticket.features : [],
+      features: Array.isArray(ticket.features) ? [...ticket.features] : [],
       icon: ticket.icon || 'Plane',
       displayOrder: ticket.displayOrder || 0,
-      status: ticket.isActive || ticket.status === 'ACTIVE' ? 'ACTIVE' : 'INACTIVE'
+      status: ticket.status || 'ACTIVE'
     });
-    setSaveSuccess(false);
-    setSaveError(null);
+    setSavePackageSuccess(false);
+    setSavePackageError(null);
   };
 
-  const handleSaveEdit = async (e) => {
+  const handleSavePackageEdit = async (e) => {
     e.preventDefault();
-    setIsSaving(true);
-    setSaveError(null);
+    if (!editingTicket) return;
+    setIsSavingPackage(true);
+    setSavePackageError(null);
     try {
-      const idToUpdate = editingTicket.id || editingTicket._id;
-      const updated = await dummyTicketService.updateService(idToUpdate, editFormData);
-      setTickets((prev) =>
-        prev.map((t) => ((t.id || t._id) === idToUpdate ? { ...t, ...updated } : t))
-      );
-      setSaveSuccess(true);
-      setBannerMessage(`Dummy ticket package "${updated.title}" updated successfully!`);
+      const id = editingTicket._id || editingTicket.id;
+      const updated = await dummyTicketService.updateService(id, editFormData);
+      setTickets((prev) => prev.map((t) => ((t._id || t.id) === id ? updated : t)));
+      setSavePackageSuccess(true);
       setTimeout(() => {
+        setSavePackageSuccess(false);
         setEditingTicket(null);
-        setSaveSuccess(false);
-      }, 700);
+      }, 1200);
     } catch (err) {
-      console.error('Failed to update dummy ticket:', err);
-      setSaveError(err.message || 'Failed to update dummy ticket.');
+      setSavePackageError(err.message || 'Failed to save changes');
     } finally {
-      setIsSaving(false);
+      setIsSavingPackage(false);
     }
   };
 
-  const handleCreateTicket = async (e) => {
-    e.preventDefault();
-    setIsCreating(true);
-    setCreateError(null);
+  const handleTogglePackageStatus = async (ticket) => {
+    const id = ticket._id || ticket.id;
     try {
-      const created = await dummyTicketService.createService(addFormData);
-      setTickets((prev) => [...prev, created]);
-      setBannerMessage(`Dummy ticket package "${created.title}" created successfully!`);
-      setIsAddModalOpen(false);
-      setAddFormData({
-        title: '',
-        type: 'Round Trip / Onward Reservation',
-        shortDescription: '',
-        description: '',
-        price: 499,
-        deliveryTime: '10–30 Minutes',
-        validity: '2–3 Weeks (Live PNR Verifiable)',
-        features: [
-          'Live 6-character airline PNR code',
-          'Directly verifiable on airline website',
-          'Embassy & consulate visa compliant',
-          'Delivered instantly via WhatsApp and Email',
-          'Free date modification if visa delayed'
-        ],
-        icon: 'Plane',
-        displayOrder: 0,
-        status: 'ACTIVE'
-      });
+      const updated = await dummyTicketService.toggleServiceStatus(id);
+      setTickets((prev) => prev.map((t) => ((t._id || t.id) === id ? updated : t)));
     } catch (err) {
-      console.error('Failed to create dummy ticket:', err);
-      setCreateError(err.message || 'Failed to create dummy ticket.');
-    } finally {
-      setIsCreating(false);
+      alert(err.message || 'Failed to toggle package status');
     }
   };
 
-  const handleOpenDelete = (ticket) => {
-    setDeleteTargetTicket(ticket);
-    setDeleteError(null);
-  };
-
-  const handleConfirmDelete = async () => {
+  const handleConfirmDeletePackage = async () => {
     if (!deleteTargetTicket) return;
     setIsDeletingTicket(true);
-    setDeleteError(null);
     try {
-      const idToDelete = deleteTargetTicket.id || deleteTargetTicket._id;
-      await dummyTicketService.deleteService(idToDelete);
-      setTickets((prev) => prev.filter((t) => (t.id || t._id) !== idToDelete));
-      setBannerMessage(`Dummy ticket package "${deleteTargetTicket.title}" safely removed.`);
+      const id = deleteTargetTicket._id || deleteTargetTicket.id;
+      await dummyTicketService.deleteService(id);
+      setTickets((prev) => prev.filter((t) => (t._id || t.id) !== id));
       setDeleteTargetTicket(null);
     } catch (err) {
-      console.error('Failed to delete dummy ticket:', err);
-      setDeleteError(err.message || 'Failed to delete dummy ticket.');
+      alert(err.message || 'Failed to delete package');
     } finally {
       setIsDeletingTicket(false);
     }
   };
 
-  const handleToggleStatus = async (ticket, e) => {
-    e.stopPropagation();
+  const handleCreatePackage = async (e) => {
+    e.preventDefault();
+    setIsCreatingPackage(true);
+    setCreatePackageError(null);
     try {
-      const idToUpdate = ticket.id || ticket._id;
-      const res = await dummyTicketService.toggleServiceStatus(idToUpdate);
-      setTickets((prev) =>
-        prev.map((t) => ((t.id || t._id) === idToUpdate ? { ...t, ...res } : t))
-      );
-      setBannerMessage(`Package "${ticket.title}" status toggled!`);
+      const created = await dummyTicketService.createService(addFormData);
+      setTickets((prev) => [created, ...prev]);
+      setIsAddModalOpen(false);
     } catch (err) {
-      console.error('Failed to toggle status:', err);
-      alert('Failed to toggle status: ' + err.message);
+      setCreatePackageError(err.message || 'Failed to create package');
+    } finally {
+      setIsCreatingPackage(false);
     }
   };
 
   return (
-    <div className="space-y-5">
-      
-      {/* Banner */}
-      {bannerMessage && (
-        <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold flex items-center justify-between">
-          <span>{bannerMessage}</span>
-          <button
-            onClick={() => setBannerMessage(null)}
-            className="text-emerald-600 hover:text-emerald-800 p-0.5"
-          >
-            <X size={14} />
-          </button>
-        </div>
-      )}
-
-      {/* 1. PAGE HEADER */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-2 border-b border-slate-200/80">
+    <div className="space-y-6">
+      {/* Page Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-2 border-b border-slate-200">
         <div>
-          <h1 className="text-2xl font-black text-[#082B61] tracking-tight">
-            Dummy Tickets
+          <h1 className="text-xl sm:text-2xl font-black text-[#082B61] tracking-tight">
+            Dummy Ticket Management
           </h1>
-          <p className="text-xs text-slate-500 font-medium mt-0.5">
-            Manage verifiable flight reservation packages, pricing, delivery speed, and live PNR validity.
+          <p className="text-xs sm:text-sm text-slate-500 font-medium mt-0.5">
+            Manage customer flight itinerary requests, operational statuses, and service pricing.
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
+        {/* Tab Switcher */}
+        <div className="flex items-center gap-2 bg-slate-100 p-1 rounded-xl self-start sm:self-auto">
           <button
             type="button"
-            onClick={() => setIsAddModalOpen(true)}
-            className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-[#2563EB] hover:bg-[#1d4ed8] text-white text-xs font-bold transition-all shadow-sm cursor-pointer"
+            onClick={() => setActiveTab('requests')}
+            className={`px-4 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+              activeTab === 'requests'
+                ? 'bg-white text-[#2563EB] shadow-xs'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
           >
-            <Plus size={14} />
-            <span>Add Package</span>
+            Customer Requests ({requests.length})
           </button>
-
           <button
             type="button"
-            onClick={loadData}
-            disabled={isLoading}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-xs font-semibold text-slate-600 transition-colors cursor-pointer shadow-2xs"
+            onClick={() => setActiveTab('packages')}
+            className={`px-4 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+              activeTab === 'packages'
+                ? 'bg-white text-[#2563EB] shadow-xs'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
           >
-            <RefreshCw size={13} className={isLoading ? 'animate-spin text-[#2563EB]' : 'text-slate-400'} />
-            <span>Refresh</span>
+            Service Packages & Pricing ({tickets.length})
           </button>
         </div>
       </div>
 
-      {/* 2. SEARCH & HOVER DROPDOWN FILTERS */}
-      <div className="bg-white rounded-xl p-3 border border-slate-200/80 shadow-2xs space-y-2.5">
-        <div className="flex flex-col sm:flex-row sm:items-center gap-2.5">
-          {/* Search Bar */}
-          <div className="relative flex-grow">
-            <Search size={15} className="text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search dummy ticket packages by title, reservation type, or keywords..."
-              className="w-full h-9 pl-9 pr-8 rounded-lg border border-slate-200 text-xs font-medium text-[#082B61] placeholder:text-slate-400 focus:outline-none focus:border-[#2563EB] focus:ring-2 focus:ring-blue-100 transition-all"
-            />
-            {searchQuery && (
+      {/* ============================================================== */}
+      {/* TAB 1: CUSTOMER BOOKING REQUESTS                                */}
+      {/* ============================================================== */}
+      {activeTab === 'requests' && (
+        <div className="space-y-4">
+          {/* Controls Bar */}
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs">
+            <div className="relative flex-1 max-w-md">
+              <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+              <input
+                type="text"
+                placeholder="Search by request ID, passenger name, route, or email..."
+                value={requestSearchQuery}
+                onChange={(e) => setRequestSearchQuery(e.target.value)}
+                className="w-full pl-9.5 pr-4 py-2 rounded-xl border border-slate-200 text-xs text-[#082B61] placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#2563EB]/20 bg-slate-50/50"
+              />
+            </div>
+
+            <div className="flex items-center gap-3">
+              <AdminDropdown
+                options={STATUS_FILTER_OPTIONS}
+                value={requestStatusFilter}
+                onChange={setRequestStatusFilter}
+                ariaLabel="Filter requests by status"
+              />
+
               <button
                 type="button"
-                onClick={() => setSearchQuery('')}
-                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
+                onClick={loadRequests}
+                className="p-2.5 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-600 transition-colors cursor-pointer"
+                title="Refresh requests"
               >
-                <X size={13} />
+                <RefreshCw size={15} className={isLoadingRequests ? 'animate-spin' : ''} />
               </button>
-            )}
+            </div>
           </div>
 
-          {/* Hover Status Filter */}
-          <div className="flex items-center gap-2">
-            <AdminDropdown
-              value={statusFilter}
-              onChange={setStatusFilter}
-              options={STATUS_FILTER_OPTIONS}
-              labelPrefix="Status"
-              icon={Filter}
-            />
-
-            {(searchQuery || statusFilter !== 'All') && (
-              <button
-                type="button"
-                onClick={() => {
-                  setSearchQuery('');
-                  setStatusFilter('All');
-                }}
-                className="text-xs font-bold text-[#2563EB] hover:underline px-2 py-1 cursor-pointer"
-              >
-                Clear Filters
-              </button>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* 3. DUMMY TICKETS TABLE */}
-      {isLoading ? (
-        <div className="bg-white rounded-xl p-12 border border-slate-200/80 text-center space-y-2">
-          <Loader2 size={24} className="animate-spin text-[#2563EB] mx-auto" />
-          <p className="text-xs font-bold text-[#082B61]">Loading packages...</p>
-        </div>
-      ) : loadError ? (
-        <div className="bg-white rounded-xl p-8 border border-red-200 text-center space-y-2">
-          <AlertCircle size={24} className="text-red-500 mx-auto" />
-          <p className="text-xs font-bold text-red-700">{loadError}</p>
-          <button
-            type="button"
-            onClick={loadData}
-            className="px-3.5 py-1.5 rounded-lg bg-[#2563EB] text-white text-xs font-bold cursor-pointer"
-          >
-            Retry
-          </button>
-        </div>
-      ) : filteredTickets.length === 0 ? (
-        <div className="bg-white rounded-xl p-10 text-center border border-slate-200/80 space-y-2">
-          <Plane size={28} className="text-slate-300 mx-auto" />
-          <h3 className="text-sm font-bold text-[#082B61]">No dummy ticket packages found</h3>
-          <p className="text-xs text-slate-400 font-medium">
-            Try adjusting your search query or reset the filter.
-          </p>
-        </div>
-      ) : (
-        <div className="bg-white rounded-xl border border-slate-200/80 shadow-2xs overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse text-xs">
-              <thead>
-                <tr className="bg-slate-50/80 border-b border-slate-200/90 text-[10.5px] font-bold text-slate-400 uppercase tracking-wider">
-                  <th className="py-2.5 px-3.5">Package Title</th>
-                  <th className="py-2.5 px-3.5">Reservation Type</th>
-                  <th className="py-2.5 px-3.5">Price</th>
-                  <th className="py-2.5 px-3.5">Delivery</th>
-                  <th className="py-2.5 px-3.5">PNR Validity</th>
-                  <th className="py-2.5 px-3.5">Status</th>
-                  <th className="py-2.5 px-3.5 text-right">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 font-medium text-[#082B61]">
-                {filteredTickets.map((ticket) => {
-                  const isActive = ticket.status === 'ACTIVE' || ticket.isActive;
-
-                  return (
-                    <tr
-                      key={ticket.id || ticket._id}
-                      onClick={() => handleEditClick(ticket)}
-                      className="hover:bg-[#F8FAFC] transition-colors cursor-pointer"
-                    >
-                      {/* Title & Slug */}
-                      <td className="py-3 px-3.5">
-                        <div className="flex items-center gap-2">
-                          <div className="w-7 h-7 rounded-lg bg-blue-50 text-[#2563EB] flex items-center justify-center flex-shrink-0 shadow-2xs">
-                            <Plane size={14} />
-                          </div>
-                          <div>
-                            <span className="font-bold text-[#082B61] block leading-tight">
-                              {ticket.title}
-                            </span>
-                            <span className="text-[10px] text-slate-400 block font-mono">
-                              /{ticket.slug}
-                            </span>
-                          </div>
-                        </div>
-                      </td>
-
-                      {/* Type */}
-                      <td className="py-3 px-3.5 text-slate-600">
-                        {ticket.type || 'Round Trip'}
-                      </td>
-
-                      {/* Price */}
-                      <td className="py-3 px-3.5 font-bold text-[#082B61] whitespace-nowrap">
-                        ₹{(ticket.price !== undefined ? Number(ticket.price) : 499).toLocaleString('en-IN')}
-                      </td>
-
-                      {/* Delivery */}
-                      <td className="py-3 px-3.5 text-slate-500 whitespace-nowrap">
-                        <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-100">
-                          <Clock size={11} />
-                          {ticket.deliveryTime || '10–30 Minutes'}
-                        </span>
-                      </td>
-
-                      {/* Validity */}
-                      <td className="py-3 px-3.5 text-slate-600 whitespace-nowrap">
-                        {ticket.validity || '2–3 Weeks'}
-                      </td>
-
-                      {/* Status */}
-                      <td className="py-3 px-3.5 whitespace-nowrap">
-                        <AdminStatusBadge status={isActive ? 'ACTIVE' : 'INACTIVE'} />
-                      </td>
-
-                      {/* Actions */}
-                      <td className="py-3 px-3.5 text-right whitespace-nowrap">
-                        <div className="inline-flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
-                          <button
-                            type="button"
-                            onClick={() => handleEditClick(ticket)}
-                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border border-slate-200 bg-white hover:bg-blue-50 hover:text-[#2563EB] hover:border-blue-200 text-slate-600 text-xs font-semibold transition-colors cursor-pointer shadow-2xs"
-                          >
-                            <Edit2 size={12} />
-                            <span>Edit</span>
-                          </button>
-
-                          <button
-                            type="button"
-                            onClick={(e) => handleToggleStatus(ticket, e)}
-                            title={isActive ? 'Deactivate Package' : 'Activate Package'}
-                            className={`p-1.5 rounded-lg border transition-colors cursor-pointer ${
-                              isActive
-                                ? 'border-slate-200 text-slate-400 hover:text-rose-600 hover:bg-rose-50'
-                                : 'border-emerald-200 bg-emerald-50 text-emerald-600 hover:bg-emerald-100'
-                            }`}
-                          >
-                            <Power size={13} />
-                          </button>
-
-                          <button
-                            type="button"
-                            onClick={() => handleOpenDelete(ticket)}
-                            title="Delete Package"
-                            className="p-1.5 rounded-lg border border-slate-200 text-slate-400 hover:text-rose-600 hover:bg-rose-50 hover:border-rose-200 transition-colors cursor-pointer shadow-2xs"
-                          >
-                            <Trash2 size={13} />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
-
-      {/* 4. EDIT TICKET MODAL */}
-      {editingTicket && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-2xs flex items-center justify-center p-3 sm:p-4">
-          <div className="bg-white rounded-2xl max-w-xl w-full max-h-[92vh] overflow-y-auto shadow-xl border border-slate-200 flex flex-col animate-in fade-in zoom-in-95 duration-150">
-            
-            <div className="sticky top-0 z-20 bg-white p-4 sm:p-5 border-b border-slate-100 flex items-center justify-between">
-              <div>
-                <h3 className="text-base font-black text-[#082B61]">Edit Dummy Ticket Package</h3>
-                <p className="text-[11px] text-slate-400 font-medium">
-                  {editingTicket.title} • Backend slug: /{editingTicket.slug}
+          {/* Requests Table */}
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xs overflow-hidden">
+            {isLoadingRequests ? (
+              <div className="py-20 flex flex-col items-center justify-center text-center">
+                <Loader2 size={32} className="animate-spin text-[#2563EB] mb-2" />
+                <p className="text-xs font-bold text-slate-500">Loading booking requests from MongoDB...</p>
+              </div>
+            ) : filteredRequests.length === 0 ? (
+              <div className="py-16 text-center space-y-2">
+                <div className="w-12 h-12 rounded-full bg-slate-100 text-slate-400 flex items-center justify-center mx-auto">
+                  <Plane size={20} />
+                </div>
+                <h3 className="text-sm font-bold text-[#082B61]">No Dummy Ticket Requests Found</h3>
+                <p className="text-xs text-slate-400 max-w-sm mx-auto">
+                  {requestSearchQuery || requestStatusFilter !== 'All'
+                    ? 'No requests matched your filter criteria.'
+                    : 'Customer dummy ticket flight booking submissions will appear here.'}
                 </p>
               </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse text-xs">
+                  <thead>
+                    <tr className="bg-slate-50/80 border-b border-slate-200 text-[11px] font-extrabold uppercase tracking-wider text-slate-500">
+                      <th className="py-3 px-4">Request ID</th>
+                      <th className="py-3 px-4">Customer</th>
+                      <th className="py-3 px-4">Trip Type</th>
+                      <th className="py-3 px-4">Route</th>
+                      <th className="py-3 px-4">Travel Date</th>
+                      <th className="py-3 px-4">Required Date</th>
+                      <th className="py-3 px-4">Status</th>
+                      <th className="py-3 px-4">Created</th>
+                      <th className="py-3 px-4 text-right">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {filteredRequests.map((req) => {
+                      const primaryPassenger = req.travellers?.[0];
+                      const passengerDisplay = primaryPassenger
+                        ? `${primaryPassenger.firstName} ${primaryPassenger.lastName}${req.travellers.length > 1 ? ` (+${req.travellers.length - 1})` : ''}`
+                        : 'Traveller';
 
+                      return (
+                        <tr key={req._id || req.id} className="hover:bg-slate-50/60 transition-colors">
+                          <td className="py-3.5 px-4 font-mono font-bold text-[#2563EB]">
+                            {req.requestId}
+                          </td>
+                          <td className="py-3.5 px-4">
+                            <div className="font-bold text-[#082B61]">{passengerDisplay}</div>
+                            <div className="text-[11px] text-slate-400">{req.contact?.phone || req.contact?.email}</div>
+                          </td>
+                          <td className="py-3.5 px-4">
+                            <span
+                              className={`inline-block px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${
+                                req.tripType === 'Return'
+                                  ? 'bg-purple-50 text-purple-700 border-purple-200'
+                                  : 'bg-blue-50 text-blue-700 border-blue-200'
+                              }`}
+                            >
+                              {req.tripType}
+                            </span>
+                          </td>
+                          <td className="py-3.5 px-4 font-bold text-[#082B61]">
+                            {req.flight?.from} → {req.flight?.to}
+                          </td>
+                          <td className="py-3.5 px-4 text-slate-600">
+                            <div>{req.flight?.departureDate}</div>
+                            {req.flight?.returnDate && (
+                              <div className="text-[10px] text-slate-400">Ret: {req.flight?.returnDate}</div>
+                            )}
+                          </td>
+                          <td className="py-3.5 px-4 text-slate-500">
+                            {req.requiredDate || 'Standard'}
+                          </td>
+                          <td className="py-3.5 px-4">
+                            <span
+                              className={`inline-block px-2.5 py-1 rounded-full text-[11px] font-bold border ${getRequestStatusBadgeStyle(
+                                req.status
+                              )}`}
+                            >
+                              {req.status}
+                            </span>
+                          </td>
+                          <td className="py-3.5 px-4 text-slate-400 text-[11px]">
+                            {req.createdAt ? new Date(req.createdAt).toLocaleDateString('en-IN') : '—'}
+                          </td>
+                          <td className="py-3.5 px-4 text-right">
+                            <button
+                              type="button"
+                              onClick={() => handleOpenRequestModal(req)}
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-50 hover:bg-blue-100 text-[#2563EB] font-bold text-xs transition-colors cursor-pointer"
+                            >
+                              <Eye size={13} />
+                              <span>View Details</span>
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ============================================================== */}
+      {/* TAB 2: SERVICE PACKAGES & PRICING                               */}
+      {/* ============================================================== */}
+      {activeTab === 'packages' && (
+        <div className="space-y-4">
+          {/* Controls Bar */}
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs">
+            <div className="relative flex-1 max-w-md">
+              <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+              <input
+                type="text"
+                placeholder="Search packages by title or description..."
+                value={packageSearchQuery}
+                onChange={(e) => setPackageSearchQuery(e.target.value)}
+                className="w-full pl-9.5 pr-4 py-2 rounded-xl border border-slate-200 text-xs text-[#082B61] placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#2563EB]/20 bg-slate-50/50"
+              />
+            </div>
+
+            <div className="flex items-center gap-3">
+              <AdminDropdown
+                options={PACKAGE_STATUS_FILTER_OPTIONS}
+                value={packageStatusFilter}
+                onChange={setPackageStatusFilter}
+                ariaLabel="Filter packages by status"
+              />
+
+              <button
+                type="button"
+                onClick={() => setIsAddModalOpen(true)}
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#2563EB] hover:bg-blue-700 text-white font-bold text-xs transition-colors cursor-pointer shadow-xs"
+              >
+                <Plus size={14} />
+                <span>New Package</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Packages Grid */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {isLoadingPackages ? (
+              <div className="col-span-full py-16 text-center">
+                <Loader2 size={32} className="animate-spin text-[#2563EB] mx-auto mb-2" />
+                <p className="text-xs font-bold text-slate-500">Loading packages...</p>
+              </div>
+            ) : filteredPackages.length === 0 ? (
+              <div className="col-span-full py-12 text-center text-slate-400 text-xs font-semibold">
+                No packages found.
+              </div>
+            ) : (
+              filteredPackages.map((ticket) => (
+                <div
+                  key={ticket._id || ticket.id}
+                  className="bg-white rounded-2xl border border-slate-200 p-5 space-y-4 shadow-2xs hover:border-blue-200 transition-all"
+                >
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                        {ticket.type || 'Flight Reservation'}
+                      </span>
+                      <h3 className="text-base font-bold text-[#082B61] mt-0.5">{ticket.title}</h3>
+                    </div>
+                    <AdminStatusBadge status={ticket.status} />
+                  </div>
+
+                  <p className="text-xs text-slate-500 leading-relaxed min-h-[36px]">
+                    {ticket.shortDescription || ticket.description || 'Valid airline GDS reservation.'}
+                  </p>
+
+                  <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-xs">
+                    <div>
+                      <span className="text-[10px] text-slate-400 block font-semibold">Price</span>
+                      <span className="text-base font-black text-[#082B61]">₹{ticket.price}</span>
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-slate-400 block font-semibold">Delivery</span>
+                      <span className="font-bold text-slate-700">{ticket.deliveryTime || '10–30 Mins'}</span>
+                    </div>
+                  </div>
+
+                  <div className="pt-2 border-t border-slate-100 flex items-center justify-between gap-2">
+                    <button
+                      type="button"
+                      onClick={() => handleTogglePackageStatus(ticket)}
+                      className="p-2 rounded-lg border border-slate-200 hover:bg-slate-50 text-slate-600 transition-colors cursor-pointer"
+                      title={ticket.status === 'ACTIVE' ? 'Deactivate' : 'Activate'}
+                    >
+                      <Power size={14} className={ticket.status === 'ACTIVE' ? 'text-emerald-600' : 'text-slate-400'} />
+                    </button>
+
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => handleOpenEditPackage(ticket)}
+                        className="px-3 py-1.5 rounded-lg bg-blue-50 text-[#2563EB] hover:bg-blue-100 text-xs font-bold transition-colors cursor-pointer"
+                      >
+                        Edit
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setDeleteTargetTicket(ticket)}
+                        className="p-1.5 text-slate-400 hover:text-red-500 transition-colors cursor-pointer"
+                        title="Delete package"
+                      >
+                        <Trash2 size={15} />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ============================================================== */}
+      {/* MODAL 1: VIEW & MANAGE REQUEST DETAILS (Requirement 16 & 17)   */}
+      {/* ============================================================== */}
+      {selectedRequest && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs">
+          <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+            {/* Modal Header */}
+            <div className="p-6 border-b border-slate-100 flex items-center justify-between">
+              <div>
+                <span className="text-[10px] font-extrabold uppercase tracking-wider text-[#2563EB] block">
+                  Dummy Ticket Booking Request
+                </span>
+                <div className="flex items-center gap-2 mt-0.5">
+                  <h2 className="text-xl font-black text-[#082B61] tracking-tight">
+                    {selectedRequest.requestId}
+                  </h2>
+                  <span
+                    className={`px-2.5 py-0.5 rounded-full text-xs font-bold border ${getRequestStatusBadgeStyle(
+                      selectedRequest.status
+                    )}`}
+                  >
+                    {selectedRequest.status}
+                  </span>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setSelectedRequest(null)}
+                className="text-slate-400 hover:text-slate-700 p-2 rounded-full hover:bg-slate-100 transition-colors cursor-pointer"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-6 overflow-y-auto space-y-6 text-xs text-[#082B61]">
+              {requestUpdateSuccess && (
+                <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-700 font-bold flex items-center gap-2">
+                  <CheckCircle2 size={16} />
+                  <span>Request status updated successfully in MongoDB Atlas!</span>
+                </div>
+              )}
+
+              {/* Flight Route & Travel Date Card */}
+              <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200/80 space-y-3">
+                <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 block">
+                  Flight Itinerary Details
+                </span>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  <div>
+                    <span className="text-[10px] text-slate-400 block font-semibold">From (Origin)</span>
+                    <span className="font-bold text-sm text-[#082B61]">{selectedRequest.flight?.from}</span>
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-slate-400 block font-semibold">To (Destination)</span>
+                    <span className="font-bold text-sm text-[#082B61]">{selectedRequest.flight?.to}</span>
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-slate-400 block font-semibold">Departure Date</span>
+                    <span className="font-bold text-[#082B61]">{selectedRequest.flight?.departureDate}</span>
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-slate-400 block font-semibold">Return Date</span>
+                    <span className="font-bold text-[#082B61]">
+                      {selectedRequest.tripType === 'Return' ? selectedRequest.flight?.returnDate || '—' : 'One Way'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Passengers List */}
+              <div className="space-y-2">
+                <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 block">
+                  Passengers ({selectedRequest.travellers?.length || 0})
+                </span>
+                <div className="divide-y divide-slate-100 border border-slate-200 rounded-2xl overflow-hidden">
+                  {selectedRequest.travellers?.map((traveller, idx) => (
+                    <div key={traveller._id || idx} className="p-3 bg-white flex items-center justify-between">
+                      <div>
+                        <span className="font-bold text-[#082B61]">
+                          {traveller.title} {traveller.firstName} {traveller.lastName}
+                        </span>
+                        <span className="text-slate-400 ml-2 text-[11px]">
+                          ({traveller.nationality || 'Indian'})
+                        </span>
+                      </div>
+                      <div className="text-slate-500 text-[11px]">
+                        DOB: {traveller.dateOfBirth || '—'}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Contact Information & Delivery */}
+              <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200/80 space-y-3">
+                <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 block">
+                  Contact & Delivery Details
+                </span>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div>
+                    <span className="text-[10px] text-slate-400 block font-semibold">Contact Phone</span>
+                    <span className="font-bold text-[#082B61]">
+                      {selectedRequest.contact?.dialCode} {selectedRequest.contact?.phone}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-slate-400 block font-semibold">Email</span>
+                    <span className="font-bold text-[#082B61]">{selectedRequest.contact?.email}</span>
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-slate-400 block font-semibold">Delivery Channel</span>
+                    <span className="font-bold text-[#2563EB]">{selectedRequest.deliveryMethod || 'WhatsApp'}</span>
+                  </div>
+                </div>
+
+                {selectedRequest.requiredDate && (
+                  <div className="pt-2 border-t border-slate-200 text-[11px] text-slate-500">
+                    <span className="font-bold text-slate-700">Requested Delivery Date:</span> {selectedRequest.requiredDate}
+                  </div>
+                )}
+                {selectedRequest.purpose && (
+                  <div className="text-[11px] text-slate-500">
+                    <span className="font-bold text-slate-700">Purpose:</span> {selectedRequest.purpose}
+                  </div>
+                )}
+                {selectedRequest.message && (
+                  <div className="text-[11px] text-slate-500">
+                    <span className="font-bold text-slate-700">Customer Note:</span> {selectedRequest.message}
+                  </div>
+                )}
+              </div>
+
+              {/* Operational Status & Admin Notes */}
+              <div className="space-y-4 pt-2 border-t border-slate-100">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-xs font-bold text-slate-700 block mb-1">
+                      Operational Status
+                    </label>
+                    <select
+                      value={selectedReqStatus}
+                      onChange={(e) => setSelectedReqStatus(e.target.value)}
+                      className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs font-bold text-[#082B61] bg-white focus:outline-none focus:ring-2 focus:ring-[#2563EB]/20"
+                    >
+                      {REQUEST_STATUSES.map((st) => (
+                        <option key={st} value={st}>{st}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-bold text-slate-700 block mb-1">
+                      Admin / Booking Notes
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="e.g. Issued on EK PNR: ABC123"
+                      value={selectedReqNotes}
+                      onChange={(e) => setSelectedReqNotes(e.target.value)}
+                      className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs text-[#082B61] bg-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#2563EB]/20"
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-4 border-t border-slate-100 flex items-center justify-between gap-3 bg-slate-50/50">
+              <button
+                type="button"
+                onClick={handleMarkCompleted}
+                disabled={isUpdatingRequest || selectedRequest.status === 'Completed'}
+                className="px-4 py-2 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 font-bold text-xs transition-colors cursor-pointer disabled:opacity-50"
+              >
+                Mark Completed
+              </button>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setSelectedRequest(null)}
+                  className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs transition-colors cursor-pointer"
+                >
+                  Close
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleSaveRequestUpdate()}
+                  disabled={isUpdatingRequest}
+                  className="px-5 py-2 rounded-xl bg-[#2563EB] hover:bg-blue-700 text-white font-bold text-xs shadow-xs transition-colors cursor-pointer flex items-center gap-1.5 disabled:opacity-50"
+                >
+                  {isUpdatingRequest ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}
+                  <span>Save Status</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Package Edit Modal */}
+      {editingTicket && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs">
+          <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl w-full max-w-lg overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+            <div className="p-6 border-b border-slate-100 flex items-center justify-between">
+              <h2 className="text-lg font-bold text-[#082B61]">Edit Service Package</h2>
               <button
                 type="button"
                 onClick={() => setEditingTicket(null)}
-                className="w-7 h-7 rounded-lg border border-slate-200 hover:bg-slate-100 flex items-center justify-center text-slate-400 hover:text-[#082B61] transition-colors cursor-pointer"
+                className="text-slate-400 hover:text-slate-700 p-1.5 rounded-full hover:bg-slate-100"
               >
-                <X size={15} />
+                <X size={18} />
               </button>
             </div>
 
-            <form onSubmit={handleSaveEdit} className="p-4 sm:p-6 space-y-6 flex-grow">
-              {saveSuccess && (
-                <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold flex items-center gap-2">
-                  <CheckCircle2 size={15} className="text-emerald-600 flex-shrink-0" />
-                  <span>Package updated successfully!</span>
+            <form onSubmit={handleSavePackageEdit} className="p-6 space-y-4 text-xs">
+              {savePackageSuccess && (
+                <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-700 font-bold">
+                  Package updated successfully!
+                </div>
+              )}
+              {savePackageError && (
+                <div className="p-3 rounded-xl bg-red-50 border border-red-200 text-red-700 font-bold">
+                  {savePackageError}
                 </div>
               )}
 
-              {saveError && (
-                <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-semibold flex items-center gap-2">
-                  <AlertCircle size={15} className="flex-shrink-0" />
-                  <span>{saveError}</span>
-                </div>
-              )}
-
-              {/* SECTION 1: Service Information */}
-              <div className="space-y-3">
-                <div className="border-b border-slate-100 pb-1">
-                  <h4 className="text-xs font-bold text-[#082B61] uppercase tracking-wider">1. Service Information</h4>
-                  <p className="text-[11px] text-slate-400">Package naming, reservation route, and descriptions.</p>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-[11px] font-bold text-[#082B61] mb-1">
-                      Package Title *
-                    </label>
-                    <input
-                      type="text"
-                      value={editFormData.title}
-                      onChange={(e) => setEditFormData({ ...editFormData, title: e.target.value })}
-                      required
-                      placeholder="e.g. Return Flight Reservation"
-                      className="w-full h-9 px-3 rounded-lg border border-slate-200 text-xs font-medium text-[#082B61] focus:outline-none focus:border-[#2563EB]"
-                    />
-                    <span className="text-[10px] text-slate-400 mt-0.5 block">Title displayed on ticket booking page</span>
-                  </div>
-
-                  <div>
-                    <label className="block text-[11px] font-bold text-[#082B61] mb-1">
-                      Reservation Type *
-                    </label>
-                    <input
-                      type="text"
-                      value={editFormData.type}
-                      onChange={(e) => setEditFormData({ ...editFormData, type: e.target.value })}
-                      required
-                      placeholder="e.g. Round Trip / Onward Reservation"
-                      className="w-full h-9 px-3 rounded-lg border border-slate-200 text-xs font-medium text-[#082B61] focus:outline-none focus:border-[#2563EB]"
-                    />
-                    <span className="text-[10px] text-slate-400 mt-0.5 block">Type of reservation issued to the client</span>
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-[11px] font-bold text-[#082B61] mb-1">
-                    Short Description
-                  </label>
-                  <input
-                    type="text"
-                    value={editFormData.shortDescription}
-                    onChange={(e) => setEditFormData({ ...editFormData, shortDescription: e.target.value })}
-                    placeholder="Short summary displayed on pricing cards"
-                    className="w-full h-9 px-3 rounded-lg border border-slate-200 text-xs font-medium text-[#082B61] focus:outline-none focus:border-[#2563EB]"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-[11px] font-bold text-[#082B61] mb-1">
-                    Full Description
-                  </label>
-                  <textarea
-                    rows={2}
-                    value={editFormData.description}
-                    onChange={(e) => setEditFormData({ ...editFormData, description: e.target.value })}
-                    placeholder="Comprehensive description of what is included in this reservation..."
-                    className="w-full p-2.5 rounded-lg border border-slate-200 text-xs font-medium text-[#082B61] focus:outline-none focus:border-[#2563EB] resize-none"
-                  />
-                </div>
+              <div>
+                <label className="text-xs font-bold text-slate-700 block mb-1">Title</label>
+                <input
+                  type="text"
+                  value={editFormData.title}
+                  onChange={(e) => setEditFormData((prev) => ({ ...prev, title: e.target.value }))}
+                  className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs text-[#082B61]"
+                  required
+                />
               </div>
 
-              {/* SECTION 2: Pricing */}
-              <div className="space-y-3">
-                <div className="border-b border-slate-100 pb-1">
-                  <h4 className="text-xs font-bold text-[#082B61] uppercase tracking-wider">2. Pricing</h4>
-                  <p className="text-[11px] text-slate-400">Total charge for issuing and holding this reservation.</p>
-                </div>
-
+              <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-[11px] font-bold text-[#082B61] mb-1">
-                    Package Price (₹) *
-                  </label>
+                  <label className="text-xs font-bold text-slate-700 block mb-1">Price (₹)</label>
                   <input
                     type="number"
-                    min="0"
                     value={editFormData.price}
-                    onChange={(e) => setEditFormData({ ...editFormData, price: Number(e.target.value) })}
-                    className="w-full h-9 px-3 rounded-lg border border-slate-200 text-xs font-bold text-[#082B61] focus:outline-none focus:border-[#2563EB]"
+                    onChange={(e) => setEditFormData((prev) => ({ ...prev, price: Number(e.target.value) }))}
+                    className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs text-[#082B61]"
+                    required
                   />
-                  <span className="text-[10px] text-slate-400 mt-0.5 block">Price charged to customer per reservation.</span>
                 </div>
-              </div>
-
-              {/* SECTION 3: Delivery */}
-              <div className="space-y-3">
-                <div className="border-b border-slate-100 pb-1">
-                  <h4 className="text-xs font-bold text-[#082B61] uppercase tracking-wider">3. Delivery</h4>
-                  <p className="text-[11px] text-slate-400">Turnaround guarantee for generating verifiable PNR ticket.</p>
-                </div>
-
                 <div>
-                  <label className="block text-[11px] font-bold text-[#082B61] mb-1">
-                    Delivery Speed
-                  </label>
+                  <label className="text-xs font-bold text-slate-700 block mb-1">Delivery Time</label>
                   <input
                     type="text"
                     value={editFormData.deliveryTime}
-                    onChange={(e) => setEditFormData({ ...editFormData, deliveryTime: e.target.value })}
-                    placeholder="e.g. 10–30 Minutes"
-                    className="w-full h-9 px-3 rounded-lg border border-slate-200 text-xs font-medium text-[#082B61] focus:outline-none focus:border-[#2563EB]"
-                  />
-                  <span className="text-[10px] text-slate-400 mt-0.5 block">Turnaround speed badge shown on customer portal</span>
-                </div>
-              </div>
-
-              {/* SECTION 4: Validity */}
-              <div className="space-y-3">
-                <div className="border-b border-slate-100 pb-1">
-                  <h4 className="text-xs font-bold text-[#082B61] uppercase tracking-wider">4. Validity</h4>
-                  <p className="text-[11px] text-slate-400">Duration the reservation remains active in the airline GDS system.</p>
-                </div>
-
-                <div>
-                  <label className="block text-[11px] font-bold text-[#082B61] mb-1">
-                    PNR Validity Period
-                  </label>
-                  <input
-                    type="text"
-                    value={editFormData.validity}
-                    onChange={(e) => setEditFormData({ ...editFormData, validity: e.target.value })}
-                    placeholder="e.g. 2–3 Weeks (Live PNR Verifiable)"
-                    className="w-full h-9 px-3 rounded-lg border border-slate-200 text-xs font-medium text-[#082B61] focus:outline-none focus:border-[#2563EB]"
-                  />
-                  <span className="text-[10px] text-slate-400 mt-0.5 block">Guaranteed live PNR window for embassy scrutiny</span>
-                </div>
-              </div>
-
-              {/* SECTION 5: Features */}
-              <div className="space-y-3">
-                <div className="border-b border-slate-100 pb-1">
-                  <h4 className="text-xs font-bold text-[#082B61] uppercase tracking-wider">5. Features</h4>
-                  <p className="text-[11px] text-slate-400">Highlight bullet points displayed on the customer pricing card.</p>
-                </div>
-
-                <div>
-                  <label className="block text-[11px] font-bold text-[#082B61] mb-1">
-                    Features (One per line)
-                  </label>
-                  <textarea
-                    rows={4}
-                    value={Array.isArray(editFormData.features) ? editFormData.features.join('\n') : ''}
-                    onChange={(e) =>
-                      setEditFormData({
-                        ...editFormData,
-                        features: e.target.value.split('\n').map((s) => s.trim()).filter(Boolean)
-                      })
-                    }
-                    placeholder="Live 6-character airline PNR code&#10;Directly verifiable on airline website&#10;Embassy & consulate visa compliant"
-                    className="w-full p-2.5 rounded-lg border border-slate-200 text-xs font-medium text-[#082B61] focus:outline-none focus:border-[#2563EB] resize-none"
+                    onChange={(e) => setEditFormData((prev) => ({ ...prev, deliveryTime: e.target.value }))}
+                    className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs text-[#082B61]"
                   />
                 </div>
               </div>
 
-              {/* SECTION 6: Visibility & Ordering */}
-              <div className="space-y-3">
-                <div className="border-b border-slate-100 pb-1">
-                  <h4 className="text-xs font-bold text-[#082B61] uppercase tracking-wider">6. Visibility & Ordering</h4>
-                  <p className="text-[11px] text-slate-400">Control active publication status on the customer portal.</p>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-[11px] font-bold text-[#082B61] mb-1">
-                      Status
-                    </label>
-                    <select
-                      value={editFormData.status}
-                      onChange={(e) => setEditFormData({ ...editFormData, status: e.target.value })}
-                      className="w-full h-9 px-2.5 rounded-lg border border-slate-200 text-xs font-bold text-[#082B61] focus:outline-none focus:border-[#2563EB] cursor-pointer"
-                    >
-                      <option value="ACTIVE">ACTIVE (Published to Customer Portal)</option>
-                      <option value="INACTIVE">INACTIVE (Hidden from Customers)</option>
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="block text-[11px] font-bold text-[#082B61] mb-1">
-                      Display Order Rank
-                    </label>
-                    <input
-                      type="number"
-                      value={editFormData.displayOrder}
-                      onChange={(e) => setEditFormData({ ...editFormData, displayOrder: Number(e.target.value) })}
-                      className="w-full h-9 px-3 rounded-lg border border-slate-200 text-xs font-bold text-[#082B61] focus:outline-none focus:border-[#2563EB]"
-                    />
-                    <span className="text-[10px] text-slate-400 mt-0.5 block">Lower numbers appear first</span>
-                  </div>
-                </div>
+              <div>
+                <label className="text-xs font-bold text-slate-700 block mb-1">Description</label>
+                <textarea
+                  rows={3}
+                  value={editFormData.description}
+                  onChange={(e) => setEditFormData((prev) => ({ ...prev, description: e.target.value }))}
+                  className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs text-[#082B61]"
+                />
               </div>
 
-              {/* Modal Footer */}
-              <div className="flex items-center justify-end gap-2.5 pt-4 border-t border-slate-100">
+              <div className="pt-4 border-t border-slate-100 flex justify-end gap-2">
                 <button
                   type="button"
                   onClick={() => setEditingTicket(null)}
-                  className="px-4 py-2 rounded-lg border border-slate-200 text-xs font-semibold text-slate-600 hover:bg-slate-50 transition-colors cursor-pointer"
+                  className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs"
                 >
                   Cancel
                 </button>
-
                 <button
                   type="submit"
-                  disabled={isSaving}
-                  className="inline-flex items-center gap-1.5 px-5 py-2 rounded-lg bg-[#2563EB] hover:bg-[#1d4ed8] text-white text-xs font-bold transition-all shadow-sm disabled:opacity-50 cursor-pointer"
+                  disabled={isSavingPackage}
+                  className="px-5 py-2 rounded-xl bg-[#2563EB] hover:bg-blue-700 text-white font-bold text-xs shadow-xs"
                 >
-                  {isSaving ? (
-                    <>
-                      <Loader2 size={13} className="animate-spin" />
-                      <span>Saving to Database...</span>
-                    </>
-                  ) : (
-                    <>
-                      <Save size={13} />
-                      <span>Save Changes</span>
-                    </>
-                  )}
+                  {isSavingPackage ? 'Saving...' : 'Save Package'}
                 </button>
               </div>
-
             </form>
           </div>
         </div>
       )}
 
-      {/* 5. ADD TICKET MODAL */}
+      {/* Package Add Modal */}
       {isAddModalOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-2xs flex items-center justify-center p-3 sm:p-4">
-          <div className="bg-white rounded-2xl max-w-xl w-full max-h-[92vh] overflow-y-auto shadow-xl border border-slate-200 flex flex-col animate-in fade-in zoom-in-95 duration-150">
-            
-            <div className="sticky top-0 z-20 bg-white p-4 sm:p-5 border-b border-slate-100 flex items-center justify-between">
-              <div>
-                <h3 className="text-base font-black text-[#082B61]">Add Dummy Ticket Package</h3>
-                <p className="text-[11px] text-slate-400 font-medium">
-                  Create a new verifiable flight reservation package. Slugs are automatically generated.
-                </p>
-              </div>
-
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs">
+          <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl w-full max-w-lg overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+            <div className="p-6 border-b border-slate-100 flex items-center justify-between">
+              <h2 className="text-lg font-bold text-[#082B61]">New Service Package</h2>
               <button
                 type="button"
                 onClick={() => setIsAddModalOpen(false)}
-                className="w-7 h-7 rounded-lg border border-slate-200 hover:bg-slate-100 flex items-center justify-center text-slate-400 hover:text-[#082B61] transition-colors cursor-pointer"
+                className="text-slate-400 hover:text-slate-700 p-1.5 rounded-full hover:bg-slate-100"
               >
-                <X size={15} />
+                <X size={18} />
               </button>
             </div>
 
-            <form onSubmit={handleCreateTicket} className="p-4 sm:p-6 space-y-6 flex-grow">
-              {createError && (
-                <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-semibold flex items-center gap-2">
-                  <AlertCircle size={15} className="flex-shrink-0" />
-                  <span>{createError}</span>
+            <form onSubmit={handleCreatePackage} className="p-6 space-y-4 text-xs">
+              {createPackageError && (
+                <div className="p-3 rounded-xl bg-red-50 border border-red-200 text-red-700 font-bold">
+                  {createPackageError}
                 </div>
               )}
 
-              {/* SECTION 1: Service Information */}
-              <div className="space-y-3">
-                <div className="border-b border-slate-100 pb-1">
-                  <h4 className="text-xs font-bold text-[#082B61] uppercase tracking-wider">1. Service Information</h4>
-                  <p className="text-[11px] text-slate-400">Package naming, reservation route, and descriptions.</p>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-[11px] font-bold text-[#082B61] mb-1">
-                      Package Title *
-                    </label>
-                    <input
-                      type="text"
-                      value={addFormData.title}
-                      onChange={(e) => setAddFormData({ ...addFormData, title: e.target.value })}
-                      required
-                      placeholder="e.g. Multi-City Flight Reservation"
-                      className="w-full h-9 px-3 rounded-lg border border-slate-200 text-xs font-medium text-[#082B61] focus:outline-none focus:border-[#2563EB]"
-                    />
-                    <span className="text-[10px] text-slate-400 mt-0.5 block">Title displayed on ticket booking page</span>
-                  </div>
-
-                  <div>
-                    <label className="block text-[11px] font-bold text-[#082B61] mb-1">
-                      Reservation Type *
-                    </label>
-                    <input
-                      type="text"
-                      value={addFormData.type}
-                      onChange={(e) => setAddFormData({ ...addFormData, type: e.target.value })}
-                      required
-                      placeholder="e.g. Round Trip / Onward Reservation"
-                      className="w-full h-9 px-3 rounded-lg border border-slate-200 text-xs font-medium text-[#082B61] focus:outline-none focus:border-[#2563EB]"
-                    />
-                    <span className="text-[10px] text-slate-400 mt-0.5 block">Type of reservation issued to the client</span>
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-[11px] font-bold text-[#082B61] mb-1">
-                    Short Description
-                  </label>
-                  <input
-                    type="text"
-                    value={addFormData.shortDescription}
-                    onChange={(e) => setAddFormData({ ...addFormData, shortDescription: e.target.value })}
-                    placeholder="Short summary displayed on pricing cards"
-                    className="w-full h-9 px-3 rounded-lg border border-slate-200 text-xs font-medium text-[#082B61] focus:outline-none focus:border-[#2563EB]"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-[11px] font-bold text-[#082B61] mb-1">
-                    Full Description
-                  </label>
-                  <textarea
-                    rows={2}
-                    value={addFormData.description}
-                    onChange={(e) => setAddFormData({ ...addFormData, description: e.target.value })}
-                    placeholder="Comprehensive description of what is included in this reservation..."
-                    className="w-full p-2.5 rounded-lg border border-slate-200 text-xs font-medium text-[#082B61] focus:outline-none focus:border-[#2563EB] resize-none"
-                  />
-                </div>
+              <div>
+                <label className="text-xs font-bold text-slate-700 block mb-1">Package Title</label>
+                <input
+                  type="text"
+                  placeholder="e.g. Express Urgent PNR Ticket"
+                  value={addFormData.title}
+                  onChange={(e) => setAddFormData((prev) => ({ ...prev, title: e.target.value }))}
+                  className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs text-[#082B61]"
+                  required
+                />
               </div>
 
-              {/* SECTION 2: Pricing */}
-              <div className="space-y-3">
-                <div className="border-b border-slate-100 pb-1">
-                  <h4 className="text-xs font-bold text-[#082B61] uppercase tracking-wider">2. Pricing</h4>
-                  <p className="text-[11px] text-slate-400">Total charge for issuing and holding this reservation.</p>
-                </div>
-
+              <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-[11px] font-bold text-[#082B61] mb-1">
-                    Package Price (₹) *
-                  </label>
+                  <label className="text-xs font-bold text-slate-700 block mb-1">Price (₹)</label>
                   <input
                     type="number"
-                    min="0"
                     value={addFormData.price}
-                    onChange={(e) => setAddFormData({ ...addFormData, price: Number(e.target.value) })}
-                    className="w-full h-9 px-3 rounded-lg border border-slate-200 text-xs font-bold text-[#082B61] focus:outline-none focus:border-[#2563EB]"
+                    onChange={(e) => setAddFormData((prev) => ({ ...prev, price: Number(e.target.value) }))}
+                    className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs text-[#082B61]"
+                    required
                   />
-                  <span className="text-[10px] text-slate-400 mt-0.5 block">Price charged to customer per reservation.</span>
                 </div>
-              </div>
-
-              {/* SECTION 3: Delivery */}
-              <div className="space-y-3">
-                <div className="border-b border-slate-100 pb-1">
-                  <h4 className="text-xs font-bold text-[#082B61] uppercase tracking-wider">3. Delivery</h4>
-                  <p className="text-[11px] text-slate-400">Turnaround guarantee for generating verifiable PNR ticket.</p>
-                </div>
-
                 <div>
-                  <label className="block text-[11px] font-bold text-[#082B61] mb-1">
-                    Delivery Speed
-                  </label>
+                  <label className="text-xs font-bold text-slate-700 block mb-1">Delivery Time</label>
                   <input
                     type="text"
                     value={addFormData.deliveryTime}
-                    onChange={(e) => setAddFormData({ ...addFormData, deliveryTime: e.target.value })}
-                    placeholder="e.g. 10–30 Minutes"
-                    className="w-full h-9 px-3 rounded-lg border border-slate-200 text-xs font-medium text-[#082B61] focus:outline-none focus:border-[#2563EB]"
-                  />
-                  <span className="text-[10px] text-slate-400 mt-0.5 block">Turnaround speed badge shown on customer portal</span>
-                </div>
-              </div>
-
-              {/* SECTION 4: Validity */}
-              <div className="space-y-3">
-                <div className="border-b border-slate-100 pb-1">
-                  <h4 className="text-xs font-bold text-[#082B61] uppercase tracking-wider">4. Validity</h4>
-                  <p className="text-[11px] text-slate-400">Duration the reservation remains active in the airline GDS system.</p>
-                </div>
-
-                <div>
-                  <label className="block text-[11px] font-bold text-[#082B61] mb-1">
-                    PNR Validity Period
-                  </label>
-                  <input
-                    type="text"
-                    value={addFormData.validity}
-                    onChange={(e) => setAddFormData({ ...addFormData, validity: e.target.value })}
-                    placeholder="e.g. 2–3 Weeks (Live PNR Verifiable)"
-                    className="w-full h-9 px-3 rounded-lg border border-slate-200 text-xs font-medium text-[#082B61] focus:outline-none focus:border-[#2563EB]"
-                  />
-                  <span className="text-[10px] text-slate-400 mt-0.5 block">Guaranteed live PNR window for embassy scrutiny</span>
-                </div>
-              </div>
-
-              {/* SECTION 5: Features */}
-              <div className="space-y-3">
-                <div className="border-b border-slate-100 pb-1">
-                  <h4 className="text-xs font-bold text-[#082B61] uppercase tracking-wider">5. Features</h4>
-                  <p className="text-[11px] text-slate-400">Highlight bullet points displayed on the customer pricing card.</p>
-                </div>
-
-                <div>
-                  <label className="block text-[11px] font-bold text-[#082B61] mb-1">
-                    Features (One per line)
-                  </label>
-                  <textarea
-                    rows={4}
-                    value={Array.isArray(addFormData.features) ? addFormData.features.join('\n') : ''}
-                    onChange={(e) =>
-                      setAddFormData({
-                        ...addFormData,
-                        features: e.target.value.split('\n').map((s) => s.trim()).filter(Boolean)
-                      })
-                    }
-                    placeholder="Live 6-character airline PNR code&#10;Directly verifiable on airline website&#10;Embassy & consulate visa compliant"
-                    className="w-full p-2.5 rounded-lg border border-slate-200 text-xs font-medium text-[#082B61] focus:outline-none focus:border-[#2563EB] resize-none"
+                    onChange={(e) => setAddFormData((prev) => ({ ...prev, deliveryTime: e.target.value }))}
+                    className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs text-[#082B61]"
                   />
                 </div>
               </div>
 
-              {/* SECTION 6: Visibility & Ordering */}
-              <div className="space-y-3">
-                <div className="border-b border-slate-100 pb-1">
-                  <h4 className="text-xs font-bold text-[#082B61] uppercase tracking-wider">6. Visibility & Ordering</h4>
-                  <p className="text-[11px] text-slate-400">Control active publication status on the customer portal.</p>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-[11px] font-bold text-[#082B61] mb-1">
-                      Status
-                    </label>
-                    <select
-                      value={addFormData.status}
-                      onChange={(e) => setAddFormData({ ...addFormData, status: e.target.value })}
-                      className="w-full h-9 px-2.5 rounded-lg border border-slate-200 text-xs font-bold text-[#082B61] focus:outline-none focus:border-[#2563EB] cursor-pointer"
-                    >
-                      <option value="ACTIVE">ACTIVE (Published to Customer Portal)</option>
-                      <option value="INACTIVE">INACTIVE (Hidden from Customers)</option>
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="block text-[11px] font-bold text-[#082B61] mb-1">
-                      Display Order Rank
-                    </label>
-                    <input
-                      type="number"
-                      value={addFormData.displayOrder}
-                      onChange={(e) => setAddFormData({ ...addFormData, displayOrder: Number(e.target.value) })}
-                      className="w-full h-9 px-3 rounded-lg border border-slate-200 text-xs font-bold text-[#082B61] focus:outline-none focus:border-[#2563EB]"
-                    />
-                    <span className="text-[10px] text-slate-400 mt-0.5 block">Lower numbers appear first</span>
-                  </div>
-                </div>
+              <div>
+                <label className="text-xs font-bold text-slate-700 block mb-1">Description</label>
+                <textarea
+                  rows={3}
+                  placeholder="Brief description of the package..."
+                  value={addFormData.description}
+                  onChange={(e) => setAddFormData((prev) => ({ ...prev, description: e.target.value }))}
+                  className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs text-[#082B61]"
+                />
               </div>
 
-              {/* Modal Footer */}
-              <div className="flex items-center justify-end gap-2.5 pt-4 border-t border-slate-100">
+              <div className="pt-4 border-t border-slate-100 flex justify-end gap-2">
                 <button
                   type="button"
                   onClick={() => setIsAddModalOpen(false)}
-                  className="px-4 py-2 rounded-lg border border-slate-200 text-xs font-semibold text-slate-600 hover:bg-slate-50 transition-colors cursor-pointer"
+                  className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs"
                 >
                   Cancel
                 </button>
-
                 <button
                   type="submit"
-                  disabled={isCreating}
-                  className="inline-flex items-center gap-1.5 px-5 py-2 rounded-lg bg-[#2563EB] hover:bg-[#1d4ed8] text-white text-xs font-bold transition-all shadow-sm disabled:opacity-50 cursor-pointer"
+                  disabled={isCreatingPackage}
+                  className="px-5 py-2 rounded-xl bg-[#2563EB] hover:bg-blue-700 text-white font-bold text-xs shadow-xs"
                 >
-                  {isCreating ? (
-                    <>
-                      <Loader2 size={13} className="animate-spin" />
-                      <span>Creating in Database...</span>
-                    </>
-                  ) : (
-                    <>
-                      <Plus size={13} />
-                      <span>Create Package</span>
-                    </>
-                  )}
+                  {isCreatingPackage ? 'Creating...' : 'Create Package'}
                 </button>
               </div>
-
             </form>
           </div>
         </div>
       )}
 
-      {/* 6. DELETE CONFIRMATION MODAL */}
-      <DeleteConfirmationModal
-        isOpen={Boolean(deleteTargetTicket)}
-        onClose={() => setDeleteTargetTicket(null)}
-        onConfirm={handleConfirmDelete}
-        isLoading={isDeletingTicket}
-        title="Remove Dummy Ticket Package"
-        entityName={deleteTargetTicket?.title}
-        entityType="Dummy Ticket Package"
-        error={deleteError}
-      />
-
+      {/* Delete Confirmation Modal for Package */}
+      {deleteTargetTicket && (
+        <DeleteConfirmationModal
+          isOpen={Boolean(deleteTargetTicket)}
+          onClose={() => setDeleteTargetTicket(null)}
+          onConfirm={handleConfirmDeletePackage}
+          title={`Delete Package "${deleteTargetTicket.title}"?`}
+          message="Are you sure you want to delete this dummy ticket package offering? It will be removed from customer listings."
+          isDeleting={isDeletingTicket}
+          error={deleteError}
+        />
+      )}
     </div>
   );
 }

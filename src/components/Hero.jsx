@@ -52,7 +52,12 @@ export default function Hero() {
         const cList = await countryService.getAllCountries();
         if (isMounted && Array.isArray(cList) && cList.length > 0) {
           const dynamicCountryNames = Array.from(
-            new Set(cList.map((c) => c.displayName || c.name).filter(Boolean))
+            new Set(
+              cList
+                .filter((c) => c.status === 'ACTIVE' || c.isActive !== false)
+                .map((c) => c.displayName || c.name)
+                .filter(Boolean)
+            )
           );
           if (dynamicCountryNames.length > 0) {
             setSearchCountries(dynamicCountryNames);

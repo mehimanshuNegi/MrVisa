@@ -134,6 +134,42 @@ const visaSchema = new mongoose.Schema(
       type: String,
       default: 'Available'
     },
+    category: {
+      type: String,
+      default: 'Standard',
+      trim: true
+    },
+    isPopular: {
+      type: Boolean,
+      default: false,
+      index: true
+    },
+    displayOrder: {
+      type: Number,
+      default: 0,
+      index: true
+    },
+    countryCode: {
+      type: String,
+      default: '',
+      trim: true,
+      uppercase: true
+    },
+    countryName: {
+      type: String,
+      default: '',
+      trim: true
+    },
+    countryFlag: {
+      type: String,
+      default: '',
+      trim: true
+    },
+    countryImage: {
+      type: String,
+      default: '',
+      trim: true
+    },
     isActive: {
       type: Boolean,
       default: true,
@@ -152,13 +188,71 @@ const visaSchema = new mongoose.Schema(
       transform: (doc, ret) => {
         ret.id = ret._id.toString();
         ret.countryId = doc.country?.slug || (doc.country?._id ? doc.country._id.toString() : doc.country?.toString());
-        ret.countryName = doc.country?.name || doc.displayName || '';
+        ret.countryName = doc.country?.name || doc.countryName || doc.displayName || '';
+        ret.countryCode = doc.country?.code || doc.countryCode || '';
+        ret.countryFlag = doc.country?.flagEmoji || doc.countryFlag || '';
+        ret.isPopular = Boolean(doc.isPopular);
+        ret.displayOrder = doc.displayOrder || 0;
+        ret.category = doc.category || 'Standard';
         ret.status = ret.isActive ? 'ACTIVE' : 'INACTIVE';
         ret.price = `₹${((ret.governmentFee || 0) + (ret.serviceFee || 0)).toLocaleString('en-IN')}`;
         ret.fees = ret.price;
         ret.totalFee = (ret.governmentFee || 0) + (ret.serviceFee || 0);
         ret.documentsRequired = ret.requiredDocuments;
         ret.documents = ret.requiredDocuments;
+
+        // Dynamic Image Resolution:
+        // Priority 1: Visa-specific image, if explicitly configured and not equal to country image
+        // Priority 2: Country image (from populated country document or fallback to doc.countryImage)
+        // Priority 3: Clean empty fallback (no random Unsplash fallback)
+        const countryImg = ((doc.country && typeof doc.country === 'object' && doc.country.image)
+          ? String(doc.country.image).trim()
+          : (doc.countryImage ? String(doc.countryImage).trim() : ''));
+        const explicitVisaImg = (doc.image && typeof doc.image === 'string')
+          ? doc.image.trim()
+          : '';
+        const hasCustomImage = Boolean(explicitVisaImg && explicitVisaImg !== countryImg);
+
+        ret.hasCustomImage = hasCustomImage;
+        ret.customImage = hasCustomImage ? explicitVisaImg : '';
+        ret.countryImage = countryImg;
+        ret.image = hasCustomImage ? explicitVisaImg : (countryImg || explicitVisaImg || '');
+
+        delete ret.__v;
+        return ret;
+      }
+    },
+    toObject: {
+      virtuals: true,
+      transform: (doc, ret) => {
+        ret.id = ret._id.toString();
+        ret.countryId = doc.country?.slug || (doc.country?._id ? doc.country._id.toString() : doc.country?.toString());
+        ret.countryName = doc.country?.name || doc.countryName || doc.displayName || '';
+        ret.countryCode = doc.country?.code || doc.countryCode || '';
+        ret.countryFlag = doc.country?.flagEmoji || doc.countryFlag || '';
+        ret.isPopular = Boolean(doc.isPopular);
+        ret.displayOrder = doc.displayOrder || 0;
+        ret.category = doc.category || 'Standard';
+        ret.status = ret.isActive ? 'ACTIVE' : 'INACTIVE';
+        ret.price = `₹${((ret.governmentFee || 0) + (ret.serviceFee || 0)).toLocaleString('en-IN')}`;
+        ret.fees = ret.price;
+        ret.totalFee = (ret.governmentFee || 0) + (ret.serviceFee || 0);
+        ret.documentsRequired = ret.requiredDocuments;
+        ret.documents = ret.requiredDocuments;
+
+        const countryImg = ((doc.country && typeof doc.country === 'object' && doc.country.image)
+          ? String(doc.country.image).trim()
+          : (doc.countryImage ? String(doc.countryImage).trim() : ''));
+        const explicitVisaImg = (doc.image && typeof doc.image === 'string')
+          ? doc.image.trim()
+          : '';
+        const hasCustomImage = Boolean(explicitVisaImg && explicitVisaImg !== countryImg);
+
+        ret.hasCustomImage = hasCustomImage;
+        ret.customImage = hasCustomImage ? explicitVisaImg : '';
+        ret.countryImage = countryImg;
+        ret.image = hasCustomImage ? explicitVisaImg : (countryImg || explicitVisaImg || '');
+
         delete ret.__v;
         return ret;
       }

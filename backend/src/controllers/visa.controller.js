@@ -4,13 +4,14 @@ import { asyncHandler } from '../utils/asyncHandler.js';
 import { ApiError } from '../utils/apiError.js';
 
 export const getAllVisas = asyncHandler(async (req, res) => {
-  const { query, country, visaType, documentCategory, status, page, limit } = req.query;
+  const { query, country, visaType, documentCategory, status, isPopular, page, limit } = req.query;
   const result = await visaService.getAllVisas({
     query,
     country,
     visaType,
     documentCategory,
     status,
+    isPopular,
     page,
     limit
   });

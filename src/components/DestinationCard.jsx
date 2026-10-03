@@ -28,7 +28,7 @@ export default function DestinationCard({ destination, index = 0 }) {
     const raw = String(visaType || '').toLowerCase();
     const cLower = String(countryTitle || '').toLowerCase();
     if (cLower.includes('thailand')) return 'e-Visa / TDAC';
-    if (cLower.includes('japan') || cLower.includes('united arab')) return 'Tourist Visa';
+    if (cLower.includes('united arab') || cLower.includes('emirates')) return 'Tourist Visa';
     if (raw.includes('arrival card') || raw.includes('tdac')) return 'e-Visa / Arrival Card';
     if (raw.includes('e-visa') || raw.includes('eta')) return 'e-Visa';
     return visaType || 'Tourist Visa';
@@ -44,12 +44,21 @@ export default function DestinationCard({ destination, index = 0 }) {
     >
       {/* TOP: Destination Image matching reference */}
       <div className="relative h-24 sm:h-28 w-full overflow-hidden bg-slate-100 flex-shrink-0">
-        <img
-          src={image}
-          alt={countryTitle}
-          loading="lazy"
-          className="w-full h-full object-cover object-center transition-transform duration-500 ease-out group-hover:scale-105"
-        />
+        {image ? (
+          <img
+            src={image}
+            alt={countryTitle}
+            loading="lazy"
+            className="w-full h-full object-cover object-center transition-transform duration-500 ease-out group-hover:scale-105"
+            onError={(e) => {
+              e.target.style.display = 'none';
+            }}
+          />
+        ) : (
+          <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-slate-100 to-slate-200 text-slate-400 text-2xl">
+            {flagEmoji || '🌍'}
+          </div>
+        )}
       </div>
 
       {/* BOTTOM: Flag, Country Name, Arrow, Visa Label, High Approval Rate Badge */}

@@ -1,6 +1,20 @@
 import React, { useState, useEffect } from 'react';
-import { useSearchParams } from 'react-router-dom';
-import { Phone, Mail, MapPin, Clock, ArrowRight, CheckCircle2, ChevronDown, HelpCircle, MessageSquare, X } from 'lucide-react';
+import { useSearchParams, Link } from 'react-router-dom';
+import {
+  Phone,
+  Mail,
+  MapPin,
+  ArrowRight,
+  CheckCircle2,
+  ChevronRight,
+  ChevronDown,
+  HelpCircle,
+  MessageSquare,
+  FileText,
+  Clock,
+  Plane,
+  X
+} from 'lucide-react';
 import { countryService } from '../services';
 
 const searchCountries = countryService.getSearchCountries();
@@ -69,198 +83,212 @@ export default function ContactPage() {
   };
 
   return (
-    <div className="bg-white min-h-screen py-12 lg:py-20">
-      <div className="max-w-[1440px] mx-auto px-6 lg:px-12">
-        
-        {/* HERO SECTION */}
-        <div className="max-w-3xl mb-14 lg:mb-18">
-          <p className="text-xs font-bold tracking-[0.2em] text-[#1479F5] uppercase mb-3">
-            CONTACT US
-          </p>
-          <h1 className="text-4xl sm:text-5xl font-extrabold text-[#0B2A63] tracking-tight leading-[1.15]">
-            We're Here to Help
-          </h1>
-          <p className="text-lg text-[#64748B] font-medium mt-3">
-            Have a question about your visa or application? Get in touch with our team.
-          </p>
-        </div>
-
-        {/* TWO-COLUMN CONTACT SECTION */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 lg:gap-16 items-start mb-20 lg:mb-28">
-          
-          {/* LEFT: Contact Information */}
-          <div className="lg:col-span-5 space-y-7">
-            <div>
-              <h2 className="text-2xl font-extrabold text-[#0B2A63] tracking-tight">
-                Get in Touch Directly
-              </h2>
-              <p className="text-sm font-medium text-[#64748B] mt-2 leading-relaxed">
-                Reach out to our global support desks via phone, email, or drop by our service office during regular hours.
+    <div className="bg-white min-h-screen text-[#0F172A] pb-20">
+      {/* 1. COMPACT HERO SECTION MATCHING IMAGE 3 */}
+      <section className="relative overflow-hidden bg-gradient-to-b from-[#F5F9FF] to-white border-b border-slate-100 pt-8 pb-8 sm:pb-10">
+        <div className="max-w-[1360px] mx-auto px-6 lg:px-12">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
+            {/* Left Column */}
+            <div className="lg:col-span-7">
+              <p className="text-xs font-black tracking-[0.2em] text-[#1479F5] uppercase mb-2.5">
+                WE'RE HERE TO HELP
+              </p>
+              <h1 className="text-3xl sm:text-4xl lg:text-5xl font-black text-[#0B2A63] tracking-tight leading-[1.15]">
+                How can we help?
+              </h1>
+              <p className="text-sm sm:text-base text-slate-600 font-medium mt-3 leading-relaxed max-w-xl">
+                Questions about your visa, documents, application, or travel plans? Our team is here to help.
               </p>
             </div>
 
-            <div className="space-y-4">
-              {/* Phone */}
-              <div className="flex items-start gap-4 p-5 rounded-2xl bg-[#F5F9FF] border border-[#1479F5]/15">
-                <div className="w-10 h-10 rounded-xl bg-white text-[#1479F5] flex items-center justify-center flex-shrink-0 shadow-sm">
-                  <Phone size={20} strokeWidth={2.2} />
-                </div>
-                <div>
-                  <span className="block text-xs font-bold text-[#64748B] uppercase tracking-wider">
-                    Phone Support
-                  </span>
-                  <span className="block text-base font-bold text-[#0B2A63] mt-0.5">
-                    +1 (800) 555-VISA
-                  </span>
-                  <span className="block text-xs text-[#64748B] mt-0.5">
-                    Toll-free 24/7 emergency traveler hotline
-                  </span>
-                </div>
+            {/* Right Banner Image */}
+            <div className="lg:col-span-5 hidden sm:flex justify-end">
+              <div className="relative w-full max-w-[420px] h-[190px] rounded-2xl overflow-hidden shadow-md border border-slate-200/80">
+                <img
+                  src="/travel-support-hero.jpg"
+                  alt="Travel support luggage and passport"
+                  className="w-full h-full object-cover"
+                />
+                <div className="absolute inset-0 bg-gradient-to-t from-black/20 via-transparent to-transparent pointer-events-none" />
               </div>
+            </div>
+          </div>
+        </div>
+      </section>
 
-              {/* Email */}
-              <div className="flex items-start gap-4 p-5 rounded-2xl bg-[#F5F9FF] border border-[#1479F5]/15">
-                <div className="w-10 h-10 rounded-xl bg-white text-[#1479F5] flex items-center justify-center flex-shrink-0 shadow-sm">
-                  <Mail size={20} strokeWidth={2.2} />
-                </div>
-                <div>
-                  <span className="block text-xs font-bold text-[#64748B] uppercase tracking-wider">
-                    Email Inquiries
-                  </span>
-                  <span className="block text-base font-bold text-[#0B2A63] mt-0.5">
-                    support@nimufly.com
-                  </span>
-                  <span className="block text-xs text-[#64748B] mt-0.5">
-                    Guaranteed response within 2 hours
-                  </span>
-                </div>
-              </div>
+      {/* 2. MAIN TWO-COLUMN CONTACT SECTION MATCHING IMAGE 3 */}
+      <section className="max-w-[1360px] mx-auto px-6 lg:px-12 pt-10 pb-6">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12 items-start">
+          
+          {/* LEFT: Compact Contact Rows */}
+          <div className="lg:col-span-5 space-y-5">
+            <div>
+              <h2 className="text-2xl font-black text-[#0B2A63] tracking-tight">
+                Get in touch
+              </h2>
+              <p className="text-sm font-medium text-slate-500 mt-1">
+                Choose the easiest way to reach us.
+              </p>
+            </div>
 
-              {/* Office */}
-              <div className="flex items-start gap-4 p-5 rounded-2xl bg-[#F5F9FF] border border-[#1479F5]/15">
-                <div className="w-10 h-10 rounded-xl bg-white text-[#1479F5] flex items-center justify-center flex-shrink-0 shadow-sm">
-                  <MapPin size={20} strokeWidth={2.2} />
+            <div className="space-y-3.5">
+              {/* Phone Row */}
+              <a
+                href="tel:+18005558472"
+                className="flex items-center justify-between p-4.5 rounded-2xl bg-white border border-slate-200/90 hover:border-[#1479F5]/40 hover:shadow-sm transition-all duration-200 group"
+              >
+                <div className="flex items-center gap-4">
+                  <div className="w-11 h-11 rounded-xl bg-blue-50 text-[#1479F5] flex items-center justify-center flex-shrink-0 group-hover:scale-105 transition-transform shadow-2xs">
+                    <Phone size={20} strokeWidth={2.2} />
+                  </div>
+                  <div>
+                    <span className="block text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+                      PHONE SUPPORT
+                    </span>
+                    <span className="block text-base font-extrabold text-[#0B2A63] group-hover:text-[#1479F5] transition-colors">
+                      +1 (800) 555-VISA
+                    </span>
+                    <span className="block text-xs text-slate-500 font-medium">
+                      Available for travel support during our working hours.
+                    </span>
+                  </div>
                 </div>
-                <div>
-                  <span className="block text-xs font-bold text-[#64748B] uppercase tracking-wider">
-                    Main Office
-                  </span>
-                  <span className="block text-base font-bold text-[#0B2A63] mt-0.5">
-                    NimuFly Global Hub, Suite 400
-                  </span>
-                  <span className="block text-xs text-[#64748B] mt-0.5">
-                    42 Boulevard Financial Center, London & Dubai
-                  </span>
-                </div>
-              </div>
+                <ChevronRight size={18} className="text-[#1479F5] group-hover:translate-x-0.5 transition-transform flex-shrink-0 ml-2" />
+              </a>
 
-              {/* Hours */}
-              <div className="flex items-start gap-4 p-5 rounded-2xl bg-slate-50 border border-slate-200/80">
-                <div className="w-10 h-10 rounded-xl bg-white text-[#64748B] flex items-center justify-center flex-shrink-0 shadow-sm">
-                  <Clock size={20} strokeWidth={2.2} />
+              {/* Email Row */}
+              <a
+                href="mailto:support@nimufly.com"
+                className="flex items-center justify-between p-4.5 rounded-2xl bg-white border border-slate-200/90 hover:border-[#1479F5]/40 hover:shadow-sm transition-all duration-200 group"
+              >
+                <div className="flex items-center gap-4">
+                  <div className="w-11 h-11 rounded-xl bg-blue-50 text-[#1479F5] flex items-center justify-center flex-shrink-0 group-hover:scale-105 transition-transform shadow-2xs">
+                    <Mail size={20} strokeWidth={2.2} />
+                  </div>
+                  <div>
+                    <span className="block text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+                      EMAIL INQUIRIES
+                    </span>
+                    <span className="block text-base font-extrabold text-[#0B2A63] group-hover:text-[#1479F5] transition-colors">
+                      support@nimufly.com
+                    </span>
+                    <span className="block text-xs text-slate-500 font-medium">
+                      We'll get back to you as soon as possible.
+                    </span>
+                  </div>
                 </div>
-                <div>
-                  <span className="block text-xs font-bold text-[#64748B] uppercase tracking-wider">
-                    Operating Hours
-                  </span>
-                  <span className="block text-sm font-bold text-[#0B2A63] mt-0.5">
-                    Monday – Saturday: 9:00 AM – 8:00 PM
-                  </span>
-                  <span className="block text-xs text-[#64748B] mt-0.5">
-                    Sunday: Dedicated Emergency Line Active
-                  </span>
+                <ChevronRight size={18} className="text-[#1479F5] group-hover:translate-x-0.5 transition-transform flex-shrink-0 ml-2" />
+              </a>
+
+              {/* Office Row */}
+              <div className="flex items-center justify-between p-4.5 rounded-2xl bg-white border border-slate-200/90 group">
+                <div className="flex items-center gap-4">
+                  <div className="w-11 h-11 rounded-xl bg-blue-50 text-[#1479F5] flex items-center justify-center flex-shrink-0 shadow-2xs">
+                    <MapPin size={20} strokeWidth={2.2} />
+                  </div>
+                  <div>
+                    <span className="block text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+                      OFFICE
+                    </span>
+                    <span className="block text-base font-extrabold text-[#0B2A63]">
+                      NimuFly Global Hub
+                    </span>
+                    <span className="block text-xs text-slate-500 font-medium">
+                      Mohali, Punjab, India
+                    </span>
+                  </div>
                 </div>
+                <ChevronRight size={18} className="text-[#1479F5] flex-shrink-0 ml-2" />
               </div>
             </div>
           </div>
 
-          {/* RIGHT: Highlighted "Have a Question?" Box / Contact CTA */}
+          {/* RIGHT: "Have a Question?" Card */}
           <div className="lg:col-span-7">
-            <div className="bg-white rounded-3xl p-8 sm:p-10 border border-[#1479F5]/30 shadow-[0_16px_45px_-10px_rgba(20,121,245,0.1)] relative overflow-hidden">
+            <div className="bg-[#F3F8FF] rounded-3xl p-7 sm:p-9 border border-blue-100/90 relative overflow-hidden shadow-xs">
               
-              {/* Subtle blue corner accent */}
-              <div className="absolute top-0 right-0 w-36 h-36 bg-[#1479F5]/5 rounded-bl-full pointer-events-none" />
+              {/* Corner decorative bubble art matching Image 3 */}
+              <div className="absolute top-6 right-6 hidden sm:block opacity-70 pointer-events-none">
+                <div className="w-20 h-16 rounded-2xl bg-blue-500/10 flex items-center justify-center">
+                  <MessageSquare size={28} className="text-[#1479F5]" />
+                </div>
+              </div>
 
               {!showForm && !formSubmitted ? (
-                /* 1. HIGHLIGHTED QUERY BOX (Default State) */
-                <div className="space-y-6 py-4">
-                  <div className="w-14 h-14 rounded-2xl bg-[#F5F9FF] border border-[#1479F5]/25 flex items-center justify-center text-[#1479F5] shadow-sm">
-                    <HelpCircle size={28} strokeWidth={2.2} />
+                /* DEFAULT STATE: MATCHING IMAGE 3 */
+                <div className="space-y-4">
+                  <div className="w-12 h-12 rounded-2xl bg-white text-[#1479F5] border border-blue-200/60 flex items-center justify-center shadow-2xs">
+                    <HelpCircle size={26} strokeWidth={2.2} />
                   </div>
 
-                  <div>
-                    <span className="text-xs font-bold text-[#1479F5] uppercase tracking-wider block mb-1">
-                      Online Visa Inquiries
-                    </span>
-                    <h2 className="text-3xl sm:text-4xl font-extrabold text-[#0B2A63] tracking-tight">
-                      Have a Question?
-                    </h2>
-                  </div>
+                  <h2 className="text-2xl sm:text-3xl font-black text-[#0B2A63] tracking-tight">
+                    Have a Question?
+                  </h2>
 
-                  <p className="text-base sm:text-lg text-[#64748B] font-medium leading-relaxed max-w-lg">
-                    Tell us what you need help with. Whether it's document requirements, processing times, or status checks, our team is ready to guide you.
+                  <p className="text-sm sm:text-base text-slate-600 font-medium leading-relaxed max-w-lg">
+                    Tell us what you need help with. Whether it's visa requirements, documentation, application status, or travel plans — our team is here to guide you.
                   </p>
 
                   <div className="pt-2">
                     <button
                       type="button"
                       onClick={() => setShowForm(true)}
-                      className="inline-flex items-center gap-3 px-8 py-4 rounded-xl bg-[#1479F5] hover:bg-[#0B2A63] text-white font-bold text-base shadow-lg shadow-[#1479F5]/20 transition-all duration-200 cursor-pointer"
+                      className="inline-flex items-center gap-2.5 px-7 py-3 rounded-xl bg-[#1479F5] hover:bg-[#0B2A63] text-white font-bold text-sm shadow-md shadow-[#1479F5]/25 transition-all duration-200 cursor-pointer"
                     >
                       <span>Ask a Question</span>
-                      <ArrowRight size={18} strokeWidth={2.5} />
+                      <ArrowRight size={16} strokeWidth={2.4} />
                     </button>
                   </div>
                 </div>
               ) : formSubmitted ? (
-                /* 2. SUBMITTED SUCCESS STATE */
-                <div className="py-8 text-center space-y-4">
-                  <div className="w-16 h-16 rounded-full bg-emerald-50 text-emerald-600 border border-emerald-200 flex items-center justify-center mx-auto shadow-sm">
-                    <CheckCircle2 size={32} strokeWidth={2.5} />
+                /* SUBMITTED SUCCESS STATE */
+                <div className="py-6 text-center space-y-4">
+                  <div className="w-14 h-14 rounded-full bg-emerald-50 text-emerald-600 border border-emerald-200 flex items-center justify-center mx-auto shadow-2xs">
+                    <CheckCircle2 size={30} strokeWidth={2.5} />
                   </div>
-                  <h3 className="text-2xl sm:text-3xl font-extrabold text-[#0B2A63]">
+                  <h3 className="text-2xl font-black text-[#0B2A63]">
                     Thanks! We'll get back to you soon.
                   </h3>
-                  <p className="text-sm sm:text-base text-[#64748B] max-w-md mx-auto font-medium">
-                    Your inquiry has been received. One of our dedicated visa specialists will reach out via email within 2 hours.
+                  <p className="text-sm text-slate-600 max-w-md mx-auto font-medium">
+                    Your inquiry has been received. One of our dedicated visa specialists will reach out via email shortly.
                   </p>
-                  <div className="pt-3">
+                  <div className="pt-2">
                     <button
                       type="button"
                       onClick={handleResetForm}
-                      className="px-6 py-2.5 rounded-xl bg-[#F5F9FF] border border-[#1479F5]/25 text-[#1479F5] text-xs font-bold hover:bg-[#1479F5] hover:text-white transition-colors"
+                      className="px-6 py-2.5 rounded-xl bg-white border border-blue-200 text-[#1479F5] text-xs font-bold hover:bg-[#1479F5] hover:text-white transition-colors cursor-pointer"
                     >
                       Ask Another Question
                     </button>
                   </div>
                 </div>
               ) : (
-                /* 3. EXPANDED FRONTEND-ONLY CONTACT / QUESTION FORM */
-                <div className="space-y-6">
-                  <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+                /* QUESTION FORM */
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between pb-2 border-b border-blue-200/50">
                     <div>
-                      <h2 className="text-2xl font-extrabold text-[#0B2A63] tracking-tight">
+                      <h2 className="text-xl sm:text-2xl font-black text-[#0B2A63] tracking-tight">
                         Ask a Question
                       </h2>
-                      <p className="text-xs text-[#64748B] mt-0.5">
+                      <p className="text-xs text-slate-500 font-medium">
                         Tell us what you need help with.
                       </p>
                     </div>
                     <button
                       type="button"
                       onClick={() => setShowForm(false)}
-                      className="p-1.5 rounded-lg text-slate-400 hover:text-[#0B2A63] hover:bg-slate-100 transition-colors"
+                      className="p-1.5 rounded-lg text-slate-400 hover:text-[#0B2A63] hover:bg-white transition-colors cursor-pointer"
                       title="Close form"
                     >
                       <X size={20} />
                     </button>
                   </div>
 
-                  <form onSubmit={handleSubmit} className="space-y-4">
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <form onSubmit={handleSubmit} className="space-y-3.5">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                       {/* Full Name */}
                       <div>
-                        <label className="block text-xs font-bold text-[#0B2A63] uppercase tracking-wider mb-1.5">
+                        <label className="block text-xs font-bold text-[#0B2A63] uppercase tracking-wider mb-1">
                           Full Name *
                         </label>
                         <input
@@ -269,13 +297,13 @@ export default function ContactPage() {
                           value={formData.fullName}
                           onChange={(e) => setFormData({ ...formData, fullName: e.target.value })}
                           placeholder="e.g. John Doe"
-                          className="w-full h-11 px-3.5 rounded-xl bg-white border border-slate-200 text-sm font-medium text-[#0B2A63] focus:outline-none focus:border-[#1479F5] transition-colors"
+                          className="w-full h-10 px-3 rounded-xl bg-white border border-slate-200 text-sm font-medium text-[#0B2A63] focus:outline-none focus:border-[#1479F5] transition-colors"
                         />
                       </div>
 
                       {/* Email */}
                       <div>
-                        <label className="block text-xs font-bold text-[#0B2A63] uppercase tracking-wider mb-1.5">
+                        <label className="block text-xs font-bold text-[#0B2A63] uppercase tracking-wider mb-1">
                           Email Address *
                         </label>
                         <input
@@ -284,15 +312,15 @@ export default function ContactPage() {
                           value={formData.email}
                           onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                           placeholder="e.g. john@example.com"
-                          className="w-full h-11 px-3.5 rounded-xl bg-white border border-slate-200 text-sm font-medium text-[#0B2A63] focus:outline-none focus:border-[#1479F5] transition-colors"
+                          className="w-full h-10 px-3 rounded-xl bg-white border border-slate-200 text-sm font-medium text-[#0B2A63] focus:outline-none focus:border-[#1479F5] transition-colors"
                         />
                       </div>
                     </div>
 
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                       {/* Phone */}
                       <div>
-                        <label className="block text-xs font-bold text-[#0B2A63] uppercase tracking-wider mb-1.5">
+                        <label className="block text-xs font-bold text-[#0B2A63] uppercase tracking-wider mb-1">
                           Phone Number
                         </label>
                         <input
@@ -300,19 +328,19 @@ export default function ContactPage() {
                           value={formData.phone}
                           onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
                           placeholder="e.g. +1 234 567 8900"
-                          className="w-full h-11 px-3.5 rounded-xl bg-white border border-slate-200 text-sm font-medium text-[#0B2A63] focus:outline-none focus:border-[#1479F5] transition-colors"
+                          className="w-full h-10 px-3 rounded-xl bg-white border border-slate-200 text-sm font-medium text-[#0B2A63] focus:outline-none focus:border-[#1479F5] transition-colors"
                         />
                       </div>
 
                       {/* Destination Country */}
                       <div>
-                        <label className="block text-xs font-bold text-[#0B2A63] uppercase tracking-wider mb-1.5">
+                        <label className="block text-xs font-bold text-[#0B2A63] uppercase tracking-wider mb-1">
                           Destination Country
                         </label>
                         <select
                           value={formData.country}
                           onChange={(e) => setFormData({ ...formData, country: e.target.value })}
-                          className="w-full h-11 px-3.5 rounded-xl bg-white border border-slate-200 text-sm font-medium text-[#0B2A63] focus:outline-none focus:border-[#1479F5] transition-colors cursor-pointer"
+                          className="w-full h-10 px-3 rounded-xl bg-white border border-slate-200 text-sm font-medium text-[#0B2A63] focus:outline-none focus:border-[#1479F5] transition-colors cursor-pointer"
                         >
                           {searchCountries.map((c) => (
                             <option key={c} value={c}>{c}</option>
@@ -323,7 +351,7 @@ export default function ContactPage() {
 
                     {/* Question / Message */}
                     <div>
-                      <label className="block text-xs font-bold text-[#0B2A63] uppercase tracking-wider mb-1.5">
+                      <label className="block text-xs font-bold text-[#0B2A63] uppercase tracking-wider mb-1">
                         Your Question *
                       </label>
                       <textarea
@@ -332,18 +360,18 @@ export default function ContactPage() {
                         value={formData.message}
                         onChange={(e) => setFormData({ ...formData, message: e.target.value })}
                         placeholder="What would you like assistance with?"
-                        className="w-full p-3.5 rounded-xl bg-white border border-slate-200 text-sm font-medium text-[#0B2A63] focus:outline-none focus:border-[#1479F5] transition-colors resize-none"
+                        className="w-full p-3 rounded-xl bg-white border border-slate-200 text-sm font-medium text-[#0B2A63] focus:outline-none focus:border-[#1479F5] transition-colors resize-none"
                       />
                     </div>
 
                     {/* Submit Button */}
-                    <div className="pt-2">
+                    <div className="pt-1">
                       <button
                         type="submit"
-                        className="w-full h-12 bg-[#1479F5] hover:bg-[#0B2A63] text-white rounded-xl font-bold text-sm flex items-center justify-center gap-2 shadow-md shadow-[#1479F5]/25 transition-colors duration-200 cursor-pointer"
+                        className="w-full h-11 bg-[#1479F5] hover:bg-[#0B2A63] text-white rounded-xl font-bold text-sm flex items-center justify-center gap-2 shadow-md shadow-[#1479F5]/25 transition-colors duration-200 cursor-pointer"
                       >
                         <span>Send Question</span>
-                        <ArrowRight size={16} strokeWidth={2.5} />
+                        <ArrowRight size={16} strokeWidth={2.4} />
                       </button>
                     </div>
                   </form>
@@ -355,39 +383,90 @@ export default function ContactPage() {
 
         </div>
 
-        {/* FREQUENTLY ASKED QUESTIONS */}
-        <section className="max-w-4xl mx-auto pt-6 pb-12">
-          <div className="text-center mb-10">
-            <h2 className="text-3xl font-extrabold text-[#0B2A63] tracking-tight">
+        {/* 3. QUICK HELP STRIP MATCHING IMAGE 3 */}
+        <div className="mt-14 pt-8 border-t border-slate-100">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-center">
+            {/* Left title */}
+            <div className="lg:col-span-3">
+              <h3 className="text-xl font-black text-[#0B2A63]">Quick help</h3>
+              <p className="text-xs text-slate-500 font-medium">Find answers to common queries.</p>
+            </div>
+
+            {/* Right 4 links */}
+            <div className="lg:col-span-9 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+              <Link
+                to="/visa"
+                className="flex items-center gap-2.5 text-xs font-bold text-[#1479F5] hover:text-[#0B2A63] transition-colors p-2 rounded-xl hover:bg-slate-50"
+              >
+                <FileText size={16} className="text-[#1479F5] flex-shrink-0" />
+                <span>Visa requirements</span>
+                <ArrowRight size={13} className="ml-auto" />
+              </Link>
+
+              <Link
+                to="/my-account"
+                className="flex items-center gap-2.5 text-xs font-bold text-[#1479F5] hover:text-[#0B2A63] transition-colors p-2 rounded-xl hover:bg-slate-50"
+              >
+                <Clock size={16} className="text-[#1479F5] flex-shrink-0" />
+                <span>Application status</span>
+                <ArrowRight size={13} className="ml-auto" />
+              </Link>
+
+              <Link
+                to="/documentation"
+                className="flex items-center gap-2.5 text-xs font-bold text-[#1479F5] hover:text-[#0B2A63] transition-colors p-2 rounded-xl hover:bg-slate-50"
+              >
+                <FileText size={16} className="text-[#1479F5] flex-shrink-0" />
+                <span>Document support</span>
+                <ArrowRight size={13} className="ml-auto" />
+              </Link>
+
+              <button
+                type="button"
+                onClick={() => setShowForm(true)}
+                className="flex items-center gap-2.5 text-xs font-bold text-[#1479F5] hover:text-[#0B2A63] transition-colors p-2 rounded-xl hover:bg-slate-50 cursor-pointer text-left"
+              >
+                <Plane size={16} className="text-[#1479F5] flex-shrink-0" />
+                <span>Travel questions</span>
+                <ArrowRight size={13} className="ml-auto" />
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* 4. FREQUENTLY ASKED QUESTIONS */}
+        <section className="max-w-4xl mx-auto pt-14 pb-8">
+          <div className="text-center mb-8">
+            <h2 className="text-2xl sm:text-3xl font-black text-[#0B2A63] tracking-tight">
               Frequently Asked Questions
             </h2>
-            <p className="text-base text-[#64748B] font-medium mt-2">
+            <p className="text-sm text-slate-500 font-medium mt-1">
               Everything you need to know about our visa verification and approval procedures
             </p>
           </div>
 
-          <div className="space-y-4">
+          <div className="space-y-3">
             {faqs.map((faq, index) => {
               const isOpen = openFaq === index;
               return (
                 <div 
                   key={index} 
-                  className="rounded-2xl border border-slate-200/80 bg-white overflow-hidden transition-colors"
+                  className="rounded-2xl border border-slate-200/90 bg-white overflow-hidden transition-colors"
                 >
                   <button
                     type="button"
                     onClick={() => setOpenFaq(isOpen ? -1 : index)}
-                    className="w-full px-6 py-5 text-left flex items-center justify-between gap-4 font-bold text-[#0B2A63] hover:text-[#1479F5] transition-colors focus:outline-none"
+                    className="w-full px-5 py-4 text-left flex items-center justify-between gap-4 font-bold text-[#0B2A63] hover:text-[#1479F5] transition-colors focus:outline-none cursor-pointer"
                   >
-                    <span className="text-base sm:text-lg">{faq.q}</span>
+                    <span className="text-sm sm:text-base">{faq.q}</span>
                     <ChevronDown 
-                      size={20} 
+                      size={18} 
                       className={`text-[#1479F5] flex-shrink-0 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} 
                     />
                   </button>
 
                   {isOpen && (
-                    <div className="px-6 pb-6 pt-1 text-sm text-[#64748B] leading-relaxed font-medium border-t border-slate-100">
+                    <div className="px-5 pb-5 pt-1 text-xs sm:text-sm text-slate-600 leading-relaxed font-medium border-t border-slate-100">
                       {faq.a}
                     </div>
                   )}
@@ -397,7 +476,8 @@ export default function ContactPage() {
           </div>
         </section>
 
-      </div>
+      </section>
     </div>
   );
 }
+

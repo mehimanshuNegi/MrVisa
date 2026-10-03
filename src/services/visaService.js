@@ -16,34 +16,86 @@ import { countryService, generateSlug } from './countryService';
  */
 export function normalizeVisa(raw) {
   if (!raw) return null;
-  const priceVal = raw.price || raw.fees || '₹0';
+  const countryObj = typeof raw.country === 'object' && raw.country !== null ? raw.country : null;
+  const countryName =
+    countryObj?.displayName ||
+    countryObj?.name ||
+    raw.countryName ||
+    raw.displayName ||
+    (typeof raw.country === 'string' ? raw.country : '') ||
+    '';
+  const countrySlug =
+    countryObj?.slug ||
+    raw.countryId ||
+    (raw.country && typeof raw.country === 'string' ? raw.country.toLowerCase() : '') ||
+    generateSlug(countryName) ||
+    '';
+
+  const flagUrl = raw.flagUrl || countryObj?.flagUrl || '';
+  const flagEmoji = raw.flagEmoji || countryObj?.flagEmoji || '🌍';
+  const image = raw.image || raw.imageUrl || countryObj?.image || '';
+
+  const govFee = raw.governmentFee !== undefined && raw.governmentFee !== null && !isNaN(Number(raw.governmentFee))
+    ? Number(raw.governmentFee)
+    : 0;
+  const svcFee = raw.serviceFee !== undefined && raw.serviceFee !== null && !isNaN(Number(raw.serviceFee))
+    ? Number(raw.serviceFee)
+    : 0;
+  const totalFeeNum = govFee + svcFee;
+
+  let priceVal = raw.price || raw.fees;
+  if (!priceVal || priceVal === '₹0' || raw.governmentFee !== undefined || raw.serviceFee !== undefined) {
+    priceVal = `₹${totalFeeNum.toLocaleString('en-IN')}`;
+  }
+
+  const visaSlug = raw.slug || raw.id || raw._id || raw.visaId;
+
   return {
-    id: raw.id || raw._id || raw.visaId,
-    countryId: raw.countryId || raw.country || raw.id,
-    country: (raw.countryName || raw.country || raw.displayName || '').toUpperCase(),
-    countryName: raw.countryName || raw.displayName || raw.country || '',
-    displayName: raw.displayName || raw.countryName || raw.country || '',
-    flagUrl: raw.flagUrl || '',
-    flagEmoji: raw.flagEmoji || '🌍',
-    image: raw.image || raw.imageUrl || '',
+    id: visaSlug,
+    _id: raw._id || raw.id,
+    slug: visaSlug,
+    countryId: countrySlug || visaSlug,
+    country: (countryName || countrySlug).toUpperCase(),
+    countryName: countryName || countrySlug,
+    displayName: raw.displayName || countryName || countrySlug,
+    title: raw.title || `${countryName} ${raw.visaType || 'Visa'}`,
+    flagUrl,
+    flagEmoji,
+    image,
     visaType: raw.visaType || 'E-Visa',
     validity: raw.validity || '30 Days',
     stayPeriod: raw.stayPeriod || raw.validity || '30 Days',
     entryType: raw.entryType || 'Single Entry',
     processingTime: raw.processingTime || '24–48 Hours',
+    governmentFee: govFee,
+    serviceFee: svcFee,
+    totalFee: totalFeeNum,
     price: priceVal,
-    fees: priceVal, // compatibility alias
-    guaranteedDate: raw.guaranteedDate || '24 Sep 2026, 4:00 PM',
+    fees: priceVal,
+    guaranteedDate: raw.guaranteedDate || 'Guaranteed delivery window',
     availability: raw.availability || 'Available',
     documentCategory: raw.documentCategory || 'Only Passport',
     documentsSummary: raw.documentsSummary || 'Passport, Photograph',
     travelPurpose: raw.travelPurpose || 'Tourism',
     shortDescription: raw.shortDescription || raw.description || '',
     description: raw.description || raw.shortDescription || '',
-    documentsRequired: raw.documentsRequired || raw.documents || [],
-    documents: raw.documents || raw.documentsRequired || [],
-    faqs: raw.faqs || [],
-    status: raw.status || 'ACTIVE'
+    documentsRequired: Array.isArray(raw.documentsRequired) && raw.documentsRequired.length > 0
+      ? raw.documentsRequired
+      : Array.isArray(raw.documents) && raw.documents.length > 0
+      ? raw.documents
+      : Array.isArray(raw.requiredDocuments)
+      ? raw.requiredDocuments
+      : [],
+    documents: Array.isArray(raw.documents) && raw.documents.length > 0
+      ? raw.documents
+      : Array.isArray(raw.documentsRequired) && raw.documentsRequired.length > 0
+      ? raw.documentsRequired
+      : Array.isArray(raw.requiredDocuments)
+      ? raw.requiredDocuments
+      : [],
+    faqs: Array.isArray(raw.faqs) ? raw.faqs : [],
+    status: raw.status || (raw.isActive === false ? 'INACTIVE' : 'ACTIVE'),
+    isActive: raw.isActive !== undefined ? raw.isActive : raw.status === 'ACTIVE'
   };
 }
 
@@ -109,28 +161,51 @@ class VisaService {
       return found ? normalizeVisa(found) : null;
     }
 
-    const raw = await apiClient(`/visas/${encodeURIComponent(cleanId)}`);
-    return normalizeVisa(raw.data || raw);
+    try {
+      const raw = await apiClient(`/visas/${encodeURIComponent(cleanId)}`);
+      return normalizeVisa(raw.data || raw);
+    } catch (err) {
+      if (err?.status === 404) {
+        const mockFound = mockVisas.find(
+          (v) =>
+            v.id.toLowerCase() === cleanId ||
+            v.countryId?.toLowerCase() === cleanId ||
+            v.displayName?.toLowerCase() === cleanId ||
+            v.country?.toLowerCase() === cleanId
+        );
+        if (mockFound) return normalizeVisa(mockFound);
+        return null;
+      }
+      throw err;
+    }
   }
 
   /**
    * Fetch visas for a specific destination country
    */
   async getVisasByCountry(countryId) {
+    if (!countryId) return [];
+    const cleanId = String(countryId).trim();
+
     if (isMockMode()) {
       const all = await this.getAllVisas();
-      const cleanId = (countryId || '').trim().toLowerCase();
+      const lower = cleanId.toLowerCase();
       return all.filter(
         (v) =>
-          v.countryId?.toLowerCase() === cleanId ||
-          v.id.toLowerCase() === cleanId ||
-          v.displayName?.toLowerCase() === cleanId
+          v.countryId?.toLowerCase() === lower ||
+          v.id.toLowerCase() === lower ||
+          v.displayName?.toLowerCase() === lower
       );
     }
 
-    const rawList = await apiClient(`/countries/${encodeURIComponent(countryId)}/visas`);
-    const items = Array.isArray(rawList) ? rawList : rawList.data || [];
-    return items.map(normalizeVisa);
+    try {
+      const rawList = await apiClient(`/countries/${encodeURIComponent(cleanId)}/visas`);
+      const items = Array.isArray(rawList) ? rawList : rawList.data || [];
+      return items.map(normalizeVisa);
+    } catch (err) {
+      if (err?.status === 404) return [];
+      throw err;
+    }
   }
 
   /**

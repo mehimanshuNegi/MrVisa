@@ -63,33 +63,41 @@ export default function CountryDetailPage() {
       setIsLoading(true);
       setLoadError(null);
       try {
-        // 1. Fetch country info if countryParam corresponds to a country
-        let fetchedCountry = await countryService.getCountryById(countryParam);
-
-        // 2. Fetch all visas for this country
-        let countryVisas = await visaService.getVisasByCountry(countryParam);
-        if ((!countryVisas || countryVisas.length === 0) && fetchedCountry?.id) {
-          countryVisas = await visaService.getVisasByCountry(fetchedCountry.id);
-        }
-
-        // 3. Resolve active visa
         let selectedVisa = null;
+        let fetchedCountry = null;
+        let countryVisas = [];
+
+        // 1. If explicit visaParam is in URL (/visa/:country/:visaId)
         if (visaParam) {
           selectedVisa = await visaService.getVisaById(visaParam);
-        }
-        if (!selectedVisa) {
-          // Check if countryParam itself directly matches a visa ID
+          if (countryParam) {
+            fetchedCountry = await countryService.getCountryById(countryParam);
+          }
+        } else if (countryParam) {
+          // 2. /visa/:country route: countryParam could be either a visa slug or a country slug
+          // First check if countryParam matches a visa directly (e.g. united-arab-emirates-tourism-30-days)
           selectedVisa = await visaService.getVisaById(countryParam);
-        }
-        if (!selectedVisa && countryVisas && countryVisas.length > 0) {
-          selectedVisa = countryVisas[0];
+
+          if (!selectedVisa) {
+            // Not a visa slug, so resolve countryParam as a country
+            fetchedCountry = await countryService.getCountryById(countryParam);
+          }
         }
 
-        // If selectedVisa was found and country was not, try finding country via selectedVisa.countryId
-        if (selectedVisa && !fetchedCountry && selectedVisa.countryId) {
-          fetchedCountry = await countryService.getCountryById(selectedVisa.countryId);
-          if (!countryVisas || countryVisas.length === 0) {
-            countryVisas = await visaService.getVisasByCountry(selectedVisa.countryId);
+        // 3. If selectedVisa is found, resolve its country and available sibling visas
+        if (selectedVisa) {
+          const resolvedCountryId = selectedVisa.countryId || selectedVisa.country?.slug || selectedVisa.country?._id;
+          if (!fetchedCountry && resolvedCountryId) {
+            fetchedCountry = await countryService.getCountryById(resolvedCountryId);
+          }
+          if (resolvedCountryId) {
+            countryVisas = await visaService.getVisasByCountry(resolvedCountryId);
+          }
+        } else if (fetchedCountry) {
+          // If country was resolved but no visa explicitly selected, fetch country's visas and pick primary
+          countryVisas = await visaService.getVisasByCountry(fetchedCountry.id || countryParam);
+          if (countryVisas && countryVisas.length > 0) {
+            selectedVisa = countryVisas[0];
           }
         }
 
@@ -105,6 +113,7 @@ export default function CountryDetailPage() {
           }
         }
       } catch (err) {
+        console.error('Error in loadVisaData:', err);
         if (isMounted) {
           setLoadError('Failed to load visa details.');
         }
@@ -118,12 +127,19 @@ export default function CountryDetailPage() {
     return () => { isMounted = false; };
   }, [countryParam, visaParam]);
 
-  // Parse numerical fee
-  const baseFeeNum = destination?.fees || destination?.price
-    ? parseInt((destination.fees || destination.price).replace(/[^0-9]/g, ''), 10) || 2990
-    : 2990;
+  // Parse numerical fee breakdown (Government / Embassy Fee + NimuFly Service Fee)
+  // Strictly database-driven: missing -> 0. No 1400 fallback, no 70/30 split.
+  const embassyFeePerPerson = destination?.governmentFee !== undefined && destination?.governmentFee !== null && !isNaN(Number(destination.governmentFee))
+    ? Number(destination.governmentFee)
+    : 0;
 
-  const totalFee = baseFeeNum * travellerCount;
+  const serviceFeePerPerson = destination?.serviceFee !== undefined && destination?.serviceFee !== null && !isNaN(Number(destination.serviceFee))
+    ? Number(destination.serviceFee)
+    : 0;
+
+  const totalEmbassyFee = embassyFeePerPerson * travellerCount;
+  const totalServiceFee = serviceFeePerPerson * travellerCount;
+  const totalFee = totalEmbassyFee + totalServiceFee;
 
   // Nav tabs definition
   const navTabs = [
@@ -178,7 +194,7 @@ export default function CountryDetailPage() {
 
   const handleApplyClick = () => {
     if (destination) {
-      const countrySlug = countryParam || destination.countryId || destination.country?.toLowerCase();
+      const countrySlug = destination.countryId || (destination.country && typeof destination.country === 'string' ? destination.country.toLowerCase() : destination.country?.slug) || countryParam;
       navigate(`/visa/${countrySlug}/${destination.id}/apply?travellers=${travellerCount}`, {
         state: { travellerCount }
       });
@@ -606,35 +622,46 @@ export default function CountryDetailPage() {
 
               {/* Documents Grid / Visual Cards */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-                {documentsRequired.map((doc, idx) => (
-                  <div
-                    key={idx}
-                    className="bg-white rounded-2xl p-6 border border-slate-200/90 shadow-[0_2px_8px_rgba(0,0,0,0.02)] hover:border-[#2563EB]/40 transition-all flex flex-col justify-between"
-                  >
-                    <div>
-                      <div className="flex items-center justify-between mb-4">
-                        <div className="w-11 h-11 rounded-xl bg-[#F5F9FF] text-[#2563EB] flex items-center justify-center font-bold">
-                          <FileText size={22} strokeWidth={2} />
+                {documentsRequired.map((doc, idx) => {
+                  const docName = typeof doc === 'string' ? doc : (doc?.name || doc?.title || 'Document');
+                  const docDetail = typeof doc === 'object' && (doc?.detail || doc?.subtitle || doc?.guidance)
+                    ? (doc.detail || doc.subtitle || doc.guidance)
+                    : 'Clear digital scan or photo.';
+                  const acceptedFormats = Array.isArray(doc?.acceptedFormats) && doc.acceptedFormats.length > 0
+                    ? doc.acceptedFormats.map((f) => f.toUpperCase())
+                    : null;
+                  const formatBadge = acceptedFormats ? acceptedFormats.join(', ') : 'Digital Scan Only';
+
+                  return (
+                    <div
+                      key={idx}
+                      className="bg-white rounded-2xl p-6 border border-slate-200/90 shadow-[0_2px_8px_rgba(0,0,0,0.02)] hover:border-[#2563EB]/40 transition-all flex flex-col justify-between"
+                    >
+                      <div>
+                        <div className="flex items-center justify-between mb-4">
+                          <div className="w-11 h-11 rounded-xl bg-[#F5F9FF] text-[#2563EB] flex items-center justify-center font-bold">
+                            <FileText size={22} strokeWidth={2} />
+                          </div>
+                          <span className="text-[11px] font-bold text-emerald-600 bg-emerald-50 px-2.5 py-1 rounded-md border border-emerald-200/50">
+                            {formatBadge}
+                          </span>
                         </div>
-                        <span className="text-[11px] font-bold text-emerald-600 bg-emerald-50 px-2.5 py-1 rounded-md border border-emerald-200/50">
-                          Digital Scan Only
-                        </span>
+
+                        <h3 className="text-lg font-bold text-[#082B61]">
+                          {docName}
+                        </h3>
+                        <p className="text-xs sm:text-sm text-slate-600 font-medium mt-2 leading-relaxed">
+                          {docDetail}
+                        </p>
                       </div>
 
-                      <h3 className="text-lg font-bold text-[#082B61]">
-                        {doc.name}
-                      </h3>
-                      <p className="text-xs sm:text-sm text-slate-600 font-medium mt-2 leading-relaxed">
-                        {doc.detail}
-                      </p>
+                      <div className="mt-6 pt-4 border-t border-slate-100 flex items-center gap-2 text-xs font-semibold text-slate-500">
+                        <CheckCircle2 size={14} className="text-[#2563EB]" />
+                        <span>{acceptedFormats ? `Accepted formats: ${formatBadge}` : 'Clear photo or color scan via phone camera'}</span>
+                      </div>
                     </div>
-
-                    <div className="mt-6 pt-4 border-t border-slate-100 flex items-center gap-2 text-xs font-semibold text-slate-500">
-                      <CheckCircle2 size={14} className="text-[#2563EB]" />
-                      <span>Clear photo or color scan via phone camera</span>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
 
                 {/* Always show helper card for simple photo/document scan */}
                 {documentsRequired.length < 2 && (
@@ -1058,8 +1085,12 @@ export default function CountryDetailPage() {
               {/* Price Breakdown */}
               <div className="space-y-2.5 pb-5 border-b border-slate-100 text-xs font-medium text-slate-600 mb-5">
                 <div className="flex items-center justify-between">
-                  <span>Visa & Application Fee ({travellerCount}x)</span>
-                  <span className="font-bold text-[#082B61]">₹{totalFee.toLocaleString('en-IN')}</span>
+                  <span>Embassy / Government Fee</span>
+                  <span className="font-bold text-[#082B61]">₹{totalEmbassyFee.toLocaleString('en-IN')}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span>NimuFly Service Fee</span>
+                  <span className="font-bold text-[#082B61]">₹{totalServiceFee.toLocaleString('en-IN')}</span>
                 </div>
                 <div className="flex items-center justify-between">
                   <span>Embassy Document Verification</span>

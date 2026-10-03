@@ -16,6 +16,7 @@ import {
   countryService,
   visaService
 } from '../services';
+import TravelDatePicker from './TravelDatePicker';
 
 const searchCountries = countryService.getSearchCountries();
 const visaTypeOptions = visaService.getVisaTypeOptions();
@@ -41,12 +42,57 @@ export default function VisaFilterBar({
   const [countrySearchInput, setCountrySearchInput] = useState('');
   const [allVisas, setAllVisas] = useState([]);
 
+  const countryHoverTimerRef = useRef(null);
+  const typeHoverTimerRef = useRef(null);
+  const docHoverTimerRef = useRef(null);
+
+  const handleCountryMouseEnter = () => {
+    if (countryHoverTimerRef.current) clearTimeout(countryHoverTimerRef.current);
+    setCountryOpen(true);
+    setTypeOpen(false);
+    setDocOpen(false);
+  };
+  const handleCountryMouseLeave = () => {
+    countryHoverTimerRef.current = setTimeout(() => {
+      setCountryOpen(false);
+    }, 220);
+  };
+
+  const handleTypeMouseEnter = () => {
+    if (typeHoverTimerRef.current) clearTimeout(typeHoverTimerRef.current);
+    setTypeOpen(true);
+    setCountryOpen(false);
+    setDocOpen(false);
+  };
+  const handleTypeMouseLeave = () => {
+    typeHoverTimerRef.current = setTimeout(() => {
+      setTypeOpen(false);
+    }, 220);
+  };
+
+  const handleDocMouseEnter = () => {
+    if (docHoverTimerRef.current) clearTimeout(docHoverTimerRef.current);
+    setDocOpen(true);
+    setCountryOpen(false);
+    setTypeOpen(false);
+  };
+  const handleDocMouseLeave = () => {
+    docHoverTimerRef.current = setTimeout(() => {
+      setDocOpen(false);
+    }, 220);
+  };
+
   useEffect(() => {
     let isMounted = true;
     visaService.getAllVisas().then((data) => {
       if (isMounted && data) setAllVisas(data);
     }).catch(() => {});
-    return () => { isMounted = false; };
+    return () => { 
+      isMounted = false;
+      if (countryHoverTimerRef.current) clearTimeout(countryHoverTimerRef.current);
+      if (typeHoverTimerRef.current) clearTimeout(typeHoverTimerRef.current);
+      if (docHoverTimerRef.current) clearTimeout(docHoverTimerRef.current);
+    };
   }, []);
 
   const countryRef = useRef(null);
@@ -88,10 +134,15 @@ export default function VisaFilterBar({
       
       {/* 1. Main Filter Bar Pill */}
       <div className="bg-white rounded-2xl lg:rounded-full border border-slate-200/90 shadow-[0_6px_24px_-4px_rgba(18,59,122,0.08)] hover:shadow-[0_10px_32px_-4px_rgba(18,59,122,0.12)] transition-all duration-300 p-2 lg:p-2.5">
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-2 lg:gap-0 items-center">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-2 lg:gap-0">
           
           {/* 1. Destination (Where are you going?) */}
-          <div className="lg:col-span-3 relative px-4 py-2 lg:border-r border-slate-200/80" ref={countryRef}>
+          <div 
+            className="relative px-3.5 py-1.5 lg:border-r border-slate-200/80 flex-1 min-w-0" 
+            ref={countryRef}
+            onMouseEnter={handleCountryMouseEnter}
+            onMouseLeave={handleCountryMouseLeave}
+          >
             <button
               type="button"
               onClick={() => {
@@ -101,15 +152,15 @@ export default function VisaFilterBar({
               }}
               className="w-full flex items-center justify-between text-left focus:outline-none cursor-pointer group"
             >
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2.5 sm:gap-3 min-w-0 flex-1">
                 <div className="w-8 h-8 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center flex-shrink-0">
                   <MapPin size={16} strokeWidth={2.5} />
                 </div>
-                <div className="flex flex-col">
-                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider leading-none">
+                <div className="flex flex-col min-w-0">
+                  <span className="text-[9.5px] sm:text-[10px] font-bold text-slate-400 uppercase tracking-wider leading-none">
                     Destination:
                   </span>
-                  <span className="text-xs sm:text-[13px] font-extrabold text-[#123B7A] mt-1 truncate max-w-[130px]">
+                  <span className="text-xs sm:text-[13.5px] font-extrabold text-[#123B7A] mt-0.5 truncate max-w-[130px]">
                     {selectedCountry}
                   </span>
                 </div>
@@ -122,7 +173,11 @@ export default function VisaFilterBar({
 
             {/* Destination Floating Dropdown Panel */}
             {countryOpen && (
-              <div className="absolute left-0 top-full mt-3 w-72 bg-white rounded-2xl shadow-2xl border border-slate-100 p-3 z-50 animate-in fade-in zoom-in-95 duration-150">
+              <div 
+                className="absolute left-0 top-full mt-2 w-72 bg-white rounded-2xl shadow-[0_20px_50px_rgba(8,43,97,0.22)] border border-slate-200/90 p-3 z-50 animate-in fade-in zoom-in-95 duration-150"
+                onMouseEnter={handleCountryMouseEnter}
+                onMouseLeave={handleCountryMouseLeave}
+              >
                 {/* Search Input inside Dropdown */}
                 <div className="relative mb-2">
                   <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
@@ -131,7 +186,7 @@ export default function VisaFilterBar({
                     value={countrySearchInput}
                     onChange={(e) => setCountrySearchInput(e.target.value)}
                     placeholder="Search destination..."
-                    className="w-full h-9 pl-9 pr-3 text-xs font-semibold rounded-xl bg-slate-50 border border-slate-200 text-[#123B7A] placeholder:text-slate-400 focus:outline-none focus:border-[#2563EB] focus:bg-white transition-colors"
+                    className="w-full h-8.5 pl-8 pr-3 text-xs font-semibold rounded-xl bg-slate-50 border border-slate-200 text-[#123B7A] placeholder:text-slate-400 focus:outline-none focus:border-[#2563EB] focus:bg-white transition-colors"
                   />
                 </div>
 
@@ -172,7 +227,12 @@ export default function VisaFilterBar({
           </div>
 
           {/* 2. Visa Type */}
-          <div className="lg:col-span-3 relative px-4 py-2 lg:border-r border-slate-200/80" ref={typeRef}>
+          <div 
+            className="relative px-3.5 py-1.5 lg:border-r border-slate-200/80 flex-1 min-w-0" 
+            ref={typeRef}
+            onMouseEnter={handleTypeMouseEnter}
+            onMouseLeave={handleTypeMouseLeave}
+          >
             <button
               type="button"
               onClick={() => {
@@ -182,15 +242,15 @@ export default function VisaFilterBar({
               }}
               className="w-full flex items-center justify-between text-left focus:outline-none cursor-pointer group"
             >
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2.5 sm:gap-3 min-w-0 flex-1">
                 <div className="w-8 h-8 rounded-full bg-blue-50 text-[#2563EB] flex items-center justify-center flex-shrink-0">
                   <Plane size={16} strokeWidth={2.4} />
                 </div>
-                <div className="flex flex-col">
-                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider leading-none">
+                <div className="flex flex-col min-w-0">
+                  <span className="text-[9.5px] sm:text-[10px] font-bold text-slate-400 uppercase tracking-wider leading-none">
                     Visa Type:
                   </span>
-                  <span className="text-xs sm:text-[13px] font-extrabold text-[#123B7A] mt-1 truncate max-w-[125px]">
+                  <span className="text-xs sm:text-[13.5px] font-extrabold text-[#123B7A] mt-0.5 truncate max-w-[125px]">
                     {selectedVisaType}
                   </span>
                 </div>
@@ -203,7 +263,11 @@ export default function VisaFilterBar({
 
             {/* Visa Type Floating Dropdown Panel with Mock Counts */}
             {typeOpen && (
-              <div className="absolute left-0 top-full mt-3 w-64 bg-white rounded-2xl shadow-2xl border border-slate-100 p-2.5 z-50 animate-in fade-in zoom-in-95 duration-150">
+              <div 
+                className="absolute left-0 top-full mt-2 w-64 bg-white rounded-2xl shadow-[0_20px_50px_rgba(8,43,97,0.22)] border border-slate-200/90 p-2.5 z-50 animate-in fade-in zoom-in-95 duration-150"
+                onMouseEnter={handleTypeMouseEnter}
+                onMouseLeave={handleTypeMouseLeave}
+              >
                 <div className="space-y-1">
                   {visaTypeOptions.map((item) => {
                     const isSelected = selectedVisaType === item.value;
@@ -234,8 +298,13 @@ export default function VisaFilterBar({
             )}
           </div>
 
-          {/* 3. Documents (Matches Reference: Any Documents • 147, Only Passport • 44, etc.) */}
-          <div className="lg:col-span-3 relative px-4 py-2 lg:border-r border-slate-200/80" ref={docRef}>
+          {/* 3. Documents */}
+          <div 
+            className="relative px-3.5 py-1.5 lg:border-r border-slate-200/80 flex-1 min-w-0" 
+            ref={docRef}
+            onMouseEnter={handleDocMouseEnter}
+            onMouseLeave={handleDocMouseLeave}
+          >
             <button
               type="button"
               onClick={() => {
@@ -245,15 +314,15 @@ export default function VisaFilterBar({
               }}
               className="w-full flex items-center justify-between text-left focus:outline-none cursor-pointer group"
             >
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2.5 sm:gap-3 min-w-0 flex-1">
                 <div className="w-8 h-8 rounded-full bg-amber-50 text-amber-600 flex items-center justify-center flex-shrink-0">
                   <FileText size={16} strokeWidth={2.4} />
                 </div>
-                <div className="flex flex-col">
-                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider leading-none">
+                <div className="flex flex-col min-w-0">
+                  <span className="text-[9.5px] sm:text-[10px] font-bold text-slate-400 uppercase tracking-wider leading-none">
                     Documents:
                   </span>
-                  <span className="text-xs sm:text-[13px] font-extrabold text-[#123B7A] mt-1 truncate max-w-[130px]">
+                  <span className="text-xs sm:text-[13.5px] font-extrabold text-[#123B7A] mt-0.5 truncate max-w-[130px]">
                     {selectedDocument}
                   </span>
                 </div>
@@ -266,7 +335,11 @@ export default function VisaFilterBar({
 
             {/* Documents Floating Dropdown Panel */}
             {docOpen && (
-              <div className="absolute left-0 top-full mt-3 w-80 bg-white rounded-2xl shadow-2xl border border-slate-100 p-2.5 z-50 animate-in fade-in zoom-in-95 duration-150">
+              <div 
+                className="absolute left-0 top-full mt-2 w-80 bg-white rounded-2xl shadow-[0_20px_50px_rgba(8,43,97,0.22)] border border-slate-200/90 p-2.5 z-50 animate-in fade-in zoom-in-95 duration-150"
+                onMouseEnter={handleDocMouseEnter}
+                onMouseLeave={handleDocMouseLeave}
+              >
                 <div className="space-y-1">
                   {documentOptions.map((doc) => {
                     const isSelected = selectedDocument === doc.value;
@@ -297,38 +370,25 @@ export default function VisaFilterBar({
             )}
           </div>
 
-          {/* 4. Travel Dates */}
-          <div 
-            onClick={() => {
-              try {
-                dateInputRef.current?.showPicker();
-              } catch (err) {
-                dateInputRef.current?.focus();
-              }
-            }}
-            className="lg:col-span-3 relative px-4 py-2 cursor-pointer flex items-center justify-between"
-          >
-            <div className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded-full bg-purple-50 text-purple-600 flex items-center justify-center flex-shrink-0">
-                <Calendar size={16} strokeWidth={2.4} />
-              </div>
-              <div className="flex flex-col">
-                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider leading-none">
-                  Travel Dates:
-                </span>
-                <span className="text-xs sm:text-[13px] font-extrabold text-[#123B7A] mt-1 truncate max-w-[110px]">
-                  {selectedDate ? new Date(selectedDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) : 'Select Dates'}
-                </span>
-              </div>
-            </div>
-            <ChevronDown size={14} className="text-slate-400" />
-            <input
-              ref={dateInputRef}
-              type="date"
-              value={selectedDate}
-              onChange={(e) => setSelectedDate(e.target.value)}
-              className="sr-only"
+          {/* 4. Travel Dates (Hover-Activated Popover) */}
+          <div className="relative px-3.5 py-1.5 flex-1 min-w-0">
+            <TravelDatePicker
+              selectedDate={selectedDate}
+              setSelectedDate={setSelectedDate}
+              iconBgClass="bg-purple-50 text-purple-600"
             />
+          </div>
+
+          {/* 5. Solid Blue Search CTA Button */}
+          <div className="px-2 py-1 flex-shrink-0">
+            <button
+              type="button"
+              onClick={onSearchSubmit}
+              className="w-full lg:w-auto bg-[#1479F5] hover:bg-[#0B64D6] text-white font-extrabold text-xs sm:text-sm px-6 py-2.5 rounded-full flex items-center justify-center gap-2 shadow-sm transition-all hover:shadow-md cursor-pointer"
+            >
+              <Search size={15} strokeWidth={2.6} />
+              <span>Search</span>
+            </button>
           </div>
 
         </div>

@@ -7,6 +7,9 @@ export function FilterProvider({ children }) {
   const [selectedVisaType, setSelectedVisaType] = useState('All Visa Types');
   const [selectedDate, setSelectedDate] = useState('');
 
+  // Whether the hero filter bar has scrolled past the viewport into the top navigation position
+  const [isFilterBarScrolled, setIsFilterBarScrolled] = useState(false);
+
   const hasActiveFilters = useMemo(() => {
     return (
       (selectedCountry &&
@@ -35,7 +38,9 @@ export function FilterProvider({ children }) {
     selectedDate,
     setSelectedDate,
     hasActiveFilters,
-    resetFilters
+    resetFilters,
+    isFilterBarScrolled,
+    setIsFilterBarScrolled
   };
 
   return <FilterContext.Provider value={value}>{children}</FilterContext.Provider>;

@@ -14,9 +14,12 @@ import {
   Compass,
   UploadCloud,
   Loader2,
-  RefreshCw
+  RefreshCw,
+  User,
+  LogOut,
+  Link2
 } from 'lucide-react';
-import { applicationService, userService } from '../services';
+import { applicationService, userService, authService, tokenStore } from '../services';
 import { APPLICATION_STATUS, REQUIRED_ACTION, getStatusConfig } from '../models/status';
 
 export default function AccountPage() {
@@ -52,8 +55,25 @@ export default function AccountPage() {
   const [infoUploaded, setInfoUploaded] = useState(false);
   const [isSubmittingDoc, setIsSubmittingDoc] = useState(false);
 
+  // Authentication State
+  const [isAuthenticated, setIsAuthenticated] = useState(() => authService.isAuthenticated());
+
+  // Link/Claim Guest Application State
+  const [showClaimModal, setShowClaimModal] = useState(false);
+  const [claimRef, setClaimRef] = useState('');
+  const [claimKey, setClaimKey] = useState('');
+  const [claimError, setClaimError] = useState('');
+  const [claimSuccess, setClaimSuccess] = useState('');
+  const [isClaiming, setIsClaiming] = useState(false);
+
   // Load account data from service layer
   const loadAccountData = async () => {
+    if (!authService.isAuthenticated()) {
+      setIsAuthenticated(false);
+      setIsLoading(false);
+      return;
+    }
+    setIsAuthenticated(true);
     setIsLoading(true);
     setLoadError(null);
     try {
@@ -66,9 +86,57 @@ export default function AccountPage() {
       setFormData(userProfile);
     } catch (err) {
       console.error('Failed to load account data:', err);
-      setLoadError('Unable to load applications. Please try again.');
+      if (err.status === 401) {
+        await authService.logout();
+        setIsAuthenticated(false);
+      } else {
+        setLoadError('Unable to load applications. Please try again.');
+      }
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleLogout = async () => {
+    await authService.logout();
+    setIsAuthenticated(false);
+    setApplications([]);
+    setProfile({
+      firstName: '',
+      lastName: '',
+      email: '',
+      phone: '',
+      nationality: 'Indian'
+    });
+  };
+
+  const handleClaimSubmit = async (e) => {
+    e.preventDefault();
+    setClaimError('');
+    setClaimSuccess('');
+    if (!claimRef.trim() || !claimKey.trim()) {
+      setClaimError('Please provide both Reference Number and Passport/Phone number.');
+      return;
+    }
+    setIsClaiming(true);
+    try {
+      const linked = await authService.claimApplication({
+        referenceNumber: claimRef.trim(),
+        verificationKey: claimKey.trim()
+      });
+      setClaimSuccess(`Application ${linked.referenceNumber || claimRef} successfully linked to your account!`);
+      setClaimRef('');
+      setClaimKey('');
+      const freshApps = await applicationService.getApplications();
+      setApplications(freshApps);
+      setTimeout(() => {
+        setShowClaimModal(false);
+        setClaimSuccess('');
+      }, 1800);
+    } catch (err) {
+      setClaimError(err.message || 'Failed to verify and link application.');
+    } finally {
+      setIsClaiming(false);
     }
   };
 
@@ -194,6 +262,7 @@ export default function AccountPage() {
       <div className="max-w-4xl mx-auto px-4 sm:px-6 space-y-8 sm:space-y-10">
 
         {/* ========================================================
+        {/* ========================================================
             TOP HEADER (Minimal & Spacious)
             ======================================================== */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pt-2">
@@ -202,27 +271,102 @@ export default function AccountPage() {
               My Account
             </h1>
             <p className="text-xs sm:text-sm text-slate-500 font-medium mt-1">
-              View your profile and track visa application status.
+              {isAuthenticated && (profile.name || profile.firstName)
+                ? `Welcome back, ${profile.firstName || profile.name}!`
+                : 'View your profile and track visa application status.'}
             </p>
           </div>
 
-          <Link
-            to="/visa"
-            className="inline-flex items-center gap-2 self-start sm:self-auto px-5 py-2.5 rounded-full bg-[#2563EB] hover:bg-[#123B7A] text-white text-xs font-bold transition-all shadow-xs"
-          >
-            <Compass size={14} />
-            <span>Explore Visas</span>
-          </Link>
+          <div className="flex flex-wrap items-center gap-2.5 self-start sm:self-auto">
+            {isAuthenticated ? (
+              <>
+                <button
+                  type="button"
+                  onClick={() => setShowClaimModal(true)}
+                  className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-full bg-white border border-slate-200 hover:border-[#1479F5] text-[#082B61] hover:text-[#1479F5] text-xs font-bold transition-all shadow-xs cursor-pointer"
+                  title="Link an application submitted as guest"
+                >
+                  <Link2 size={13} />
+                  <span>Link Application</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleLogout}
+                  className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-full bg-slate-100 hover:bg-red-50 text-slate-600 hover:text-red-600 text-xs font-bold transition-all cursor-pointer"
+                  title="Sign out of your account"
+                >
+                  <LogOut size={13} />
+                  <span>Sign Out</span>
+                </button>
+              </>
+            ) : (
+              <div className="flex items-center gap-2">
+                <Link
+                  to="/login"
+                  className="px-4 py-2 rounded-full border border-slate-200 hover:border-[#1479F5] text-xs font-bold text-[#082B61] hover:text-[#1479F5] transition-all"
+                >
+                  Sign In
+                </Link>
+                <Link
+                  to="/register"
+                  className="px-4 py-2 rounded-full bg-[#1479F5] hover:bg-[#0E65D2] text-white text-xs font-bold transition-all shadow-xs"
+                >
+                  Register
+                </Link>
+              </div>
+            )}
+
+            <Link
+              to="/visa"
+              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full bg-[#2563EB] hover:bg-[#123B7A] text-white text-xs font-bold transition-all shadow-xs"
+            >
+              <Compass size={14} />
+              <span>Explore Visas</span>
+            </Link>
+          </div>
         </div>
 
-        {/* ========================================================
-            PROFILE SECTION
-            Follows the strict structure:
-            [Label]
-            [Instruction directly below label and above input]
-            [Clean input with empty placeholder]
-            ======================================================== */}
-        <section aria-labelledby="profile-heading" className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200/80 shadow-xs space-y-6">
+        {!isAuthenticated ? (
+          <div className="bg-white rounded-3xl p-8 sm:p-12 border border-slate-200/80 shadow-xs text-center space-y-6 max-w-lg mx-auto my-6 animate-in fade-in duration-300">
+            <div className="w-16 h-16 rounded-full bg-blue-50 text-[#1479F5] flex items-center justify-center mx-auto shadow-inner">
+              <User size={30} strokeWidth={2.2} />
+            </div>
+            <div className="space-y-2">
+              <h2 className="text-xl sm:text-2xl font-black text-[#082B61]">Welcome to NimuFly Account</h2>
+              <p className="text-xs sm:text-sm text-slate-500 font-medium leading-relaxed">
+                Sign in to view your live visa applications, track government processing status, submit requested documents, and download approved e-visas.
+              </p>
+            </div>
+            <div className="flex flex-col sm:flex-row items-center justify-center gap-3 pt-2">
+              <Link
+                to="/login"
+                className="w-full sm:w-auto px-7 py-3 rounded-full bg-[#1479F5] hover:bg-[#0E65D2] text-white text-xs font-bold transition-all shadow-sm flex items-center justify-center gap-1.5"
+              >
+                <span>Sign In</span>
+                <ArrowRight size={14} />
+              </Link>
+              <Link
+                to="/register"
+                className="w-full sm:w-auto px-7 py-3 rounded-full bg-slate-100 hover:bg-slate-200 text-[#082B61] text-xs font-bold transition-all"
+              >
+                Create Account
+              </Link>
+            </div>
+            <div className="pt-4 border-t border-slate-100 text-xs text-slate-400">
+              Submitted an application as a guest? <Link to="/register" className="text-[#1479F5] font-bold hover:underline">Create an account</Link> or <Link to="/login" className="text-[#1479F5] font-bold hover:underline">sign in</Link> to link it with your passport or phone number.
+            </div>
+          </div>
+        ) : (
+          <>
+            {/* ========================================================
+                PROFILE SECTION
+                Follows the strict structure:
+                [Label]
+                [Instruction directly below label and above input]
+                [Clean input with empty placeholder]
+                ======================================================== */}
+            <section aria-labelledby="profile-heading" className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200/80 shadow-xs space-y-6">
           <div className="flex items-center justify-between pb-4 border-b border-slate-100">
             <div>
               <h2 id="profile-heading" className="text-base sm:text-lg font-black text-[#082B61]">
@@ -703,6 +847,8 @@ export default function AccountPage() {
             </div>
           )}
         </section>
+          </>
+        )}
 
       </div>
 
@@ -1190,6 +1336,106 @@ export default function AccountPage() {
               )}
             </div>
 
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================
+          LINK / CLAIM GUEST APPLICATION MODAL
+          ======================================================== */}
+      {showClaimModal && (
+        <div className="fixed inset-0 z-50 bg-[#082B61]/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 sm:p-7 shadow-2xl border border-slate-100 space-y-5 animate-in fade-in zoom-in-95 duration-200">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2.5 text-[#082B61]">
+                <div className="w-8 h-8 rounded-full bg-blue-50 text-[#1479F5] flex items-center justify-center shadow-inner">
+                  <Link2 size={16} />
+                </div>
+                <div>
+                  <h3 className="text-sm sm:text-base font-extrabold">Link Guest Application</h3>
+                  <p className="text-[11px] text-slate-400">Connect a previous visa application to your account</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowClaimModal(false);
+                  setClaimError('');
+                  setClaimSuccess('');
+                }}
+                className="p-1 rounded-full text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <form onSubmit={handleClaimSubmit} className="space-y-4">
+              <div>
+                <label className="text-xs font-bold text-[#082B61] block leading-none">
+                  Application Reference Number
+                </label>
+                <span className="text-[11px] text-slate-400 block mt-1 mb-1.5">
+                  e.g. MV-240915-A1B2
+                </span>
+                <input
+                  type="text"
+                  required
+                  placeholder="MV-XXXXXX"
+                  value={claimRef}
+                  onChange={(e) => setClaimRef(e.target.value)}
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs sm:text-sm font-semibold text-[#082B61] uppercase focus:border-[#1479F5] focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-bold text-[#082B61] block leading-none">
+                  Verification Key (Passport Number or Phone)
+                </label>
+                <span className="text-[11px] text-slate-400 block mt-1 mb-1.5">
+                  Must match the traveller records on the application
+                </span>
+                <input
+                  type="text"
+                  required
+                  placeholder="Passport number or 10-digit phone"
+                  value={claimKey}
+                  onChange={(e) => setClaimKey(e.target.value)}
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs sm:text-sm font-semibold text-[#082B61] focus:border-[#1479F5] focus:outline-none"
+                />
+              </div>
+
+              {claimError && (
+                <div className="p-3 rounded-xl bg-red-50 border border-red-200 text-red-700 text-xs font-medium flex items-center gap-2">
+                  <AlertCircle size={15} className="flex-shrink-0 text-red-500" />
+                  <span>{claimError}</span>
+                </div>
+              )}
+
+              {claimSuccess && (
+                <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-medium flex items-center gap-2">
+                  <CheckCircle2 size={15} className="flex-shrink-0 text-emerald-600" />
+                  <span>{claimSuccess}</span>
+                </div>
+              )}
+
+              <div className="flex items-center justify-end gap-2.5 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowClaimModal(false)}
+                  className="px-4 py-2 rounded-full border border-slate-200 text-xs font-bold text-slate-500 hover:bg-slate-50 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isClaiming}
+                  className="inline-flex items-center gap-2 px-6 py-2 rounded-full bg-[#1479F5] hover:bg-[#0E65D2] text-white text-xs font-bold transition-all disabled:opacity-50 cursor-pointer shadow-xs"
+                >
+                  {isClaiming && <Loader2 size={13} className="animate-spin" />}
+                  <span>Verify & Link</span>
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

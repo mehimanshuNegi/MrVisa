@@ -66,7 +66,7 @@ export function normalizeTraveller(rawTrav, index = 0) {
  */
 export function normalizeApplication(raw) {
   if (!raw) return null;
-  const appId = raw.id || raw.applicationId || `MV-${Math.floor(100000 + Math.random() * 900000)}`;
+  const appId = raw.referenceNumber || raw.id || raw.applicationId || `MV-${Math.floor(100000 + Math.random() * 900000)}`;
   const travellers = Array.isArray(raw.travellers)
     ? raw.travellers.map((t, idx) => normalizeTraveller(t, idx))
     : [];
@@ -74,29 +74,44 @@ export function normalizeApplication(raw) {
   const rawDocs = Array.isArray(raw.documents) ? raw.documents : [];
   const documents = rawDocs.map((d) => normalizeDocument(d, appId));
 
-  const countryDisplay = raw.countryName || raw.destination || 'Destination';
+  const countryObj = typeof raw.country === 'object' && raw.country !== null ? raw.country : null;
+  const visaObj = typeof raw.visa === 'object' && raw.visa !== null ? raw.visa : null;
+
+  const countryDisplay = countryObj?.displayName || countryObj?.name || raw.countryName || raw.destination || 'Destination';
+  const countrySlug = countryObj?.slug || raw.countryId || raw.visaId || '';
+  const flagEmoji = raw.flagEmoji || countryObj?.flagEmoji || '🌍';
+  const visaType = visaObj?.visaType || raw.visaType || 'E-Visa';
+
+  const amountVal = raw.amountPaid || (raw.pricingSnapshot?.totalAmount !== undefined
+    ? `₹${Number(raw.pricingSnapshot.totalAmount).toLocaleString('en-IN')}`
+    : raw.amount || '₹0');
 
   return {
     id: appId,
+    _id: raw._id || appId,
     applicationId: appId,
-    userId: raw.userId || 'usr_guest_01',
-    visaId: raw.visaId || raw.countryId || '',
-    countryId: raw.countryId || raw.visaId || '',
+    referenceNumber: appId,
+    userId: raw.customer?.id || raw.customer?._id || raw.userId || 'usr_guest_01',
+    visaId: visaObj?.slug || visaObj?.id || raw.visaId || countrySlug,
+    countryId: countrySlug,
     countryName: countryDisplay,
     destination: countryDisplay,
-    flagEmoji: raw.flagEmoji || '🌍',
-    visaType: raw.visaType || 'E-Visa',
-    travellerCount: raw.travellerCount || travellers.length || 1,
+    flagEmoji,
+    visaType,
+    travellerCount: raw.travellerCount || travellers.length || raw.pricingSnapshot?.travellerCount || 1,
     travellers,
     documents,
-    submittedDate: raw.submittedDate || new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
-    submittedAt: raw.submittedAt || new Date().toISOString(),
+    pricingSnapshot: raw.pricingSnapshot || null,
+    submittedDate: raw.submittedDate || (raw.createdAt ? new Date(raw.createdAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })),
+    submittedAt: raw.submittedAt || (raw.createdAt ? new Date(raw.createdAt).toISOString() : new Date().toISOString()),
     status: raw.status || APPLICATION_STATUS.APPLICATION_RECEIVED,
-    amountPaid: raw.amountPaid || raw.amount || '₹0',
-    amount: raw.amount || raw.amountPaid || '₹0',
-    expectedDate: raw.expectedDate || raw.expectedCompletion || 'Within processing window',
-    expectedCompletion: raw.expectedCompletion || raw.expectedDate || 'Within processing window',
+    paymentStatus: raw.paymentStatus || 'PENDING',
+    amountPaid: amountVal,
+    amount: amountVal,
+    expectedDate: raw.expectedCompletionDate || raw.expectedDate || raw.expectedCompletion || 'Within processing window',
+    expectedCompletion: raw.expectedCompletionDate || raw.expectedCompletion || raw.expectedDate || 'Within processing window',
     adminMessage: raw.adminMessage || '',
+    adminNotes: raw.adminNotes || '',
     requiredAction: raw.requiredAction || REQUIRED_ACTION.NONE,
     visaDocNumber: raw.visaDocNumber || raw.visaDetails?.docNumber || '',
     validUntil: raw.validUntil || raw.visaDetails?.validUntil || '',
@@ -104,13 +119,14 @@ export function normalizeApplication(raw) {
     visaDetails: raw.visaDetails || {
       docNumber: raw.visaDocNumber || '',
       validUntil: raw.validUntil || '',
-      entryType: raw.entryType || ''
+      entryType: raw.entryType || '',
+      downloadUrl: raw.visaDetails?.downloadUrl || ''
     },
     timeline: Array.isArray(raw.timeline) && raw.timeline.length > 0
       ? raw.timeline
       : [
           { stage: 'Application Submitted', completed: true, timestamp: raw.submittedDate || 'Just now' },
-          { stage: 'Documents Verified', completed: false, current: false },
+          { stage: 'Documents Verified', completed: false, current: true },
           { stage: 'Application Processing', completed: false, current: false },
           { stage: 'Visa Issued', completed: false, current: false }
         ]

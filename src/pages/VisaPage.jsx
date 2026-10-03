@@ -110,13 +110,55 @@ export default function VisaPage() {
     setSearchParams(params);
   };
 
+  const [sortBy, setSortBy] = useState('Popular');
+  const [sortDropdownOpen, setSortDropdownOpen] = useState(false);
+  const sortTimerRef = React.useRef(null);
+
+  const handleSortMouseEnter = () => {
+    if (sortTimerRef.current) clearTimeout(sortTimerRef.current);
+    setSortDropdownOpen(true);
+  };
+
+  const handleSortMouseLeave = () => {
+    sortTimerRef.current = setTimeout(() => {
+      setSortDropdownOpen(false);
+    }, 200);
+  };
+
+  const sortedVisas = useMemo(() => {
+    const list = [...filteredVisas];
+    if (sortBy === 'Price: Low to High') {
+      return list.sort((a, b) => {
+        const pA = parseFloat(String(a.fees || a.price || 0).replace(/[^0-9.]/g, '')) || 0;
+        const pB = parseFloat(String(b.fees || b.price || 0).replace(/[^0-9.]/g, '')) || 0;
+        return pA - pB;
+      });
+    }
+    if (sortBy === 'Price: High to Low') {
+      return list.sort((a, b) => {
+        const pA = parseFloat(String(a.fees || a.price || 0).replace(/[^0-9.]/g, '')) || 0;
+        const pB = parseFloat(String(b.fees || b.price || 0).replace(/[^0-9.]/g, '')) || 0;
+        return pB - pA;
+      });
+    }
+    if (sortBy === 'Name: A to Z') {
+      return list.sort((a, b) =>
+        (a.displayName || a.countryName || '').localeCompare(b.displayName || b.countryName || '')
+      );
+    }
+    return list;
+  }, [filteredVisas, sortBy]);
+
   return (
-    <div className="bg-[#F8FAFC] min-h-screen pt-8 sm:pt-10 pb-24 sm:pb-28">
+    <div className="bg-[#FAFBFD] min-h-screen pt-8 sm:pt-10 pb-24 sm:pb-28">
       <div className="max-w-[1360px] mx-auto px-4 sm:px-6 lg:px-8">
 
-        {/* 1. CENTERED PAGE HEADER */}
-        <div className="text-center max-w-xl mx-auto mb-8 sm:mb-9">
-          <h1 className="text-3xl sm:text-4xl lg:text-[40px] font-extrabold text-[#123B7A] tracking-tight leading-tight">
+        {/* 1. CENTERED PAGE HEADER MATCHING IMAGE 2 */}
+        <div className="text-center max-w-xl mx-auto mb-7 sm:mb-8">
+          <p className="text-[11px] font-black tracking-[0.2em] text-[#1479F5] uppercase mb-2">
+            VISAS MADE SIMPLE
+          </p>
+          <h1 className="text-3xl sm:text-4xl lg:text-[42px] font-black text-[#0B2A63] tracking-tight leading-tight">
             Explore Visa Destinations
           </h1>
           <p className="text-sm sm:text-base text-slate-500 font-medium mt-2">
@@ -140,16 +182,55 @@ export default function VisaPage() {
           onReset={handleResetFilters}
         />
 
-        {/* 3. SECTION RESULTS HEADER */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-7 pb-4 border-b border-slate-200/80">
+        {/* 3. SECTION RESULTS HEADER WITH SORT BY DROPDOWN MATCHING IMAGE 2 */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6 pb-3 border-b border-slate-200/80">
           <div className="flex items-baseline gap-2.5">
-            <h2 className="text-xl sm:text-2xl font-extrabold text-[#123B7A] tracking-tight">
+            <h2 className="text-xl sm:text-2xl font-black text-[#0B2A63] tracking-tight">
               Visa Destinations
             </h2>
             {!isLoading && (
-              <span className="text-xs sm:text-sm font-semibold text-slate-500">
-                {filteredVisas.length} {filteredVisas.length === 1 ? 'destination' : 'destinations'} available
+              <span className="text-xs sm:text-sm font-semibold text-slate-400">
+                {sortedVisas.length} {sortedVisas.length === 1 ? 'destination' : 'destinations'} available
               </span>
+            )}
+          </div>
+
+          {/* Sort By Dropdown (Hover Enabled) */}
+          <div
+            className="relative self-end sm:self-auto"
+            onMouseEnter={handleSortMouseEnter}
+            onMouseLeave={handleSortMouseLeave}
+          >
+            <div className="flex items-center gap-1.5 text-xs text-slate-500 font-semibold cursor-pointer py-1 px-2 rounded-lg hover:bg-slate-100 transition-colors">
+              <span>Sort by</span>
+              <span className="font-bold text-[#0B2A63]">{sortBy}</span>
+              <span className="text-slate-400">▾</span>
+            </div>
+
+            {sortDropdownOpen && (
+              <div
+                className="absolute right-0 top-full mt-1 w-44 bg-white rounded-xl shadow-lg border border-slate-100 p-1.5 z-40 animate-in fade-in slide-in-from-top-1 duration-150"
+                onMouseEnter={handleSortMouseEnter}
+                onMouseLeave={handleSortMouseLeave}
+              >
+                {['Popular', 'Price: Low to High', 'Price: High to Low', 'Name: A to Z'].map((option) => (
+                  <button
+                    key={option}
+                    type="button"
+                    onClick={() => {
+                      setSortBy(option);
+                      setSortDropdownOpen(false);
+                    }}
+                    className={`w-full text-left px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer transition-colors ${
+                      sortBy === option
+                        ? 'bg-blue-50 text-[#1479F5] font-bold'
+                        : 'text-[#0B2A63] hover:bg-slate-50'
+                    }`}
+                  >
+                    {option}
+                  </button>
+                ))}
+              </div>
             )}
           </div>
         </div>
@@ -173,8 +254,8 @@ export default function VisaPage() {
               <span>Retry</span>
             </button>
           </div>
-        ) : filteredVisas.length > 0 ? (
-          <VisaGrid visas={filteredVisas} />
+        ) : sortedVisas.length > 0 ? (
+          <VisaGrid visas={sortedVisas} />
         ) : (
           <EmptyState onReset={handleResetFilters} />
         )}

@@ -10,10 +10,19 @@ import VisaApplicationPage from './pages/VisaApplicationPage';
 import AboutPage from './pages/AboutPage';
 import ContactPage from './pages/ContactPage';
 import AccountPage from './pages/AccountPage';
+import LoginPage from './pages/LoginPage';
+import RegisterPage from './pages/RegisterPage';
 import AdminLayout from './pages/admin/AdminLayout';
 import AdminApplicationsPage from './pages/admin/AdminApplicationsPage';
 import AdminVisasPage from './pages/admin/AdminVisasPage';
 import AdminCountriesPage from './pages/admin/AdminCountriesPage';
+import AdminDocumentationPage from './pages/admin/AdminDocumentationPage';
+import AdminDummyTicketsPage from './pages/admin/AdminDummyTicketsPage';
+import DocumentationPage from './pages/DocumentationPage';
+import DocumentationDetailPage from './pages/DocumentationDetailPage';
+import DocumentationApplyPlaceholderPage from './pages/DocumentationApplyPlaceholderPage';
+import DummyTicketsPage from './pages/DummyTicketsPage';
+import DummyTicketApplyPlaceholderPage from './pages/DummyTicketApplyPlaceholderPage';
 import ErrorBoundary from './components/ErrorBoundary';
 import { FilterProvider } from './context/FilterContext';
 
@@ -61,10 +70,23 @@ function AppContent() {
               </ErrorBoundary>
             }
           />
+          <Route path="/login" element={<LoginPage />} />
+          <Route path="/register" element={<RegisterPage />} />
           <Route path="/account" element={<AccountPage />} />
           <Route path="/my-account" element={<AccountPage />} />
           <Route path="/about" element={<AboutPage />} />
           <Route path="/contact" element={<ContactPage />} />
+          <Route path="/travel-support" element={<ContactPage />} />
+
+          {/* Documentation Routes */}
+          <Route path="/documentation" element={<DocumentationPage />} />
+          <Route path="/documentation/:slug" element={<DocumentationDetailPage />} />
+          <Route path="/documentation/:slug/apply" element={<DocumentationApplyPlaceholderPage />} />
+
+          {/* Dummy Ticket Routes */}
+          <Route path="/dummy-tickets" element={<DummyTicketsPage />} />
+          <Route path="/dummy-tickets/apply" element={<DummyTicketApplyPlaceholderPage />} />
+          <Route path="/dummy-tickets/:slug/apply" element={<DummyTicketApplyPlaceholderPage />} />
 
           {/* Admin Routes */}
           <Route path="/admin" element={<AdminLayout />}>
@@ -72,6 +94,8 @@ function AppContent() {
             <Route path="applications" element={<AdminApplicationsPage />} />
             <Route path="visas" element={<AdminVisasPage />} />
             <Route path="countries" element={<AdminCountriesPage />} />
+            <Route path="documentation" element={<AdminDocumentationPage />} />
+            <Route path="dummy-tickets" element={<AdminDummyTicketsPage />} />
           </Route>
 
           {/* Fallback to Home */}

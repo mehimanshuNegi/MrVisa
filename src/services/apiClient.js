@@ -30,6 +30,13 @@ export const tokenStore = {
       return null;
     }
   },
+  getRefreshToken: () => {
+    try {
+      return localStorage.getItem('mrvisa_refresh_token') || null;
+    } catch {
+      return null;
+    }
+  },
   setToken: (token) => {
     authToken = token;
     try {
@@ -42,20 +49,66 @@ export const tokenStore = {
       // ignore in restricted environments
     }
   },
+  setRefreshToken: (refreshToken) => {
+    try {
+      if (refreshToken) {
+        localStorage.setItem('mrvisa_refresh_token', refreshToken);
+      } else {
+        localStorage.removeItem('mrvisa_refresh_token');
+      }
+    } catch {
+      // ignore
+    }
+  },
+  setAuth: ({ accessToken, refreshToken, user }) => {
+    if (accessToken) tokenStore.setToken(accessToken);
+    if (refreshToken) tokenStore.setRefreshToken(refreshToken);
+    if (user) {
+      try {
+        localStorage.setItem('mrvisa_user', JSON.stringify(user));
+      } catch {
+        // ignore
+      }
+    }
+  },
+  getUser: () => {
+    try {
+      const u = localStorage.getItem('mrvisa_user');
+      return u ? JSON.parse(u) : null;
+    } catch {
+      return null;
+    }
+  },
   clearToken: () => {
     authToken = null;
     try {
       localStorage.removeItem('mrvisa_auth_token');
+      localStorage.removeItem('mrvisa_refresh_token');
+      localStorage.removeItem('mrvisa_user');
     } catch {
       // ignore
     }
   }
 };
 
+let isRefreshing = false;
+let refreshQueue = [];
+
+function processRefreshQueue(error, newAccessToken = null) {
+  refreshQueue.forEach((prom) => {
+    if (error) {
+      prom.reject(error);
+    } else {
+      prom.resolve(newAccessToken);
+    }
+  });
+  refreshQueue = [];
+}
+
 /**
- * Performs a normalized HTTP request to the backend API
+ * Performs a normalized HTTP request to the backend API with automatic 401 token refresh
  */
-export async function apiClient(endpoint, { method = 'GET', body, headers = {}, params } = {}) {
+export async function apiClient(endpoint, { method = 'GET', body, headers = {}, params, _isRetry = false } = {}) {
   let url = `${API_CONFIG.BASE_URL}${endpoint.startsWith('/') ? endpoint : `/${endpoint}`}`;
 
   if (params && Object.keys(params).length > 0) {
@@ -72,8 +125,9 @@ export async function apiClient(endpoint, { method = 'GET', body, headers = {}, 
   }
 
   const token = tokenStore.getToken();
+  const isFormData = typeof FormData !== 'undefined' && body instanceof FormData;
   const requestHeaders = {
-    'Content-Type': 'application/json',
+    ...(isFormData ? {} : { 'Content-Type': 'application/json' }),
     Accept: 'application/json',
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
     ...headers
@@ -86,7 +140,7 @@ export async function apiClient(endpoint, { method = 'GET', body, headers = {}, 
     const response = await fetch(url, {
       method,
       headers: requestHeaders,
-      body: body ? JSON.stringify(body) : undefined,
+      body: isFormData ? body : (body ? JSON.stringify(body) : undefined),
       signal: controller.signal
     });
 
@@ -102,6 +156,67 @@ export async function apiClient(endpoint, { method = 'GET', body, headers = {}, 
     }
 
     if (!response.ok) {
+      // 401 Token Refresh Interceptor
+      if (
+        response.status === 401 &&
+        !_isRetry &&
+        !endpoint.includes('/auth/refresh') &&
+        !endpoint.includes('/auth/login') &&
+        tokenStore.getRefreshToken()
+      ) {
+        if (isRefreshing) {
+          // Another request is already refreshing; queue this request
+          return new Promise((resolve, reject) => {
+            refreshQueue.push({ resolve, reject });
+          }).then(() => {
+            return apiClient(endpoint, { method, body, headers, params, _isRetry: true });
+          });
+        }
+
+        isRefreshing = true;
+        try {
+          const refreshRes = await fetch(`${API_CONFIG.BASE_URL}/auth/refresh`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ refreshToken: tokenStore.getRefreshToken() })
+          });
+
+          if (!refreshRes.ok) {
+            throw new Error('Refresh token was rejected');
+          }
+
+          const refreshData = await refreshRes.json();
+          const newAccessToken =
+            refreshData?.data?.tokens?.accessToken || refreshData?.tokens?.accessToken;
+          const newRefreshToken =
+            refreshData?.data?.tokens?.refreshToken || refreshData?.tokens?.refreshToken;
+
+          if (!newAccessToken) {
+            throw new Error('No access token returned from refresh endpoint');
+          }
+
+          tokenStore.setAuth({
+            accessToken: newAccessToken,
+            refreshToken: newRefreshToken,
+            user: tokenStore.getUser()
+          });
+
+          isRefreshing = false;
+          processRefreshQueue(null, newAccessToken);
+
+          // Retry the original request with the fresh token
+          return apiClient(endpoint, { method, body, headers, params, _isRetry: true });
+        } catch (refreshErr) {
+          isRefreshing = false;
+          processRefreshQueue(refreshErr, null);
+          tokenStore.clearToken();
+          if (typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent('auth:expired'));
+          }
+          throw new ApiError('Your session has expired. Please sign in again.', 401);
+        }
+      }
+
       const errorMessage =
         (responseData && (responseData.message || responseData.error)) ||
         `API request failed with status ${response.status}`;

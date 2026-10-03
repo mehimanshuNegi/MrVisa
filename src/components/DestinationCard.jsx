@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowRight, Clock } from 'lucide-react';
+import { ArrowRight } from 'lucide-react';
 
 export default function DestinationCard({ destination, index = 0 }) {
   const {
@@ -11,214 +11,90 @@ export default function DestinationCard({ destination, index = 0 }) {
     flagEmoji,
     image,
     visaType,
-    validity,
-    fees,
-    documents = "Bank Statements, Photo, Passport",
-    documentsSummary
+    routeId
   } = destination;
 
   const [flagError, setFlagError] = useState(false);
   const navigate = useNavigate();
 
   const handleCardClick = () => {
-    navigate(`/visa/${id}`);
+    navigate(`/visa/${routeId || id}`);
   };
 
-  // Data-driven Guaranteed Visa delivery time from entity
-  const guaranteedDate = destination.guaranteedDate || "25 Sep 2026, 4:00 PM";
+  const countryTitle = country || displayName;
+
+  // Clean, short visa label matching reference (e.g. Tourist Visa, e-Visa / TDAC, e-Visa)
+  const formatVisaType = () => {
+    const raw = String(visaType || '').toLowerCase();
+    const cLower = String(countryTitle || '').toLowerCase();
+    if (cLower.includes('thailand')) return 'e-Visa / TDAC';
+    if (cLower.includes('japan') || cLower.includes('united arab')) return 'Tourist Visa';
+    if (raw.includes('arrival card') || raw.includes('tdac')) return 'e-Visa / Arrival Card';
+    if (raw.includes('e-visa') || raw.includes('eta')) return 'e-Visa';
+    return visaType || 'Tourist Visa';
+  };
 
   return (
     <div 
       onClick={handleCardClick}
-      className="group flex flex-col cursor-pointer select-none transition-transform duration-300"
+      className="group bg-white rounded-2xl border border-slate-200/90 shadow-[0_2px_8px_-2px_rgba(8,43,97,0.06)] hover:shadow-[0_12px_24px_-4px_rgba(8,43,97,0.12)] hover:-translate-y-1 transition-all duration-200 overflow-hidden flex flex-col justify-between cursor-pointer select-none"
       style={{
-        animationDelay: `${Math.min(index, 5) * 100}ms`,
+        animationDelay: `${Math.min(index, 6) * 50}ms`,
       }}
     >
-      {/* 1. Interactive Visual Card Container */}
-      <div className="relative h-[500px] sm:h-[530px] w-full rounded-[28px] sm:rounded-[32px] overflow-hidden bg-slate-950 shadow-[0_12px_36px_-6px_rgba(8,43,97,0.12)] border border-slate-100/40">
-        
-        {/* Destination Image (Zooms OUT on hover: scale 1.05 -> scale 1.0) */}
+      {/* TOP: Destination Image matching reference */}
+      <div className="relative h-24 sm:h-28 w-full overflow-hidden bg-slate-100 flex-shrink-0">
         <img
           src={image}
-          alt={displayName}
+          alt={countryTitle}
           loading="lazy"
-          className="absolute inset-0 w-full h-full object-cover object-center transition-transform duration-500 ease-out will-change-transform scale-[1.06] group-hover:scale-100 brightness-[0.98] group-hover:brightness-90"
+          className="w-full h-full object-cover object-center transition-transform duration-500 ease-out group-hover:scale-105"
         />
-
-        {/* Top-Left Destination Pill */}
-        <div className="absolute top-5 left-5 z-10 pointer-events-none transition-opacity duration-300 group-hover:opacity-0">
-          <span className="inline-block px-3.5 py-1.5 rounded-full bg-black/40 backdrop-blur-md text-white text-xs font-semibold border border-white/15 shadow-sm">
-            {displayName}
-          </span>
-        </div>
-
-        {/* Deep Bottom Gradient */}
-        <div className="absolute inset-0 bg-gradient-to-t from-black/95 via-black/45 to-transparent pointer-events-none transition-opacity duration-300 group-hover:opacity-60" />
-
-        {/* 
-          DEFAULT STATE (Bottom Info):
-          Circular Flag + Country Name + 3-Column Specs
-        */}
-        <div className="absolute inset-x-0 bottom-0 p-6 sm:p-7 z-10 pointer-events-none transition-opacity duration-300 group-hover:opacity-0">
-          {/* Flag + Country Name */}
-          <div className="flex flex-col items-center justify-center text-center mb-5">
-            <div className="w-8 h-8 rounded-full overflow-hidden border border-white/30 shadow-sm mb-2.5 flex items-center justify-center bg-white/15">
-              {!flagError && flagUrl ? (
-                <img 
-                  src={flagUrl} 
-                  alt={`${displayName} flag`} 
-                  className="w-full h-full object-cover"
-                  onError={() => setFlagError(true)}
-                />
-              ) : (
-                <span className="text-base leading-none">{flagEmoji}</span>
-              )}
-            </div>
-
-            <h3 className="text-xl sm:text-2xl font-extrabold text-white tracking-widest uppercase">
-              {country}
-            </h3>
-          </div>
-
-          {/* 3-Column Specifications Row */}
-          <div className="grid grid-cols-3 gap-2 pt-3.5 border-t border-white/20 text-center">
-            <div>
-              <span className="block text-[10px] font-bold uppercase tracking-wider text-slate-300">
-                TYPE
-              </span>
-              <span className="block text-xs sm:text-sm font-bold text-white mt-0.5 truncate">
-                {visaType}
-              </span>
-            </div>
-
-            <div>
-              <span className="block text-[10px] font-bold uppercase tracking-wider text-slate-300">
-                VALID
-              </span>
-              <span className="block text-xs sm:text-sm font-bold text-white mt-0.5 truncate">
-                {validity}
-              </span>
-            </div>
-
-            <div>
-              <span className="block text-[10px] font-bold uppercase tracking-wider text-slate-300">
-                FEES
-              </span>
-              <span className="block text-xs sm:text-sm font-bold text-white mt-0.5 truncate">
-                {fees}
-              </span>
-            </div>
-          </div>
-        </div>
-
-        {/* 
-          HOVER STATE: INSIDE-OUT VERTICAL REVEAL PANEL
-          Smoothly rises upward from the bottom of the card.
-        */}
-        <div 
-          className="absolute inset-x-0 bottom-0 z-20 px-7 py-6 bg-[#061836]/95 backdrop-blur-md rounded-b-[28px] sm:rounded-b-[32px] border-t border-white/10 translate-y-full group-hover:translate-y-0 transition-transform duration-500 ease-out will-change-transform flex flex-col justify-end"
-        >
-          {/* Top: Centered Flag + Country Name */}
-          <div className="flex flex-col items-center justify-center text-center">
-            <div className="w-8 h-8 rounded-full overflow-hidden border border-white/30 shadow-md mb-2 flex items-center justify-center bg-white/10">
-              {!flagError && flagUrl ? (
-                <img 
-                  src={flagUrl} 
-                  alt={`${displayName} flag`} 
-                  className="w-full h-full object-cover"
-                  onError={() => setFlagError(true)}
-                />
-              ) : (
-                <span className="text-base leading-none">{flagEmoji}</span>
-              )}
-            </div>
-            <h3 className="text-2xl font-extrabold text-white tracking-widest uppercase">
-              {country}
-            </h3>
-          </div>
-
-          {/* Divider 1 */}
-          <div className="border-t border-white/15 my-3 w-full" />
-
-          {/* 3 Columns: TYPE | VALID | FEES */}
-          <div className="grid grid-cols-3 gap-2 text-center">
-            <div>
-              <span className="block text-[10px] font-bold uppercase tracking-wider text-slate-300">
-                TYPE
-              </span>
-              <span className="block text-xs sm:text-sm font-bold text-white mt-1">
-                {visaType}
-              </span>
-            </div>
-
-            <div>
-              <span className="block text-[10px] font-bold uppercase tracking-wider text-slate-300">
-                VALID
-              </span>
-              <span className="block text-xs sm:text-sm font-bold text-white mt-1">
-                {validity}
-              </span>
-            </div>
-
-            <div>
-              <span className="block text-[10px] font-bold uppercase tracking-wider text-slate-300">
-                FEES
-              </span>
-              <span className="block text-xs sm:text-sm font-bold text-white mt-1">
-                {fees}
-              </span>
-            </div>
-          </div>
-
-          {/* Divider 2 */}
-          <div className="border-t border-white/15 my-3 w-full" />
-
-          {/* Documents Needed */}
-          <div className="text-left">
-            <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">
-              DOCUMENTS NEEDED:
-            </p>
-            <p className="text-xs sm:text-[13px] font-semibold text-white">
-              {documentsSummary || documents}
-            </p>
-          </div>
-
-          {/* Divider 3 */}
-          <div className="border-t border-white/15 my-3 w-full" />
-
-          {/* Emergency Assistance Button */}
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              navigate('/contact');
-            }}
-            className="w-full py-2.5 px-4 rounded-full bg-white/10 hover:bg-white/20 border border-white/15 text-white text-xs font-semibold flex items-center justify-center gap-2 transition-colors duration-200 mt-1 cursor-pointer"
-          >
-            <Clock size={14} className="text-slate-300" />
-            <span>Get emergency assistance</span>
-          </button>
-        </div>
-
       </div>
 
-      {/* 2. Guaranteed Visa Delivery Timestamp (Reference UI Pattern) */}
-      <div className="mt-3.5 px-3 flex items-center justify-between">
+      {/* BOTTOM: Flag, Country Name, Arrow, Visa Label, High Approval Rate Badge */}
+      <div className="p-2.5 sm:p-3 flex flex-col justify-between flex-1 bg-white">
         <div>
-          <span className="block text-xs font-medium text-[#5D7190]">
-            Guaranteed Visa On
-          </span>
-          <span className="block text-sm sm:text-[15px] font-bold text-[#082B61] mt-0.5">
-            {guaranteedDate}
-          </span>
+          {/* Row 1: Flag + Country Name + Circular Arrow Action */}
+          <div className="flex items-center justify-between gap-1.5">
+            <div className="flex items-center gap-1.5 min-w-0 flex-1">
+              <div className="w-4.5 h-4.5 rounded-full overflow-hidden border border-slate-200/80 flex items-center justify-center bg-slate-50 flex-shrink-0 text-xs shadow-2xs">
+                {!flagError && flagUrl ? (
+                  <img 
+                    src={flagUrl} 
+                    alt={`${countryTitle} flag`} 
+                    className="w-full h-full object-cover"
+                    onError={() => setFlagError(true)}
+                  />
+                ) : (
+                  <span className="leading-none">{flagEmoji || '🌍'}</span>
+                )}
+              </div>
+
+              <h3 className="text-xs sm:text-[13px] font-extrabold text-[#082B61] group-hover:text-[#1479F5] transition-colors truncate">
+                {countryTitle}
+              </h3>
+            </div>
+
+            {/* Circular Light-Blue Arrow Button */}
+            <div className="w-5.5 h-5.5 rounded-full bg-[#EBF3FF] text-[#1479F5] group-hover:bg-[#1479F5] group-hover:text-white flex items-center justify-center transition-colors flex-shrink-0">
+              <ArrowRight size={10.5} strokeWidth={2.4} className="transform group-hover:translate-x-0.5 transition-transform" />
+            </div>
+          </div>
+
+          {/* Row 2: Visa Type Label */}
+          <p className="text-[10px] sm:text-[10.5px] text-slate-500 font-medium pl-6 truncate mt-0.5">
+            {formatVisaType()}
+          </p>
         </div>
-        <div className="flex items-center gap-1.5 text-xs font-bold text-[#1479F5] group-hover:translate-x-1 transition-transform">
-          <span>Explore</span>
-          <ArrowRight size={13} strokeWidth={2.5} />
+
+        {/* Row 3: High Approval Rate Pill Badge */}
+        <div className="mt-2">
+          <div className="w-full text-center py-0.5 sm:py-1 px-1.5 rounded-md sm:rounded-lg bg-[#EAF8F1] text-[#059669] text-[10px] font-bold leading-none">
+            High Approval Rate
+          </div>
         </div>
       </div>
-
     </div>
   );
 }

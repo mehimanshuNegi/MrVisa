@@ -17,6 +17,32 @@ export default function VisaSearch({ onSearch }) {
 
   const countryRef = useRef(null);
   const visaRef = useRef(null);
+  const countryHoverTimerRef = useRef(null);
+  const visaHoverTimerRef = useRef(null);
+
+  const handleCountryMouseEnter = () => {
+    if (countryHoverTimerRef.current) clearTimeout(countryHoverTimerRef.current);
+    setCountryDropdownOpen(true);
+    setVisaDropdownOpen(false);
+  };
+
+  const handleCountryMouseLeave = () => {
+    countryHoverTimerRef.current = setTimeout(() => {
+      setCountryDropdownOpen(false);
+    }, 220);
+  };
+
+  const handleVisaMouseEnter = () => {
+    if (visaHoverTimerRef.current) clearTimeout(visaHoverTimerRef.current);
+    setVisaDropdownOpen(true);
+    setCountryDropdownOpen(false);
+  };
+
+  const handleVisaMouseLeave = () => {
+    visaHoverTimerRef.current = setTimeout(() => {
+      setVisaDropdownOpen(false);
+    }, 220);
+  };
 
   useEffect(() => {
     function handleClickOutside(event) {
@@ -28,7 +54,11 @@ export default function VisaSearch({ onSearch }) {
       }
     }
     document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      if (countryHoverTimerRef.current) clearTimeout(countryHoverTimerRef.current);
+      if (visaHoverTimerRef.current) clearTimeout(visaHoverTimerRef.current);
+    };
   }, []);
 
   const handleSearchSubmit = () => {
@@ -54,7 +84,12 @@ export default function VisaSearch({ onSearch }) {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 md:gap-0 items-stretch pb-6 lg:pb-7 border-b border-slate-100">
             
             {/* 1. WHERE TO? */}
-            <div className="relative md:pr-8 md:border-r md:border-slate-100 flex flex-col justify-center" ref={countryRef}>
+            <div 
+              className="relative md:pr-8 md:border-r md:border-slate-100 flex flex-col justify-center" 
+              ref={countryRef}
+              onMouseEnter={handleCountryMouseEnter}
+              onMouseLeave={handleCountryMouseLeave}
+            >
               <span className="block text-[11px] font-bold text-[#5D7190] uppercase tracking-wider mb-1.5">
                 WHERE TO?
               </span>
@@ -73,7 +108,11 @@ export default function VisaSearch({ onSearch }) {
               </button>
 
               {countryDropdownOpen && (
-                <div className="absolute top-full left-0 right-0 mt-3 bg-white rounded-2xl shadow-2xl border border-slate-100 max-h-72 overflow-y-auto z-50 p-2 space-y-1">
+                <div 
+                  className="absolute top-full left-0 right-0 mt-3 bg-white rounded-2xl shadow-2xl border border-slate-100 max-h-72 overflow-y-auto z-50 p-2 space-y-1"
+                  onMouseEnter={handleCountryMouseEnter}
+                  onMouseLeave={handleCountryMouseLeave}
+                >
                   {searchCountries.map((c) => (
                     <button
                       key={c}
@@ -95,7 +134,12 @@ export default function VisaSearch({ onSearch }) {
             </div>
 
             {/* 2. VISA TYPE */}
-            <div className="relative md:px-8 md:border-r md:border-slate-100 flex flex-col justify-center" ref={visaRef}>
+            <div 
+              className="relative md:px-8 md:border-r md:border-slate-100 flex flex-col justify-center" 
+              ref={visaRef}
+              onMouseEnter={handleVisaMouseEnter}
+              onMouseLeave={handleVisaMouseLeave}
+            >
               <span className="block text-[11px] font-bold text-[#5D7190] uppercase tracking-wider mb-1.5">
                 VISA TYPE
               </span>
@@ -114,7 +158,11 @@ export default function VisaSearch({ onSearch }) {
               </button>
 
               {visaDropdownOpen && (
-                <div className="absolute top-full left-0 right-0 mt-3 bg-white rounded-2xl shadow-2xl border border-slate-100 max-h-60 overflow-y-auto z-50 p-2 space-y-1">
+                <div 
+                  className="absolute top-full left-0 right-0 mt-3 bg-white rounded-2xl shadow-2xl border border-slate-100 max-h-60 overflow-y-auto z-50 p-2 space-y-1"
+                  onMouseEnter={handleVisaMouseEnter}
+                  onMouseLeave={handleVisaMouseLeave}
+                >
                   {visaTypes.map((t) => (
                     <button
                       key={t}

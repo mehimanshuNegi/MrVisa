@@ -39,12 +39,15 @@ export function getFlagEmojiFromCode(code) {
 export function normalizeCountry(raw) {
   if (!raw) return null;
   const code = (raw.code || '').trim().toUpperCase();
+  const slug = raw.slug || generateSlug(raw.name || raw.displayName || raw.id || code);
   const flagEmoji = raw.flagEmoji || raw.flag || getFlagEmojiFromCode(code) || '🌍';
   const flagUrl = raw.flagUrl || (code.length === 2 ? `https://flagcdn.com/w80/${code.toLowerCase()}.png` : '');
 
   return {
-    id: raw.id || raw.countryId || code.toLowerCase(),
-    aliasId: raw.aliasId || raw.id || code.toLowerCase(),
+    id: slug || raw.id || raw.countryId || code.toLowerCase(),
+    _id: raw._id || raw.id,
+    aliasId: raw.aliasId || slug || raw.id || code.toLowerCase(),
+    slug,
     name: raw.name || raw.displayName || raw.country || '',
     displayName: raw.displayName || raw.name || '',
     code,
@@ -53,14 +56,19 @@ export function normalizeCountry(raw) {
     flagUrl,
     image: raw.image || raw.imageUrl || 'https://images.unsplash.com/photo-1488646953014-85cb44e25828?auto=format&fit=crop&w=1000&q=85',
     description: raw.description || '',
-    visas: Array.isArray(raw.visas) ? raw.visas : [],
-    status: raw.status || 'ACTIVE'
+    visas: Array.isArray(raw.visas) ? raw.visas.map((v) => (typeof v === 'object' && v !== null ? (v.slug || v.id || v._id) : v)) : [],
+    status: raw.status || (raw.isActive === false ? 'INACTIVE' : 'ACTIVE'),
+    isActive: raw.isActive !== undefined ? raw.isActive : raw.status === 'ACTIVE'
   };
 }
 
 const STORAGE_KEY = 'mrvisa_countries';
 
 class CountryService {
+  constructor() {
+    this._cachedCountries = null;
+  }
+
   /**
    * Helper to load stored countries from localStorage in mock mode
    */
@@ -94,11 +102,15 @@ class CountryService {
     if (isMockMode()) {
       const stored = this._getStoredCountries();
       const list = stored || mockCountries;
-      return list.map(normalizeCountry);
+      const normalized = list.map(normalizeCountry);
+      this._cachedCountries = normalized;
+      return normalized;
     }
     const rawList = await apiClient('/countries');
     const items = Array.isArray(rawList) ? rawList : rawList.data || [];
-    return items.map(normalizeCountry);
+    const normalized = items.map(normalizeCountry);
+    this._cachedCountries = normalized;
+    return normalized;
   }
 
   /**
@@ -120,8 +132,23 @@ class CountryService {
       return found ? normalizeCountry(found) : null;
     }
 
-    const raw = await apiClient(`/countries/${encodeURIComponent(cleanId)}`);
-    return normalizeCountry(raw.data || raw);
+    try {
+      const raw = await apiClient(`/countries/${encodeURIComponent(cleanId)}`);
+      return normalizeCountry(raw.data || raw);
+    } catch (err) {
+      if (err?.status === 404) {
+        const mockFound = mockCountries.find(
+          (c) =>
+            c.id.toLowerCase() === cleanId ||
+            c.aliasId?.toLowerCase() === cleanId ||
+            c.name.toLowerCase() === cleanId ||
+            c.code?.toLowerCase() === cleanId
+        );
+        if (mockFound) return normalizeCountry(mockFound);
+        return null;
+      }
+      throw err;
+    }
   }
 
   /**
@@ -230,9 +257,9 @@ class CountryService {
    * Get formatted list for search dropdowns
    */
   getSearchCountries() {
-    const stored = this._getStoredCountries();
-    if (stored && stored.length > 0) {
-      return ['Any Country', ...stored.filter((c) => c.status === 'ACTIVE').map((c) => c.name)];
+    const list = this._cachedCountries && this._cachedCountries.length > 0 ? this._cachedCountries : this._getStoredCountries();
+    if (list && list.length > 0) {
+      return ['Any Country', ...list.filter((c) => c.status === 'ACTIVE' || c.isActive !== false).map((c) => c.name)];
     }
     return [...searchCountriesList];
   }

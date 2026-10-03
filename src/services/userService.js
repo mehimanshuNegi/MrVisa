@@ -49,7 +49,7 @@ class UserService {
       return normalizeUserProfile(mockDefaultUser);
     }
 
-    const raw = await apiClient('/user/profile');
+    const raw = await apiClient('/auth/me');
     return normalizeUserProfile(raw.data || raw);
   }
 
@@ -67,7 +67,7 @@ class UserService {
       return updated;
     }
 
-    const raw = await apiClient('/user/profile', {
+    const raw = await apiClient('/auth/me', {
       method: 'PUT',
       body: profileData
     });

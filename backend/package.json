@@ -1,0 +1,41 @@
+{
+  "name": "nimufly-backend",
+  "version": "1.0.0",
+  "description": "Production-oriented Modular Monolith Backend for Nimufly Visa Platform",
+  "main": "src/server.js",
+  "type": "module",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js",
+    "seed": "node src/scripts/seed.js",
+    "seed:excel": "node src/scripts/seedExcelDatabase.js",
+    "migrate:excel": "node src/scripts/migrateExcel.js"
+  },
+  "keywords": [
+    "nimufly",
+    "visa",
+    "express",
+    "mongodb",
+    "mongoose",
+    "mern"
+  ],
+  "author": "Nimufly Platform Team",
+  "license": "ISC",
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.758.0",
+    "@aws-sdk/s3-request-presigner": "^3.758.0",
+    "bcryptjs": "^2.4.3",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "express-rate-limit": "^7.5.0",
+    "helmet": "^8.0.0",
+    "joi": "^17.13.3",
+    "jsonwebtoken": "^9.0.2",
+    "mongoose": "^8.12.1",
+    "morgan": "^1.10.0",
+    "multer": "^1.4.5-lts.1",
+    "xlsx": "^0.18.5"
+  },
+  "devDependencies": {}
+}

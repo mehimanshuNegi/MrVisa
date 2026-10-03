@@ -154,41 +154,49 @@ export default function VisaApplicationPage() {
         const lower = docName.toLowerCase();
         let id = doc?.id || `doc_${idx}`;
         let title = docName;
-        let subtitle = doc?.subtitle || 'PDF, JPG or PNG (Max 5 MB)';
+        // Use database-driven acceptedFormats or default
+        const acceptedFormats = Array.isArray(doc?.acceptedFormats) && doc.acceptedFormats.length > 0
+          ? doc.acceptedFormats.map((f) => f.toUpperCase())
+          : ['PDF', 'JPG', 'PNG'];
+        const formatsLabel = acceptedFormats.join(', ');
+        const readableFormats = acceptedFormats.length === 1
+          ? acceptedFormats[0]
+          : `${acceptedFormats.slice(0, -1).join(', ')} or ${acceptedFormats[acceptedFormats.length - 1]}`;
+        let subtitle = doc?.subtitle || `${formatsLabel} (Max 5 MB)`;
         let guidance = doc?.detail || doc?.guidance || 'Upload a clear, readable copy.';
-        let errorMsg = `${docName} is required`;
+        let errorMsg = `Please upload a ${readableFormats} file.`;
 
         // Check Photograph FIRST to prevent "Passport-Size Photograph" matching generic "passport"
         if (lower.includes('photo') || lower.includes('portrait')) {
           id = 'photo';
           title = 'Passport-Size Photograph';
-          subtitle = 'Recent color passport-size photograph';
+          subtitle = `${formatsLabel} (Max 5 MB) - Recent color photograph`;
           guidance = 'Recent colored photo with white background, 35mm x 45mm.';
-          errorMsg = 'Please upload a valid photograph';
+          errorMsg = `Please upload a ${readableFormats} file.`;
         } else if (lower.includes('passport')) {
           id = 'passport';
           title = 'Passport Front & Back';
-          subtitle = 'PDF, JPG or PNG (Max 5 MB)';
+          subtitle = `${formatsLabel} (Max 5 MB)`;
           guidance = 'Clear scan of bio and address page. All 4 corners visible.';
-          errorMsg = 'Passport document is required';
+          errorMsg = `Please upload a ${readableFormats} file.`;
         } else if (lower.includes('ticket') || lower.includes('flight')) {
           id = 'flight_ticket';
           title = 'Confirmed Flight Ticket';
-          subtitle = 'PDF, JPG or PNG (Max 5 MB)';
+          subtitle = `${formatsLabel} (Max 5 MB)`;
           guidance = 'Confirmed return or onward flight itinerary.';
-          errorMsg = 'Confirmed flight ticket is required';
+          errorMsg = `Please upload a ${readableFormats} file.`;
         } else if (lower.includes('itinerary') || lower.includes('hotel') || lower.includes('booking')) {
           id = 'itinerary';
           title = 'Travel Itinerary';
-          subtitle = 'Hotel booking or trip plan (Max 5 MB)';
+          subtitle = `${formatsLabel} (Max 5 MB)`;
           guidance = 'Hotel reservation or trip itinerary.';
-          errorMsg = 'Travel itinerary is required';
+          errorMsg = `Please upload a ${readableFormats} file.`;
         } else if (lower.includes('bank') || lower.includes('statement')) {
           id = 'bank_statement';
           title = 'Bank Statement';
-          subtitle = 'PDF (Max 5 MB)';
+          subtitle = `${formatsLabel} (Max 5 MB)`;
           guidance = 'Last 3-6 months official bank statement.';
-          errorMsg = 'Bank statement is required';
+          errorMsg = `Please upload a ${readableFormats} file.`;
         }
 
         return {
@@ -197,7 +205,8 @@ export default function VisaApplicationPage() {
           title,
           subtitle,
           guidance,
-          errorMsg
+          errorMsg,
+          acceptedFormats
         };
       });
     }
@@ -209,7 +218,8 @@ export default function VisaApplicationPage() {
         title: 'Passport Front & Back',
         subtitle: 'PDF, JPG or PNG (Max 5 MB)',
         guidance: 'Clear scan of bio and address page. All 4 corners visible.',
-        errorMsg: 'Passport document is required'
+        errorMsg: 'Passport document is required',
+        acceptedFormats: ['PDF', 'JPG', 'JPEG', 'PNG']
       },
       {
         id: 'photo',
@@ -217,7 +227,8 @@ export default function VisaApplicationPage() {
         title: 'Passport-Size Photograph',
         subtitle: 'Recent color passport-size photograph',
         guidance: 'Recent colored photo with white background, 35mm x 45mm.',
-        errorMsg: 'Please upload a valid photograph'
+        errorMsg: 'Please upload a valid photograph',
+        acceptedFormats: ['JPG', 'JPEG', 'PNG']
       }
     ];
   }, [destination]);
@@ -278,13 +289,16 @@ export default function VisaApplicationPage() {
     ? `/visa/${countryParam}/${visaParam}`
     : (countryParam ? `/visa/${countryParam}` : `/visa/${destination.id}`);
 
-  const rawFeeStr = typeof fees === 'number' ? String(fees) : (fees || '₹2,990');
-  const baseFeeNum = parseInt(rawFeeStr.replace(/[^0-9]/g, ''), 10) || 2990;
-  const totalFee = baseFeeNum * travellers.length;
-  const embassyFeePerPerson = Math.round(baseFeeNum * 0.7);
-  const serviceFeePerPerson = baseFeeNum - embassyFeePerPerson;
+  // Strictly database-driven fee calculation: missing -> 0
+  const embassyFeePerPerson = destination?.governmentFee !== undefined && destination?.governmentFee !== null && !isNaN(Number(destination.governmentFee))
+    ? Number(destination.governmentFee)
+    : 0;
+  const serviceFeePerPerson = destination?.serviceFee !== undefined && destination?.serviceFee !== null && !isNaN(Number(destination.serviceFee))
+    ? Number(destination.serviceFee)
+    : 0;
   const totalEmbassyFee = embassyFeePerPerson * travellers.length;
   const totalServiceFee = serviceFeePerPerson * travellers.length;
+  const totalFee = totalEmbassyFee + totalServiceFee;
 
   const effectiveActiveId = travellers.some((t) => t.id === activeTravellerId)
     ? activeTravellerId
@@ -530,7 +544,24 @@ export default function VisaApplicationPage() {
   // Handle real file upload with file type & size validation (> 5MB)
   const handleProcessSelectedFile = (travellerId, docId, file) => {
     const isTooLarge = file.size > 5 * 1024 * 1024;
-    const isAllowedExt = /\.(pdf|jpg|jpeg|png)$/i.test(file.name);
+
+    // Get accepted formats for this specific doc, or fall back to defaults
+    const docDef = requiredDocs.find((d) => d.id === docId);
+    const acceptedFormats = (docDef?.acceptedFormats && docDef.acceptedFormats.length > 0)
+      ? docDef.acceptedFormats.map((f) => f.toUpperCase())
+      : ['PDF', 'JPG', 'PNG'];
+    const extMatch = file.name.match(/\.([a-zA-Z0-9]+)$/);
+    const fileExt = extMatch ? extMatch[1].toUpperCase() : '';
+    const isAllowedExt = acceptedFormats.some((fmt) => {
+      const f = fmt.toUpperCase();
+      if (f === fileExt) return true;
+      if ((f === 'JPG' || f === 'JPEG') && (fileExt === 'JPG' || fileExt === 'JPEG')) return true;
+      return false;
+    });
+
+    const readableFormats = acceptedFormats.length === 1
+      ? acceptedFormats[0]
+      : `${acceptedFormats.slice(0, -1).join(', ')} or ${acceptedFormats[acceptedFormats.length - 1]}`;
 
     if (isTooLarge || !isAllowedExt) {
       setTravellers((all) =>
@@ -543,8 +574,8 @@ export default function VisaApplicationPage() {
                 [docId]: {
                   name: file.name,
                   error: isTooLarge
-                    ? 'File type or size is not supported.'
-                    : 'File type or size is not supported.'
+                    ? 'File too large. Maximum size is 5 MB.'
+                    : `Please upload a ${readableFormats} file.`
                 }
               }
             };

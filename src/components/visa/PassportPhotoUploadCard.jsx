@@ -1,18 +1,12 @@
 import React, { useState, useRef } from 'react';
 import {
-  Upload,
-  Check,
   AlertCircle,
   Camera,
   RefreshCw,
-  Info,
   ArrowRight,
   ArrowLeft,
   CheckCircle2,
   Sparkles,
-  HelpCircle,
-  FileText,
-  ChevronDown,
   XCircle,
   AlertTriangle
 } from 'lucide-react';
@@ -31,7 +25,6 @@ export default function PassportPhotoUploadCard({
   onBack
 }) {
   const [isDragOver, setIsDragOver] = useState(false);
-  const [showAllChecks, setShowAllChecks] = useState(false);
   const fileInputRef = useRef(null);
 
   const handleDragOver = (e) => {
@@ -172,6 +165,17 @@ export default function PassportPhotoUploadCard({
         });
       });
   }
+
+  // If status is marked invalid or review needed but no specific check was flagged, provide clear fallback
+  if ((isInvalid || isReviewNeeded) && problematicChecks.length === 0 && photoFile) {
+    problematicChecks.push({
+      severity: isInvalid ? 'error' : 'warning',
+      title: isInvalid ? 'Photograph requirements not met' : 'Photograph review recommended',
+      message: validation?.summary || 'Please verify that your photograph meets the standard passport specifications.'
+    });
+  }
+
+  const hasActionableProblems = problematicChecks.length > 0;
 
   return (
     <div className="max-w-4xl mx-auto py-8 sm:py-10">

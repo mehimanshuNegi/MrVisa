@@ -22,7 +22,7 @@
   "author": "Nimufly Platform Team",
   "license": "ISC",
   "engines": {
-    "node": ">=22.0.0"
+    "node": "22.x"
   },
   "dependencies": {
     "@arcships/light-ocr": "^0.5.8",

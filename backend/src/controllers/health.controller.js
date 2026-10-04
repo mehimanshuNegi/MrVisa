@@ -55,9 +55,10 @@ export const getOcrDiagnostics = asyncHandler(async (req, res) => {
       executionMs: 0,
       error: null
     },
-    r2: {
-      configured: Boolean(process.env.R2_ACCOUNT_ID && process.env.R2_ACCESS_KEY_ID && process.env.R2_SECRET_ACCESS_KEY),
-      bucket: process.env.R2_BUCKET_NAME || 'not set'
+    storage: {
+      provider: env.STORAGE_PROVIDER,
+      configured: Boolean(env.STORAGE_BUCKET && env.STORAGE_ACCESS_KEY_ID && env.STORAGE_SECRET_ACCESS_KEY),
+      bucket: env.STORAGE_BUCKET || 'not set'
     },
     cors: {
       clientUrl: env.CLIENT_URL || 'not set',
@@ -87,6 +88,8 @@ export const getOcrDiagnostics = asyncHandler(async (req, res) => {
     diag.engine.error = err?.message || String(err);
     diag.engine.code = err?.code || null;
     diag.engine.detail = err?.detail || null;
+    diag.engine.cause = err?.cause ? (err.cause.message || String(err.cause)) : null;
+    diag.engine.causeStack = err?.cause?.stack ? err.cause.stack.split('\n').slice(0, 3).join(' | ') : null;
     diag.engine.stack = err?.stack ? err.stack.split('\n').slice(0, 4).join(' | ') : null;
   }
 

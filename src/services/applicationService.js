@@ -11,26 +11,7 @@ import { apiClient } from './apiClient';
 
 const STORAGE_KEY = 'mrvisa_applications';
 
-/**
- * Normalizes document record
- */
-export function normalizeDocument(rawDoc, applicationId = '', travellerId = '') {
-  if (!rawDoc) return null;
-  return {
-    id: rawDoc.id || rawDoc.documentId || `doc_${Math.random().toString(36).substr(2, 9)}`,
-    documentId: rawDoc.documentId || rawDoc.id || '',
-    applicationId: rawDoc.applicationId || applicationId,
-    travellerId: rawDoc.travellerId || travellerId,
-    documentType: rawDoc.documentType || rawDoc.name || 'DOCUMENT',
-    name: rawDoc.name || rawDoc.documentType || 'Uploaded Document',
-    status: rawDoc.status || rawDoc.verificationStatus || 'Verified',
-    verificationStatus: rawDoc.verificationStatus || rawDoc.status || 'Verified',
-    rejectionReason: rawDoc.rejectionReason || rawDoc.note || undefined,
-    note: rawDoc.note || rawDoc.rejectionReason || undefined,
-    fileUrl: rawDoc.fileUrl || rawDoc.url || '',
-    uploadedAt: rawDoc.uploadedAt || new Date().toISOString()
-  };
-}
+export { normalizeDocument } from './documentService';
 
 /**
  * Normalizes traveller record with stable IDs

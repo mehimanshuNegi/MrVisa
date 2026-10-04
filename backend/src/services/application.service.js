@@ -11,6 +11,7 @@ import { escapeRegex } from '../utils/sanitize.js';
 import { ROLES } from '../constants/roles.js';
 import { validatePassportDates } from '../utils/dateValidator.js';
 import { storageService } from './storage.service.js';
+import { inferDocumentMetadataFromKey } from './document.service.js';
 import { logger } from '../utils/logger.js';
 
 /**
@@ -245,6 +246,7 @@ class ApplicationService {
 
     const frontKey = data.passportOcr?.frontStorageKey || travDocs?.passport?.frontStorageKey || (travDocs?.passport?.storageKey && !travDocs?.passport?.backStorageKey ? travDocs.passport.storageKey : null);
     if (frontKey) {
+      const meta = inferDocumentMetadataFromKey(frontKey, 'passport_front');
       await Document.findOneAndUpdate(
         { application: application._id, storageKey: frontKey },
         {
@@ -252,9 +254,9 @@ class ApplicationService {
           travellerId: primaryTraveller?.travellerId || 'trav_1',
           documentType: 'PASSPORT_FRONT',
           name: 'Passport Front & Back Scan',
-          originalFilename: 'passport_front.jpg',
+          originalFilename: meta.originalFilename,
           storageKey: frontKey,
-          mimeType: 'image/jpeg',
+          mimeType: meta.mimeType,
           status: 'VERIFIED'
         },
         { upsert: true, new: true, setDefaultsOnInsert: true }
@@ -263,6 +265,7 @@ class ApplicationService {
 
     const backKey = data.passportOcr?.backStorageKey || travDocs?.passport?.backStorageKey;
     if (backKey && backKey !== frontKey) {
+      const meta = inferDocumentMetadataFromKey(backKey, 'passport_back');
       await Document.findOneAndUpdate(
         { application: application._id, storageKey: backKey },
         {
@@ -270,9 +273,9 @@ class ApplicationService {
           travellerId: primaryTraveller?.travellerId || 'trav_1',
           documentType: 'PASSPORT_BACK',
           name: 'Passport Back Page',
-          originalFilename: 'passport_back.jpg',
+          originalFilename: meta.originalFilename,
           storageKey: backKey,
-          mimeType: 'image/jpeg',
+          mimeType: meta.mimeType,
           status: 'VERIFIED'
         },
         { upsert: true, new: true, setDefaultsOnInsert: true }
@@ -281,6 +284,7 @@ class ApplicationService {
 
     const photoKey = data.passportPhoto?.storageKey || data.passportOcr?.photoStorageKey || travDocs?.passport_photo?.storageKey || travDocs?.photograph?.storageKey || travDocs?.photo?.storageKey;
     if (photoKey && photoKey !== frontKey && photoKey !== backKey) {
+      const meta = inferDocumentMetadataFromKey(photoKey, 'passport_photo');
       await Document.findOneAndUpdate(
         { application: application._id, storageKey: photoKey },
         {
@@ -288,9 +292,9 @@ class ApplicationService {
           travellerId: primaryTraveller?.travellerId || 'trav_1',
           documentType: 'PASSPORT_PHOTO',
           name: 'Passport Size Photo',
-          originalFilename: data.passportPhoto?.originalFilename || 'passport_photograph.jpg',
+          originalFilename: data.passportPhoto?.originalFilename || meta.originalFilename,
           storageKey: photoKey,
-          mimeType: data.passportPhoto?.mimeType || 'image/jpeg',
+          mimeType: data.passportPhoto?.mimeType || meta.mimeType,
           status: 'VERIFIED'
         },
         { upsert: true, new: true, setDefaultsOnInsert: true }
@@ -306,6 +310,7 @@ class ApplicationService {
           continue;
         }
         if (docKey) {
+          const meta = inferDocumentMetadataFromKey(docKey, `document_${idx + 1}`);
           await Document.findOneAndUpdate(
             { application: application._id, storageKey: docKey },
             {
@@ -313,9 +318,9 @@ class ApplicationService {
               travellerId: doc.travellerId || (travellers[0]?.travellerId || 'trav_1'),
               documentType: doc.documentType || doc.name || `Document ${idx + 1}`,
               name: doc.name || doc.documentType || `Document ${idx + 1}`,
-              originalFilename: doc.originalFilename || doc.name || 'document.pdf',
+              originalFilename: doc.originalFilename || doc.name || meta.originalFilename,
               storageKey: docKey,
-              mimeType: doc.mimeType || 'application/pdf',
+              mimeType: doc.mimeType || meta.mimeType,
               status: doc.status === 'Verified' ? 'VERIFIED' : 'PENDING'
             },
             { upsert: true, new: true, setDefaultsOnInsert: true }

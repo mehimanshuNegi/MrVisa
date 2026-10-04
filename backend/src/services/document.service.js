@@ -8,24 +8,63 @@ import { AUDIT_ACTIONS, AUDIT_ENTITIES, APPLICATION_STATUS } from '../constants/
 import { logger } from '../utils/logger.js';
 import { env } from '../config/environment.js';
 
+export function inferDocumentMetadataFromKey(storageKey, defaultBase = 'document') {
+  const match = String(storageKey || '').match(/\.([a-zA-Z0-9]+)(?:\?.*)?$/);
+  const rawExt = match ? match[1].toLowerCase() : '';
+  const ext = rawExt === 'jpeg' ? 'jpg' : rawExt;
+
+  let mimeType = 'image/jpeg';
+  if (ext === 'pdf') mimeType = 'application/pdf';
+  else if (ext === 'png') mimeType = 'image/png';
+  else if (ext === 'webp') mimeType = 'image/webp';
+  else if (ext === 'jpg') mimeType = 'image/jpeg';
+  else if (ext === 'docx') mimeType = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+  else if (ext === 'doc') mimeType = 'application/msword';
+  else mimeType = 'image/jpeg';
+
+  const cleanExt = ext || 'jpg';
+  return {
+    format: cleanExt.toUpperCase(),
+    mimeType,
+    originalFilename: `${defaultBase}.${cleanExt}`
+  };
+}
+
 export function getSensibleFilename(document, application = null) {
-  if (!document) return 'document.pdf';
+  if (!document) return 'document';
   const name = String(document.name || document.originalFilename || document.documentType || 'document').toLowerCase();
   const docType = String(document.documentType || '').toLowerCase();
-  
-  // Detect extension
-  let ext = '';
   const orig = document.originalFilename || document.name || '';
-  const extMatch = orig.match(/\.([a-zA-Z0-9]+)$/);
-  if (extMatch) {
-    ext = `.${extMatch[1].toLowerCase()}`;
+  const storageKey = document.storageKey || '';
+
+  // Detect extension dynamically from storageKey, originalFilename, or mimeType
+  let ext = '';
+  const keyMatch = storageKey.match(/\.([a-zA-Z0-9]+)(?:\?.*)?$/);
+  const nameMatch = orig.match(/\.([a-zA-Z0-9]+)(?:\?.*)?$/);
+
+  if (keyMatch) {
+    const raw = keyMatch[1].toLowerCase();
+    ext = raw === 'jpeg' ? '.jpg' : `.${raw}`;
+  } else if (nameMatch) {
+    const raw = nameMatch[1].toLowerCase();
+    ext = raw === 'jpeg' ? '.jpg' : `.${raw}`;
   } else if (document.mimeType) {
-    if (document.mimeType.includes('pdf')) ext = '.pdf';
-    else if (document.mimeType.includes('png')) ext = '.png';
-    else if (document.mimeType.includes('webp')) ext = '.webp';
-    else if (document.mimeType.includes('jpeg') || document.mimeType.includes('jpg')) ext = '.jpg';
+    const m = String(document.mimeType).toLowerCase();
+    if (m.includes('pdf')) ext = '.pdf';
+    else if (m.includes('png')) ext = '.png';
+    else if (m.includes('webp')) ext = '.webp';
+    else if (m.includes('jpeg') || m.includes('jpg')) ext = '.jpg';
+    else if (m.includes('docx')) ext = '.docx';
+    else if (m.includes('doc')) ext = '.doc';
+  } else if (document.fileFormat || document.format) {
+    const f = String(document.fileFormat || document.format).toLowerCase();
+    ext = f === 'jpeg' ? '.jpg' : `.${f}`;
   }
-  if (!ext) ext = '.jpg';
+
+  // Sensible fallback if unknown
+  if (!ext) {
+    ext = (name.includes('photo') || docType.includes('photo')) ? '.jpg' : '.jpg';
+  }
 
   let base = 'document';
   if (name.includes('photo') || docType.includes('photo') || name.includes('portrait')) {
@@ -242,14 +281,15 @@ class DocumentService {
     if (frontKey) {
       const exists = await Document.findOne({ application: application._id, storageKey: frontKey, isDeleted: false });
       if (!exists) {
+        const meta = inferDocumentMetadataFromKey(frontKey, 'passport_front');
         await Document.create({
           application: application._id,
           travellerId: primaryTraveller?.travellerId || 'trav_1',
           documentType: 'PASSPORT_FRONT',
           name: 'Passport Front & Back Scan',
-          originalFilename: 'passport_front.jpg',
+          originalFilename: meta.originalFilename,
           storageKey: frontKey,
-          mimeType: 'image/jpeg',
+          mimeType: meta.mimeType,
           status: 'VERIFIED'
         }).catch(() => {});
       }
@@ -258,14 +298,15 @@ class DocumentService {
     if (backKey && backKey !== frontKey) {
       const exists = await Document.findOne({ application: application._id, storageKey: backKey, isDeleted: false });
       if (!exists) {
+        const meta = inferDocumentMetadataFromKey(backKey, 'passport_back');
         await Document.create({
           application: application._id,
           travellerId: primaryTraveller?.travellerId || 'trav_1',
           documentType: 'PASSPORT_BACK',
           name: 'Passport Back Page',
-          originalFilename: 'passport_back.jpg',
+          originalFilename: meta.originalFilename,
           storageKey: backKey,
-          mimeType: 'image/jpeg',
+          mimeType: meta.mimeType,
           status: 'VERIFIED'
         }).catch(() => {});
       }
@@ -274,14 +315,15 @@ class DocumentService {
     if (photoKey && photoKey !== frontKey && photoKey !== backKey) {
       const exists = await Document.findOne({ application: application._id, storageKey: photoKey, isDeleted: false });
       if (!exists) {
+        const meta = inferDocumentMetadataFromKey(photoKey, 'passport_photo');
         await Document.create({
           application: application._id,
           travellerId: primaryTraveller?.travellerId || 'trav_1',
           documentType: 'PASSPORT_PHOTO',
           name: 'Passport Size Photo',
-          originalFilename: application.passportPhoto?.originalFilename || 'passport_photograph.jpg',
+          originalFilename: application.passportPhoto?.originalFilename || meta.originalFilename,
           storageKey: photoKey,
-          mimeType: application.passportPhoto?.mimeType || 'image/jpeg',
+          mimeType: application.passportPhoto?.mimeType || meta.mimeType,
           status: 'VERIFIED'
         }).catch(() => {});
       }
@@ -300,16 +342,40 @@ class DocumentService {
       docJson.applicationId = application.referenceNumber || application._id.toString();
       docJson.downloadFilename = getSensibleFilename(doc, application);
 
+      const storageKey = doc.storageKey || '';
       const orig = doc.originalFilename || doc.name || '';
-      const extMatch = orig.match(/\.([a-zA-Z0-9]+)$/);
-      const isPdf = doc.mimeType?.includes('pdf') || extMatch?.[1]?.toLowerCase() === 'pdf';
-      docJson.format = isPdf ? 'PDF' : (extMatch ? extMatch[1].toUpperCase() : 'JPG');
-      docJson.fileFormat = docJson.format;
+      const keyMatch = storageKey.match(/\.([a-zA-Z0-9]+)(?:\?.*)?$/);
+      const nameMatch = orig.match(/\.([a-zA-Z0-9]+)(?:\?.*)?$/);
+      const detectedExt = (keyMatch ? keyMatch[1] : (nameMatch ? nameMatch[1] : '')).toUpperCase();
+
+      let detectedFormat = '';
+      if (detectedExt === 'JPG' || detectedExt === 'JPEG') detectedFormat = 'JPG';
+      else if (detectedExt === 'PNG') detectedFormat = 'PNG';
+      else if (detectedExt === 'WEBP') detectedFormat = 'WEBP';
+      else if (detectedExt === 'PDF') detectedFormat = 'PDF';
+      else if (detectedExt === 'DOC' || detectedExt === 'DOCX') detectedFormat = detectedExt;
+      else if (doc.mimeType?.includes('png')) detectedFormat = 'PNG';
+      else if (doc.mimeType?.includes('webp')) detectedFormat = 'WEBP';
+      else if (doc.mimeType?.includes('jpeg') || doc.mimeType?.includes('jpg')) detectedFormat = 'JPG';
+      else if (doc.mimeType?.includes('pdf')) detectedFormat = 'PDF';
+      else detectedFormat = detectedExt || docJson.format || '';
+
+      docJson.format = detectedFormat;
+      docJson.fileFormat = detectedFormat;
+
+      let effectiveMime = doc.mimeType;
+      if (!effectiveMime || effectiveMime === 'application/octet-stream') {
+        if (detectedFormat === 'JPG') effectiveMime = 'image/jpeg';
+        else if (detectedFormat === 'PNG') effectiveMime = 'image/png';
+        else if (detectedFormat === 'WEBP') effectiveMime = 'image/webp';
+        else if (detectedFormat === 'PDF') effectiveMime = 'application/pdf';
+      }
+      docJson.mimeType = effectiveMime;
 
       try {
         docJson.signedUrl = await storageService.getSignedUrl(doc.storageKey, env.SIGNED_URL_EXPIRY_SECONDS, {
           responseContentDisposition: 'inline',
-          responseContentType: doc.mimeType || 'image/jpeg'
+          responseContentType: effectiveMime
         });
         docJson.fileUrl = docJson.signedUrl;
       } catch (err) {
@@ -377,39 +443,48 @@ class DocumentService {
       if (cleanDocId.includes('front') || cleanDocId === 'passport_scan' || cleanDocId === 'doc_1' || cleanDocId === 'passport') {
         const key = application.passportOcr?.frontStorageKey || travDocs?.passport?.frontStorageKey || travDocs?.passport?.storageKey;
         if (key) {
+          const meta = inferDocumentMetadataFromKey(key, 'passport_front');
           document = {
             _id: 'passport_front',
             name: 'Passport Front & Back Scan',
             documentType: 'PASSPORT_FRONT',
-            originalFilename: 'passport_front.jpg',
+            originalFilename: meta.originalFilename,
             storageKey: key,
-            mimeType: 'image/jpeg',
+            mimeType: meta.mimeType,
+            format: meta.format,
+            fileFormat: meta.format,
             application: application._id
           };
         }
       } else if (cleanDocId.includes('back')) {
         const key = application.passportOcr?.backStorageKey || travDocs?.passport?.backStorageKey;
         if (key) {
+          const meta = inferDocumentMetadataFromKey(key, 'passport_back');
           document = {
             _id: 'passport_back',
             name: 'Passport Back Page',
             documentType: 'PASSPORT_BACK',
-            originalFilename: 'passport_back.jpg',
+            originalFilename: meta.originalFilename,
             storageKey: key,
-            mimeType: 'image/jpeg',
+            mimeType: meta.mimeType,
+            format: meta.format,
+            fileFormat: meta.format,
             application: application._id
           };
         }
       } else if (cleanDocId.includes('photo')) {
         const key = application.passportPhoto?.storageKey || application.passportOcr?.photoStorageKey || travDocs?.passport_photo?.storageKey || travDocs?.photo?.storageKey;
         if (key) {
+          const meta = inferDocumentMetadataFromKey(key, 'passport_photo');
           document = {
             _id: 'passport_photo',
             name: 'Passport Size Photo',
             documentType: 'PASSPORT_PHOTO',
-            originalFilename: application.passportPhoto?.originalFilename || 'passport_photograph.jpg',
+            originalFilename: application.passportPhoto?.originalFilename || meta.originalFilename,
             storageKey: key,
-            mimeType: application.passportPhoto?.mimeType || 'image/jpeg',
+            mimeType: application.passportPhoto?.mimeType || meta.mimeType,
+            format: meta.format,
+            fileFormat: meta.format,
             application: application._id
           };
         }

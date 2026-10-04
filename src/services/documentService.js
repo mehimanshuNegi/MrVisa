@@ -3,29 +3,114 @@
  * Handles uploading, fetching presigned URLs, and document normalization.
  */
 
-import { apiClient } from './apiClient';
-import { isMockMode } from './apiConfig';
+import { apiClient } from './apiClient.js';
+import { isMockMode } from './apiConfig.js';
 
 /**
- * Normalizes document record
+ * Detects the file format (JPG, PNG, WEBP, PDF, DOC, DOCX, etc.) dynamically
+ * from document metadata, storageKey, filename, and MIME type without hardcoding PDF.
+ */
+export function detectDocumentFormat(doc) {
+  if (!doc) return '';
+
+  // 1. Direct format if already available and valid
+  const rawFormat = (doc.fileFormat || doc.format || '').toString().trim().toUpperCase();
+  if (rawFormat && ['JPG', 'JPEG', 'PNG', 'WEBP', 'PDF', 'DOC', 'DOCX', 'GIF'].includes(rawFormat)) {
+    return rawFormat === 'JPEG' ? 'JPG' : rawFormat;
+  }
+
+  // 2. Storage key extension (reflects actual stored file in R2/S3/disk)
+  const storageKey = String(doc.storageKey || '');
+  const keyMatch = storageKey.match(/\.([a-zA-Z0-9]+)(?:\?.*)?$/);
+  if (keyMatch) {
+    const ext = keyMatch[1].toUpperCase();
+    if (ext === 'JPEG') return 'JPG';
+    if (['JPG', 'PNG', 'WEBP', 'PDF', 'DOC', 'DOCX', 'GIF'].includes(ext)) return ext;
+  }
+
+  // 3. Original uploaded filename
+  const orig = String(doc.originalFilename || doc.filename || doc.downloadFilename || '');
+  const origMatch = orig.match(/\.([a-zA-Z0-9]+)(?:\?.*)?$/);
+  if (origMatch) {
+    const ext = origMatch[1].toUpperCase();
+    if (ext === 'JPEG') return 'JPG';
+    if (['JPG', 'PNG', 'WEBP', 'PDF', 'DOC', 'DOCX', 'GIF'].includes(ext)) return ext;
+  }
+
+  // 4. Name if it contains an extension
+  const name = String(doc.name || '');
+  const nameMatch = name.match(/\.([a-zA-Z0-9]+)$/);
+  if (nameMatch) {
+    const ext = nameMatch[1].toUpperCase();
+    if (ext === 'JPEG') return 'JPG';
+    if (['JPG', 'PNG', 'WEBP', 'PDF', 'DOC', 'DOCX', 'GIF'].includes(ext)) return ext;
+  }
+
+  // 5. MIME type inspection
+  const mime = String(doc.mimeType || doc.contentType || '').toLowerCase();
+  if (mime.includes('png')) return 'PNG';
+  if (mime.includes('webp')) return 'WEBP';
+  if (mime.includes('jpeg') || mime.includes('jpg')) return 'JPG';
+  if (mime.includes('pdf')) return 'PDF';
+  if (mime.includes('gif')) return 'GIF';
+  if (mime.includes('wordprocessingml') || mime.includes('docx')) return 'DOCX';
+  if (mime.includes('msword') || mime.includes('doc')) return 'DOC';
+
+  // 6. Check fileUrl / signedUrl
+  const url = String(doc.fileUrl || doc.signedUrl || doc.url || '');
+  if (url) {
+    const cleanUrl = url.split('?')[0];
+    const urlMatch = cleanUrl.match(/\.([a-zA-Z0-9]+)$/);
+    if (urlMatch) {
+      const ext = urlMatch[1].toUpperCase();
+      if (ext === 'JPEG') return 'JPG';
+      if (['JPG', 'PNG', 'WEBP', 'PDF', 'DOC', 'DOCX', 'GIF'].includes(ext)) return ext;
+    }
+  }
+
+  // 7. Check if semantic photo document
+  const lowerName = name.toLowerCase();
+  const lowerType = String(doc.documentType || '').toLowerCase();
+  if (lowerName.includes('photo') || lowerType.includes('photo') || lowerName.includes('portrait')) {
+    return 'JPG';
+  }
+
+  return '';
+}
+
+/**
+ * Derives a sensible, clean download filename preserving the original uploaded format
  */
 export function getSensibleFilename(doc, fallbackExt = '') {
-  if (!doc) return 'document.pdf';
+  if (!doc) return 'document';
   const name = String(doc.name || doc.originalFilename || doc.documentType || 'document').toLowerCase();
   const docType = String(doc.documentType || '').toLowerCase();
+  const storageKey = String(doc.storageKey || '');
+  const orig = String(doc.originalFilename || doc.name || '');
 
   let ext = fallbackExt;
-  const orig = doc.originalFilename || doc.name || '';
-  const extMatch = orig.match(/\.([a-zA-Z0-9]+)$/);
-  if (extMatch) {
-    ext = `.${extMatch[1].toLowerCase()}`;
-  } else if (doc.mimeType) {
-    if (doc.mimeType.includes('pdf')) ext = '.pdf';
-    else if (doc.mimeType.includes('png')) ext = '.png';
-    else if (doc.mimeType.includes('webp')) ext = '.webp';
-    else if (doc.mimeType.includes('jpeg') || doc.mimeType.includes('jpg')) ext = '.jpg';
+  const keyMatch = storageKey.match(/\.([a-zA-Z0-9]+)(?:\?.*)?$/);
+  const nameMatch = orig.match(/\.([a-zA-Z0-9]+)(?:\?.*)?$/);
+
+  if (keyMatch) {
+    const raw = keyMatch[1].toLowerCase();
+    ext = raw === 'jpeg' ? '.jpg' : `.${raw}`;
+  } else if (nameMatch) {
+    const raw = nameMatch[1].toLowerCase();
+    ext = raw === 'jpeg' ? '.jpg' : `.${raw}`;
+  } else {
+    const detected = detectDocumentFormat(doc);
+    if (detected === 'JPG' || detected === 'JPEG') ext = '.jpg';
+    else if (detected === 'PNG') ext = '.png';
+    else if (detected === 'WEBP') ext = '.webp';
+    else if (detected === 'PDF') ext = '.pdf';
+    else if (detected === 'DOC') ext = '.doc';
+    else if (detected === 'DOCX') ext = '.docx';
   }
-  if (!ext) ext = '.jpg';
+
+  if (!ext) {
+    ext = (name.includes('photo') || docType.includes('photo')) ? '.jpg' : '.jpg';
+  }
 
   let base = 'document';
   if (name.includes('photo') || docType.includes('photo') || name.includes('portrait')) {
@@ -44,14 +129,21 @@ export function getSensibleFilename(doc, fallbackExt = '') {
 }
 
 /**
- * Normalizes document record
+ * Normalizes document record with dynamically detected format and MIME type
  */
 export function normalizeDocument(rawDoc, applicationId = '', travellerId = '') {
   if (!rawDoc) return null;
   const orig = rawDoc.originalFilename || rawDoc.name || '';
-  const extMatch = orig.match(/\.([a-zA-Z0-9]+)$/);
-  const isPdf = rawDoc.mimeType?.includes('pdf') || extMatch?.[1]?.toLowerCase() === 'pdf';
-  const format = rawDoc.fileFormat || rawDoc.format || (isPdf ? 'PDF' : (extMatch ? extMatch[1].toUpperCase() : 'JPG'));
+  const format = detectDocumentFormat(rawDoc);
+
+  let mimeType = rawDoc.mimeType;
+  if (!mimeType || mimeType === 'application/octet-stream') {
+    if (format === 'JPG') mimeType = 'image/jpeg';
+    else if (format === 'PNG') mimeType = 'image/png';
+    else if (format === 'WEBP') mimeType = 'image/webp';
+    else if (format === 'PDF') mimeType = 'application/pdf';
+    else mimeType = 'image/jpeg';
+  }
 
   const id = rawDoc.id || rawDoc.documentId || rawDoc._id || `doc_${Math.random().toString(36).substr(2, 9)}`;
 
@@ -64,7 +156,7 @@ export function normalizeDocument(rawDoc, applicationId = '', travellerId = '') 
     name: rawDoc.name || rawDoc.documentType || 'Uploaded Document',
     originalFilename: orig,
     downloadFilename: rawDoc.downloadFilename || getSensibleFilename(rawDoc),
-    mimeType: rawDoc.mimeType || (isPdf ? 'application/pdf' : 'image/jpeg'),
+    mimeType,
     fileFormat: format,
     format,
     storageKey: rawDoc.storageKey || '',
@@ -196,7 +288,7 @@ class DocumentService {
     const docObj = typeof docOrId === 'object' ? docOrId : {};
 
     // 1. Get authenticated signed download URL & filename from backend
-    const { downloadUrl, filename } = await this.getDocumentDownloadUrl(docId, applicationId);
+    const { downloadUrl, filename } = await this.getDocumentDownloadUrl(docOrId, applicationId);
     const targetFilename = filename || docObj.downloadFilename || docObj.originalFilename || getSensibleFilename(docObj);
 
     if (!downloadUrl) throw new Error('Could not obtain document download URL');

@@ -23,7 +23,7 @@ import {
   Star,
   Trash2
 } from 'lucide-react';
-import { applicationService, documentService } from '../../services';
+import { applicationService, documentService, detectDocumentFormat, normalizeDocument } from '../../services';
 import {
   APPLICATION_STATUS,
   REQUIRED_ACTION,
@@ -133,7 +133,10 @@ export default function AdminApplicationsPage() {
     setEditStatus(app.status || APPLICATION_STATUS.APPLICATION_RECEIVED);
     setEditAdminMessage(app.adminMessage || '');
     setEditRequiredAction(app.requiredAction || REQUIRED_ACTION.NONE);
-    setEditDocuments(app.documents ? JSON.parse(JSON.stringify(app.documents)) : []);
+    const initialDocs = Array.isArray(app.documents)
+      ? app.documents.map((d) => normalizeDocument(d, app.id || app.referenceNumber))
+      : [];
+    setEditDocuments(initialDocs);
     setSaveSuccess(false);
 
     // Refresh application documents with live signed URLs
@@ -854,8 +857,7 @@ export default function AdminApplicationsPage() {
                       const isActionReq = (doc.status === 'ACTION_REQUIRED' || doc.status === 'Action Required' || doc.verificationStatus === 'ACTION_REQUIRED');
                       const docName = doc.name || doc.originalFilename || 'Document';
                       const docType = doc.documentType || doc.category || 'Visa Document';
-                      const extMatch = docName.match(/\.([a-zA-Z0-9]+)$/);
-                      const format = doc.fileFormat || doc.format || (extMatch ? extMatch[1].toUpperCase() : 'PDF');
+                      const format = detectDocumentFormat(doc);
 
                       return (
                         <div
@@ -865,9 +867,11 @@ export default function AdminApplicationsPage() {
                           <div className="min-w-0 space-y-0.5">
                             <div className="flex items-center gap-2">
                               <span className="text-xs font-bold text-[#082B61] truncate block">{docName}</span>
-                              <span className="px-1.5 py-0.5 rounded text-[9.5px] font-mono font-bold bg-slate-100 text-slate-600 border border-slate-200 uppercase">
-                                {format}
-                              </span>
+                              {format && (
+                                <span className="px-1.5 py-0.5 rounded text-[9.5px] font-mono font-bold bg-slate-100 text-slate-600 border border-slate-200 uppercase">
+                                  {format}
+                                </span>
+                              )}
                             </div>
                             <div className="flex items-center gap-2">
                               <span className="text-[11px] text-slate-400">{docType}</span>
@@ -1120,11 +1124,11 @@ export default function AdminApplicationsPage() {
               ) : previewUrl ? (
                 (() => {
                   const docName = previewDoc.name || previewDoc.originalFilename || '';
-                  const extMatch = docName.match(/\.([a-zA-Z0-9]+)$/);
-                  const ext = extMatch ? extMatch[1].toUpperCase() : '';
-                  const format = (previewDoc.fileFormat || previewDoc.format || ext).toUpperCase();
-                  const isPdf = format.includes('PDF') || (typeof previewUrl === 'string' && previewUrl.toLowerCase().includes('.pdf'));
-                  const isImage = ['JPG', 'JPEG', 'PNG', 'WEBP', 'GIF'].some(f => format.includes(f)) ||
+                  const format = detectDocumentFormat(previewDoc);
+                  const isPdf = format === 'PDF' ||
+                                previewDoc.mimeType === 'application/pdf' ||
+                                (typeof previewUrl === 'string' && previewUrl.toLowerCase().includes('.pdf'));
+                  const isImage = ['JPG', 'JPEG', 'PNG', 'WEBP', 'GIF'].includes(format) ||
                                   previewDoc.mimeType?.startsWith('image/') ||
                                   (typeof previewUrl === 'string' && /\.(jpg|jpeg|png|webp|gif)(\?|$)/i.test(previewUrl)) ||
                                   !isPdf;

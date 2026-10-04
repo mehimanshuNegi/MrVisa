@@ -18,10 +18,11 @@ import {
   RefreshCw,
   ExternalLink,
   ShieldCheck,
-  AlertTriangle,
-  FileCheck
+  FileCheck,
+  Download,
+  Star
 } from 'lucide-react';
-import { applicationService } from '../../services';
+import { applicationService, documentService } from '../../services';
 import {
   APPLICATION_STATUS,
   REQUIRED_ACTION,
@@ -85,6 +86,12 @@ export default function AdminApplicationsPage() {
     loadApplications();
   }, []);
 
+  // Preview & Download states
+  const [previewDoc, setPreviewDoc] = useState(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewUrl, setPreviewUrl] = useState('');
+  const [downloadingDocId, setDownloadingDocId] = useState(null);
+
   // When opening an application, populate the edit form controls
   const handleOpenDetails = (app) => {
     setSelectedApp(app);
@@ -93,6 +100,61 @@ export default function AdminApplicationsPage() {
     setEditRequiredAction(app.requiredAction || REQUIRED_ACTION.NONE);
     setEditDocuments(app.documents ? JSON.parse(JSON.stringify(app.documents)) : []);
     setSaveSuccess(false);
+
+    // Fetch feedback if not attached
+    if (!app.feedback && app.id) {
+      applicationService.getApplicationFeedback(app.id)
+        .then((fb) => {
+          if (fb) {
+            setSelectedApp((prev) => (prev && prev.id === app.id ? { ...prev, feedback: fb } : prev));
+          }
+        })
+        .catch(() => {});
+    }
+  };
+
+  // Document preview handler
+  const handleOpenPreview = async (doc) => {
+    setPreviewDoc(doc);
+    setPreviewLoading(true);
+    setPreviewUrl('');
+    try {
+      if (doc.fileUrl && doc.fileUrl.startsWith('http')) {
+        setPreviewUrl(doc.fileUrl);
+      } else if (doc.id || doc.documentId) {
+        const url = await documentService.getDocumentSignedUrl(doc.id || doc.documentId, 'get');
+        setPreviewUrl(url);
+      }
+    } catch (e) {
+      console.warn('Could not retrieve presigned preview URL:', e);
+    } finally {
+      setPreviewLoading(false);
+    }
+  };
+
+  // Original customer document download handler
+  const handleDownloadDoc = async (doc) => {
+    const docId = doc.id || doc.documentId;
+    const docName = doc.name || doc.originalFilename || 'document';
+    setDownloadingDocId(docId);
+    try {
+      if (doc.fileUrl && doc.fileUrl.startsWith('http')) {
+        const link = document.createElement('a');
+        link.href = doc.fileUrl;
+        link.download = docName;
+        link.target = '_blank';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+      } else {
+        await documentService.downloadDocument(docId, docName);
+      }
+    } catch (e) {
+      console.error('Download document failed:', e);
+      alert('Unable to download document. Please check connection and try again.');
+    } finally {
+      setDownloadingDocId(null);
+    }
   };
 
   // Close details panel
@@ -593,6 +655,93 @@ export default function AdminApplicationsPage() {
                 </div>
               </div>
 
+              {/* SECTION: ADDITIONAL INFORMATION & VISA REFUSAL */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {/* Additional Information */}
+                <div className="space-y-1.5">
+                  <h4 className="text-[11px] font-black uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
+                    <FileText size={13} className="text-[#2563EB]" />
+                    <span>Additional Information</span>
+                  </h4>
+                  <div className="bg-slate-50/70 rounded-xl p-3 border border-slate-200/80 text-xs">
+                    <span className="text-slate-700 font-medium whitespace-pre-wrap block">
+                      {selectedApp.additionalInformation && selectedApp.additionalInformation.trim()
+                        ? selectedApp.additionalInformation
+                        : 'Not provided'}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Previous Visa Refusal */}
+                <div className="space-y-1.5">
+                  <h4 className="text-[11px] font-black uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
+                    <ShieldCheck size={13} className="text-[#2563EB]" />
+                    <span>Previous Visa Refusal</span>
+                  </h4>
+                  <div className="bg-slate-50/70 rounded-xl p-3 border border-slate-200/80 space-y-1 text-xs">
+                    <div className="flex justify-between py-0.5">
+                      <span className="text-slate-400">Country</span>
+                      <span className="font-bold text-[#082B61]">
+                        {selectedApp.previousVisaRefusalCountry || selectedApp.destination || selectedApp.countryName || '—'}
+                      </span>
+                    </div>
+                    <div className="flex justify-between py-0.5">
+                      <span className="text-slate-400">Refused</span>
+                      <span className={`font-bold ${selectedApp.previousVisaRefusal === true ? 'text-rose-600' : 'text-slate-700'}`}>
+                        {selectedApp.previousVisaRefusal === true ? 'Yes' : selectedApp.previousVisaRefusal === false ? 'No' : 'Not provided'}
+                      </span>
+                    </div>
+                    {selectedApp.previousVisaRefusal && selectedApp.previousVisaRefusalReason && (
+                      <div className="pt-1 border-t border-slate-200/60 mt-1">
+                        <span className="text-[11px] text-slate-400 block mb-0.5">Reason:</span>
+                        <span className="font-medium text-slate-700 block whitespace-pre-wrap">
+                          {selectedApp.previousVisaRefusalReason}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* SECTION: CUSTOMER FEEDBACK */}
+              <div className="space-y-1.5">
+                <h4 className="text-[11px] font-black uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
+                  <Star size={13} className="text-amber-500" />
+                  <span>Customer Feedback</span>
+                </h4>
+                <div className="bg-slate-50/70 rounded-xl p-3 border border-slate-200/80 text-xs">
+                  {selectedApp.feedback?.rating ? (
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-0.5">
+                          {[1, 2, 3, 4, 5].map((star) => (
+                            <Star
+                              key={star}
+                              size={14}
+                              className={
+                                star <= selectedApp.feedback.rating
+                                  ? 'text-amber-400 fill-amber-400'
+                                  : 'text-slate-300'
+                              }
+                            />
+                          ))}
+                        </div>
+                        <span className="font-black text-[#082B61]">
+                          {selectedApp.feedback.rating} / 5
+                        </span>
+                      </div>
+                      {selectedApp.feedback.comment && (
+                        <p className="text-slate-600 font-medium italic mt-1">
+                          "{selectedApp.feedback.comment}"
+                        </p>
+                      )}
+                    </div>
+                  ) : (
+                    <span className="text-slate-400 italic">No feedback submitted</span>
+                  )}
+                </div>
+              </div>
+
               {/* SECTION 3: SUBMITTED DOCUMENTS */}
               <div className="space-y-2">
                 <h4 className="text-[11px] font-black uppercase tracking-wider text-slate-400 flex items-center justify-between">
@@ -610,30 +759,65 @@ export default function AdminApplicationsPage() {
                 ) : (
                   <div className="space-y-2">
                     {editDocuments.map((doc) => {
-                      const isVerified = doc.status === 'VERIFIED';
-                      const isActionReq = doc.status === 'ACTION_REQUIRED';
+                      const isVerified = (doc.status === 'VERIFIED' || doc.status === 'Verified' || doc.verificationStatus === 'VERIFIED' || doc.verificationStatus === 'Verified');
+                      const isActionReq = (doc.status === 'ACTION_REQUIRED' || doc.status === 'Action Required' || doc.verificationStatus === 'ACTION_REQUIRED');
+                      const docName = doc.name || doc.originalFilename || 'Document';
+                      const docType = doc.documentType || doc.category || 'Visa Document';
+                      const extMatch = docName.match(/\.([a-zA-Z0-9]+)$/);
+                      const format = doc.fileFormat || doc.format || (extMatch ? extMatch[1].toUpperCase() : 'PDF');
+
                       return (
                         <div
-                          key={doc.id}
-                          className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 p-3 rounded-xl border border-slate-200/80 bg-white"
+                          key={doc.id || doc.documentId}
+                          className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 rounded-xl border border-slate-200/80 bg-white"
                         >
-                          <div className="min-w-0">
-                            <span className="text-xs font-bold text-[#082B61] block truncate">{doc.name}</span>
-                            <span className="text-[10px] text-slate-400">{doc.category || 'Travel Document'}</span>
+                          <div className="min-w-0 space-y-0.5">
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs font-bold text-[#082B61] truncate block">{docName}</span>
+                              <span className="px-1.5 py-0.5 rounded text-[9.5px] font-mono font-bold bg-slate-100 text-slate-600 border border-slate-200 uppercase">
+                                {format}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <span className="text-[11px] text-slate-400">{docType}</span>
+                              <span className="text-slate-300">•</span>
+                              <span className={`text-[10px] font-bold px-2 py-0.2 rounded-full ${
+                                isVerified
+                                  ? 'bg-emerald-50 text-emerald-700 border border-emerald-200/70'
+                                  : isActionReq
+                                  ? 'bg-rose-50 text-rose-700 border border-rose-200/70'
+                                  : 'bg-amber-50 text-amber-700 border border-amber-200/70'
+                              }`}>
+                                {isVerified ? 'Verified' : isActionReq ? 'Action Required' : 'Pending Review'}
+                              </span>
+                            </div>
                           </div>
 
-                          <div className="flex items-center gap-2 flex-wrap">
-                            {doc.fileUrl && (
-                              <a
-                                href={doc.fileUrl}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="inline-flex items-center gap-1 text-[11px] font-semibold text-[#2563EB] hover:underline"
-                              >
-                                <span>View</span>
-                                <ExternalLink size={10} />
-                              </a>
-                            )}
+                          <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
+                            {/* Preview Button */}
+                            <button
+                              type="button"
+                              onClick={() => handleOpenPreview(doc)}
+                              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-semibold text-[#2563EB] bg-blue-50/60 hover:bg-blue-50 border border-blue-200/70 transition-colors cursor-pointer"
+                            >
+                              <Eye size={12} />
+                              <span>Preview</span>
+                            </button>
+
+                            {/* Download Button */}
+                            <button
+                              type="button"
+                              disabled={downloadingDocId === (doc.id || doc.documentId)}
+                              onClick={() => handleDownloadDoc(doc)}
+                              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-semibold text-slate-700 bg-slate-50 hover:bg-slate-100 border border-slate-200 transition-colors cursor-pointer disabled:opacity-50"
+                            >
+                              {downloadingDocId === (doc.id || doc.documentId) ? (
+                                <RefreshCw size={12} className="animate-spin text-[#2563EB]" />
+                              ) : (
+                                <Download size={12} />
+                              )}
+                              <span>Download</span>
+                            </button>
 
                             {/* Verification Toggle Buttons */}
                             <button
@@ -753,6 +937,146 @@ export default function AdminApplicationsPage() {
                 </div>
               </form>
 
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================
+          DOCUMENT PREVIEW MODAL
+          ======================================================== */}
+      {previewDoc && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-3 sm:p-5 bg-black/75 backdrop-blur-xs animate-in fade-in duration-150">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] flex flex-col overflow-hidden border border-slate-200">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between p-4 border-b border-slate-100 bg-[#F8FAFC]">
+              <div className="flex items-center gap-2.5 min-w-0 pr-2">
+                <FileText size={18} className="text-[#2563EB] flex-shrink-0" />
+                <div className="min-w-0">
+                  <h3 className="text-sm font-bold text-[#082B61] truncate">
+                    {previewDoc.name || previewDoc.originalFilename || 'Document Preview'}
+                  </h3>
+                  <span className="text-[10px] text-slate-400 block">
+                    {previewDoc.documentType || previewDoc.category || 'Customer Document'}
+                  </span>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 flex-shrink-0">
+                <button
+                  type="button"
+                  onClick={() => handleDownloadDoc(previewDoc)}
+                  disabled={downloadingDocId === (previewDoc.id || previewDoc.documentId)}
+                  className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold text-white bg-[#2563EB] hover:bg-[#1d4ed8] transition-colors cursor-pointer disabled:opacity-50"
+                  title="Download original file"
+                >
+                  <Download size={13} />
+                  <span>Download</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPreviewDoc(null);
+                    setPreviewUrl('');
+                  }}
+                  className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-200/60 transition-colors cursor-pointer"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-4 flex-grow overflow-auto flex items-center justify-center min-h-[300px] bg-slate-50/50">
+              {previewLoading ? (
+                <div className="flex flex-col items-center gap-2 text-slate-400 text-xs font-medium py-12">
+                  <Loader2 size={24} className="animate-spin text-[#2563EB]" />
+                  <span>Generating secure presigned preview...</span>
+                </div>
+              ) : previewUrl ? (
+                (() => {
+                  const docName = previewDoc.name || previewDoc.originalFilename || '';
+                  const extMatch = docName.match(/\.([a-zA-Z0-9]+)$/);
+                  const ext = extMatch ? extMatch[1].toUpperCase() : '';
+                  const format = (previewDoc.fileFormat || previewDoc.format || ext).toUpperCase();
+
+                  if (format === 'PDF' || previewUrl.toLowerCase().includes('.pdf')) {
+                    return (
+                      <div className="w-full space-y-3">
+                        <iframe
+                          src={previewUrl}
+                          title={docName}
+                          className="w-full h-[60vh] rounded-xl border border-slate-200 bg-white"
+                        />
+                        <div className="flex justify-center">
+                          <a
+                            href={previewUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1.5 text-xs font-bold text-[#2563EB] hover:underline"
+                          >
+                            <span>Open in new tab</span>
+                            <ExternalLink size={12} />
+                          </a>
+                        </div>
+                      </div>
+                    );
+                  }
+
+                  if (['JPG', 'JPEG', 'PNG', 'WEBP', 'GIF'].includes(format)) {
+                    return (
+                      <div className="max-h-[65vh] flex items-center justify-center p-2">
+                        <img
+                          src={previewUrl}
+                          alt={docName}
+                          className="max-h-[60vh] max-w-full object-contain rounded-xl shadow-sm border border-slate-200"
+                        />
+                      </div>
+                    );
+                  }
+
+                  return (
+                    <div className="text-center py-10 space-y-3 max-w-sm">
+                      <div className="w-12 h-12 rounded-full bg-slate-100 text-slate-500 mx-auto flex items-center justify-center">
+                        <FileText size={24} />
+                      </div>
+                      <div className="space-y-1">
+                        <h4 className="text-xs font-bold text-[#082B61]">Preview unavailable</h4>
+                        <p className="text-[11px] text-slate-400">
+                          Direct in-browser preview is unavailable for {format || 'this'} file type. Please download the original file to view.
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => handleDownloadDoc(previewDoc)}
+                        className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold text-white bg-[#2563EB] hover:bg-[#1d4ed8] transition-colors cursor-pointer"
+                      >
+                        <Download size={13} />
+                        <span>Download Original File</span>
+                      </button>
+                    </div>
+                  );
+                })()
+              ) : (
+                <div className="text-center py-10 space-y-3 max-w-sm">
+                  <div className="w-12 h-12 rounded-full bg-slate-100 text-slate-500 mx-auto flex items-center justify-center">
+                    <FileText size={24} />
+                  </div>
+                  <div className="space-y-1">
+                    <h4 className="text-xs font-bold text-[#082B61]">Preview unavailable</h4>
+                    <p className="text-[11px] text-slate-400">
+                      Could not generate preview link. You can still download the original document.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => handleDownloadDoc(previewDoc)}
+                    className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold text-white bg-[#2563EB] hover:bg-[#1d4ed8] transition-colors cursor-pointer"
+                  >
+                    <Download size={13} />
+                    <span>Download Original File</span>
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         </div>

@@ -9,7 +9,11 @@ import {
   getApplicationDocuments,
   uploadDocumentForApplication,
   updateCustomerAction,
-  claimGuestApplication
+  claimGuestApplication,
+  submitFeedback,
+  getApplicationFeedback,
+  processPassportOcr,
+  processPassportPhoto
 } from '../controllers/application.controller.js';
 import { authenticate, optionalAuthenticate } from '../middleware/auth.middleware.js';
 import { validate } from '../middleware/validate.middleware.js';
@@ -20,11 +24,18 @@ import {
   submitApplicationSchema,
   updateActionSchema,
   applicationQuerySchema,
-  claimApplicationSchema
+  claimApplicationSchema,
+  submitFeedbackSchema
 } from '../validators/application.validator.js';
 import { claimLimiter } from '../middleware/rateLimiter.middleware.js';
 
 const router = Router();
+
+// 0. Passport-first OCR endpoint (Guest or Authenticated Customer)
+router.post('/passport-ocr', optionalAuthenticate, uploadMiddleware.single('file'), processPassportOcr);
+
+// 0.1 Passport Photograph validation and upload endpoint (Guest or Authenticated Customer)
+router.post('/passport-photo', optionalAuthenticate, uploadMiddleware.single('file'), processPassportPhoto);
 
 // 1. Create or Draft Application (Guest or Authenticated Customer)
 router.post('/', optionalAuthenticate, validate(createApplicationSchema), createApplication);
@@ -54,5 +65,9 @@ router.post('/:idOrRef/documents', optionalAuthenticate, uploadMiddleware.single
 
 // 9. Customer action response (e.g. re-upload when ADDITIONAL_INFORMATION_REQUIRED)
 router.post('/:idOrRef/actions', authenticate, validate(updateActionSchema), updateCustomerAction);
+
+// 10. Post-application feedback & rating
+router.post('/:idOrRef/feedback', optionalAuthenticate, validate(submitFeedbackSchema), submitFeedback);
+router.get('/:idOrRef/feedback', authenticate, getApplicationFeedback);
 
 export default router;

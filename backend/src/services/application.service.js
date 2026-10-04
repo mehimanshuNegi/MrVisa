@@ -3,11 +3,13 @@ import { Application } from '../models/Application.js';
 import { Visa } from '../models/Visa.js';
 import { Country } from '../models/Country.js';
 import { Document } from '../models/Document.js';
+import { Feedback } from '../models/Feedback.js';
 import { ApiError } from '../utils/apiError.js';
 import { APPLICATION_STATUS, REQUIRED_ACTION, PAYMENT_STATUS, AUDIT_ACTIONS, AUDIT_ENTITIES } from '../constants/statuses.js';
 import { auditService } from './audit.service.js';
 import { escapeRegex } from '../utils/sanitize.js';
 import { ROLES } from '../constants/roles.js';
+import { validatePassportDates } from '../utils/dateValidator.js';
 
 /**
  * Helper to match a required document rule from the Visa configuration against uploaded documents
@@ -154,6 +156,32 @@ class ApplicationService {
           }
         ];
 
+    // 2.5 Strict 10-Year Passport Date Validation for Travellers
+    for (const [idx, t] of travellers.entries()) {
+      if (t.issueDate && t.expiryDate) {
+        const dateCheck = validatePassportDates(t.issueDate, t.expiryDate);
+        if (!dateCheck.isValid) {
+          throw ApiError.badRequest(dateCheck.error);
+        }
+      }
+    }
+
+    const additionalInformation = typeof data.additionalInformation === 'string'
+      ? data.additionalInformation.trim()
+      : '';
+
+    const previousVisaRefusal = Boolean(data.previousVisaRefusal);
+    const previousVisaRefusalCountry = data.previousVisaRefusalCountry
+      ? String(data.previousVisaRefusalCountry).trim()
+      : (country.name || '');
+    const previousVisaRefusalReason = typeof data.previousVisaRefusalReason === 'string'
+      ? data.previousVisaRefusalReason.trim()
+      : '';
+
+    if (previousVisaRefusal && !previousVisaRefusalReason) {
+      throw ApiError.badRequest('Please explain the reason for your previous visa refusal.');
+    }
+
     const travellerCount = travellers.length;
 
     // 3. SECURE BACKEND PRICING CALCULATION (Permanent Snapshot)
@@ -188,6 +216,10 @@ class ApplicationService {
       country: country._id,
       pricingSnapshot,
       travellers,
+      additionalInformation,
+      previousVisaRefusal,
+      previousVisaRefusalCountry,
+      previousVisaRefusalReason,
       status: initialStatus,
       requiredAction: REQUIRED_ACTION.NONE,
       paymentStatus: PAYMENT_STATUS.PENDING,
@@ -200,7 +232,9 @@ class ApplicationService {
         { stage: 'Documents Verified', completed: false, current: initialStatus !== APPLICATION_STATUS.DRAFT, timestamp: '' },
         { stage: 'Application Processing', completed: false, current: false, timestamp: '' },
         { stage: 'Visa Issued', completed: false, current: false, timestamp: '' }
-      ]
+      ],
+      passportOcr: data.passportOcr || {},
+      passportPhoto: data.passportPhoto || {}
     });
 
     // 6. Link initial documents if passed
@@ -211,11 +245,57 @@ class ApplicationService {
           travellerId: doc.travellerId || (travellers[0]?.travellerId || 'trav_1'),
           documentType: doc.documentType || doc.name || `Document ${idx + 1}`,
           name: doc.name || doc.documentType || `Document ${idx + 1}`,
-          originalFilename: doc.name || 'document.pdf',
-          storageKey: `initial/${application._id}/${Date.now()}_${idx}.pdf`,
+          originalFilename: doc.originalFilename || doc.name || 'document.pdf',
+          storageKey: doc.storageKey || `initial/${application._id}/${Date.now()}_${idx}.pdf`,
           status: doc.status === 'Verified' ? 'VERIFIED' : 'PENDING'
         });
       }
+    }
+
+    // Link distinct passport and photo documents from application flow (Requirement 12)
+    const primaryTraveller = travellers[0];
+    const travDocs = primaryTraveller?.docs || {};
+
+    const frontKey = data.passportOcr?.frontStorageKey || travDocs?.passport?.frontStorageKey || (travDocs?.passport?.storageKey && !travDocs?.passport?.backStorageKey ? travDocs.passport.storageKey : null);
+    if (frontKey) {
+      await Document.create({
+        application: application._id,
+        travellerId: primaryTraveller?.travellerId || 'trav_1',
+        documentType: 'PASSPORT_FRONT',
+        name: 'Passport Front Page',
+        originalFilename: 'passport_front.jpg',
+        storageKey: frontKey,
+        mimeType: 'image/jpeg',
+        status: 'VERIFIED'
+      }).catch(() => {});
+    }
+
+    const backKey = data.passportOcr?.backStorageKey || travDocs?.passport?.backStorageKey;
+    if (backKey) {
+      await Document.create({
+        application: application._id,
+        travellerId: primaryTraveller?.travellerId || 'trav_1',
+        documentType: 'PASSPORT_BACK',
+        name: 'Passport Back Page',
+        originalFilename: 'passport_back.jpg',
+        storageKey: backKey,
+        mimeType: 'image/jpeg',
+        status: 'VERIFIED'
+      }).catch(() => {});
+    }
+
+    const photoKey = data.passportPhoto?.storageKey || data.passportOcr?.photoStorageKey || travDocs?.passport_photo?.storageKey || travDocs?.photograph?.storageKey || travDocs?.photo?.storageKey;
+    if (photoKey) {
+      await Document.create({
+        application: application._id,
+        travellerId: primaryTraveller?.travellerId || 'trav_1',
+        documentType: 'PASSPORT_PHOTO',
+        name: 'Passport Size Photograph',
+        originalFilename: data.passportPhoto?.originalFilename || 'passport_photograph.jpg',
+        storageKey: photoKey,
+        mimeType: data.passportPhoto?.mimeType || 'image/jpeg',
+        status: 'VERIFIED'
+      }).catch(() => {});
     }
 
     await auditService.log({
@@ -377,6 +457,15 @@ class ApplicationService {
         gender: t.gender || 'Male'
       }));
 
+      for (const t of application.travellers) {
+        if (t.issueDate && t.expiryDate) {
+          const dateCheck = validatePassportDates(t.issueDate, t.expiryDate);
+          if (!dateCheck.isValid) {
+            throw ApiError.badRequest(dateCheck.error);
+          }
+        }
+      }
+
       // Recalculate pricing snapshot if traveller count changed
       const newCount = application.travellers.length;
       if (application.pricingSnapshot && application.pricingSnapshot.travellerCount !== newCount) {
@@ -384,6 +473,24 @@ class ApplicationService {
         application.pricingSnapshot.travellerCount = newCount;
         application.pricingSnapshot.totalAmount = perPerson * newCount;
       }
+    }
+
+    if (updates.additionalInformation !== undefined) {
+      application.additionalInformation = typeof updates.additionalInformation === 'string'
+        ? updates.additionalInformation.trim()
+        : '';
+    }
+    if (updates.previousVisaRefusal !== undefined) {
+      application.previousVisaRefusal = Boolean(updates.previousVisaRefusal);
+    }
+    if (updates.previousVisaRefusalCountry !== undefined) {
+      application.previousVisaRefusalCountry = String(updates.previousVisaRefusalCountry).trim();
+    }
+    if (updates.previousVisaRefusalReason !== undefined) {
+      application.previousVisaRefusalReason = String(updates.previousVisaRefusalReason).trim();
+    }
+    if (application.previousVisaRefusal && !application.previousVisaRefusalReason) {
+      throw ApiError.badRequest('Please explain the reason for your previous visa refusal.');
     }
 
     // 2. Admin editable fields (restricted to Admin)
@@ -693,6 +800,70 @@ class ApplicationService {
     });
 
     return this.getApplicationById(application._id);
+  }
+
+  /**
+   * Submit post-application feedback / rating
+   */
+  async submitFeedback(idOrRef, { rating, comment = '' }, currentUser = null) {
+    const application = await this.getApplicationById(idOrRef);
+    if (!application) throw ApiError.notFound('Application not found');
+
+    if (currentUser && currentUser.role === ROLES.CUSTOMER) {
+      const ownerId = application.customer?._id
+        ? application.customer._id.toString()
+        : application.customer?.toString();
+      if (ownerId && ownerId !== currentUser._id.toString()) {
+        throw ApiError.forbidden('You are not authorized to submit feedback for this application');
+      }
+    }
+
+    const numRating = Number(rating);
+    if (!Number.isInteger(numRating) || numRating < 1 || numRating > 5) {
+      throw ApiError.badRequest('Rating must be an integer between 1 and 5');
+    }
+
+    const cleanComment = typeof comment === 'string' ? comment.trim().slice(0, 1000) : '';
+
+    const feedback = await Feedback.findOneAndUpdate(
+      { application: application._id },
+      {
+        application: application._id,
+        referenceNumber: application.referenceNumber,
+        customer: currentUser ? currentUser._id : application.customer,
+        rating: numRating,
+        comment: cleanComment
+      },
+      { upsert: true, new: true, setDefaultsOnInsert: true }
+    );
+
+    application.feedback = {
+      rating: numRating,
+      comment: cleanComment,
+      submittedAt: new Date()
+    };
+    await application.save();
+
+    return feedback;
+  }
+
+  /**
+   * Get feedback for application
+   */
+  async getApplicationFeedback(idOrRef, currentUser = null) {
+    const application = await this.getApplicationById(idOrRef);
+    if (!application) throw ApiError.notFound('Application not found');
+
+    if (currentUser && currentUser.role === ROLES.CUSTOMER) {
+      const ownerId = application.customer?._id
+        ? application.customer._id.toString()
+        : application.customer?.toString();
+      if (ownerId && ownerId !== currentUser._id.toString()) {
+        throw ApiError.forbidden('You do not have permission to view feedback for this application');
+      }
+    }
+
+    return application.feedback?.rating ? application.feedback : null;
   }
 }
 

@@ -175,6 +175,35 @@ const visaSchema = new mongoose.Schema(
       default: true,
       index: true
     },
+    passportValidityRequiredMonths: {
+      type: Number,
+      default: 6,
+      min: 0
+    },
+    minimumAge: {
+      type: Number,
+      default: null
+    },
+    maximumAge: {
+      type: Number,
+      default: null
+    },
+    additionalPassportRules: {
+      type: [String],
+      default: []
+    },
+    passportPhotoRequired: {
+      type: Boolean,
+      default: true
+    },
+    photoRequirements: {
+      required: { type: Boolean, default: true },
+      minWidth: { type: Number, default: 300 },
+      minHeight: { type: Number, default: 300 },
+      background: { type: String, default: null },
+      maxFileSize: { type: Number, default: 10 * 1024 * 1024 },
+      allowedFormats: { type: [String], default: ['image/jpeg', 'image/png', 'image/webp'] }
+    },
     isDeleted: {
       type: Boolean,
       default: false,
@@ -200,6 +229,19 @@ const visaSchema = new mongoose.Schema(
         ret.totalFee = (ret.governmentFee || 0) + (ret.serviceFee || 0);
         ret.documentsRequired = ret.requiredDocuments;
         ret.documents = ret.requiredDocuments;
+        ret.passportValidityRequiredMonths = doc.passportValidityRequiredMonths ?? 6;
+        ret.minimumAge = doc.minimumAge ?? null;
+        ret.maximumAge = doc.maximumAge ?? null;
+        ret.additionalPassportRules = doc.additionalPassportRules || [];
+        ret.passportPhotoRequired = doc.passportPhotoRequired ?? true;
+        ret.photoRequirements = doc.photoRequirements || {
+          required: doc.passportPhotoRequired ?? true,
+          minWidth: 300,
+          minHeight: 300,
+          background: null,
+          maxFileSize: 10 * 1024 * 1024,
+          allowedFormats: ['image/jpeg', 'image/png', 'image/webp']
+        };
 
         // Dynamic Image Resolution:
         // Priority 1: Visa-specific image, if explicitly configured and not equal to country image
@@ -239,6 +281,19 @@ const visaSchema = new mongoose.Schema(
         ret.totalFee = (ret.governmentFee || 0) + (ret.serviceFee || 0);
         ret.documentsRequired = ret.requiredDocuments;
         ret.documents = ret.requiredDocuments;
+        ret.passportValidityRequiredMonths = doc.passportValidityRequiredMonths ?? 6;
+        ret.minimumAge = doc.minimumAge ?? null;
+        ret.maximumAge = doc.maximumAge ?? null;
+        ret.additionalPassportRules = doc.additionalPassportRules || [];
+        ret.passportPhotoRequired = doc.passportPhotoRequired ?? true;
+        ret.photoRequirements = doc.photoRequirements || {
+          required: doc.passportPhotoRequired ?? true,
+          minWidth: 300,
+          minHeight: 300,
+          background: null,
+          maxFileSize: 10 * 1024 * 1024,
+          allowedFormats: ['image/jpeg', 'image/png', 'image/webp']
+        };
 
         const countryImg = ((doc.country && typeof doc.country === 'object' && doc.country.image)
           ? String(doc.country.image).trim()

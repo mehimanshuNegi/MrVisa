@@ -39,7 +39,22 @@ export async function connectDatabase() {
     return conn;
   } catch (error) {
     logger.error('Initial MongoDB connection failure:', { error: error.message });
-    throw error;
+    if (env.NODE_ENV === 'production') {
+      throw error;
+    }
+    logger.warn('Running in development mode without active MongoDB Atlas connection. Background reconnection scheduled.');
+    const retryInterval = setInterval(async () => {
+      try {
+        await mongoose.connect(env.MONGODB_URI, options);
+        isConnected = true;
+        logger.info('MongoDB connected successfully via background retry.');
+        clearInterval(retryInterval);
+      } catch {
+        // keep retrying silently in background
+      }
+    }, 10000);
+    retryInterval.unref();
+    return null;
   }
 }
 

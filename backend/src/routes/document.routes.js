@@ -7,6 +7,7 @@ import {
   updateDocumentStatus,
   serveLocalRawFile
 } from '../controllers/document.controller.js';
+import { processPassportOcr } from '../controllers/application.controller.js';
 import { authenticate, optionalAuthenticate, authorize } from '../middleware/auth.middleware.js';
 import { validate } from '../middleware/validate.middleware.js';
 import { uploadMiddleware } from '../middleware/upload.middleware.js';
@@ -14,6 +15,9 @@ import { updateDocumentStatusSchema } from '../validators/document.validator.js'
 import { ROLES } from '../constants/roles.js';
 
 const router = Router();
+
+// Passport-first OCR endpoint
+router.post('/passport-ocr', optionalAuthenticate, uploadMiddleware.single('file'), processPassportOcr);
 
 // 1. Upload document (Attached to application specified in body)
 router.post('/', optionalAuthenticate, uploadMiddleware.single('file'), uploadDocument);
@@ -24,6 +28,9 @@ router.get('/:id', authenticate, getDocumentById);
 
 // 3. Get temporary signed download/view URL (Secured: requires authentication and application ownership)
 router.get('/:id/signed-url', authenticate, getSignedUrl);
+router.get('/:id/url', authenticate, getSignedUrl);
+router.get('/:id/download', authenticate, getSignedUrl);
+router.get('/:id/preview', authenticate, getSignedUrl);
 
 // 4. Delete document (Deletes from Cloudflare R2 and marks deleted in MongoDB)
 router.delete('/:id', authenticate, deleteDocument);

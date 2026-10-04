@@ -12,5 +12,7 @@ export { API_CONFIG, isMockMode } from './apiConfig';
 export { filterDestinations, searchCountryDestinations, normalizeVisaType, normalizeCountryName } from './destinationFilter';
 export { documentationService } from './documentationService';
 export { dummyTicketService } from './dummyTicketService';
+export { documentService } from './documentService';
 export { adminService } from './adminService';
+export { api } from './api';
 

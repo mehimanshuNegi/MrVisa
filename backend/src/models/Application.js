@@ -219,6 +219,101 @@ const applicationSchema = new mongoose.Schema(
         { stage: 'Visa Issued', completed: false, current: false, timestamp: '' }
       ]
     },
+    additionalInformation: {
+      type: String,
+      default: '',
+      trim: true
+    },
+    previousVisaRefusal: {
+      type: Boolean,
+      default: false
+    },
+    previousVisaRefusalCountry: {
+      type: String,
+      default: '',
+      trim: true
+    },
+    previousVisaRefusalReason: {
+      type: String,
+      default: '',
+      trim: true
+    },
+    passportOcr: {
+      processed: {
+        type: Boolean,
+        default: false
+      },
+      processedAt: {
+        type: Date
+      },
+      sourceDocumentId: {
+        type: String,
+        default: ''
+      },
+      frontDocumentId: {
+        type: String,
+        default: ''
+      },
+      frontStorageKey: {
+        type: String,
+        default: ''
+      },
+      backDocumentId: {
+        type: String,
+        default: ''
+      },
+      backStorageKey: {
+        type: String,
+        default: ''
+      },
+      photoDocumentId: {
+        type: String,
+        default: ''
+      },
+      photoStorageKey: {
+        type: String,
+        default: ''
+      },
+      photoValidationResult: {
+        type: mongoose.Schema.Types.Mixed,
+        default: null
+      },
+      fieldsConfirmed: {
+        type: Boolean,
+        default: false
+      },
+      consistencyChecked: {
+        type: Boolean,
+        default: false
+      },
+      extractedData: {
+        type: mongoose.Schema.Types.Mixed,
+        default: {}
+      }
+    },
+    passportPhoto: {
+      documentId: { type: String, default: '' },
+      storageKey: { type: String, default: '' },
+      originalFilename: { type: String, default: '' },
+      fileSize: { type: Number, default: 0 },
+      mimeType: { type: String, default: '' },
+      validationResult: { type: mongoose.Schema.Types.Mixed, default: null }
+    },
+    feedback: {
+      rating: {
+        type: Number,
+        min: 1,
+        max: 5
+      },
+      comment: {
+        type: String,
+        default: '',
+        trim: true
+      },
+      submittedAt: {
+        type: Date
+      }
+    },
     isDeleted: {
       type: Boolean,
       default: false,

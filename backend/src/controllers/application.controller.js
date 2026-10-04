@@ -133,6 +133,128 @@ export const claimGuestApplication = asyncHandler(async (req, res) => {
   );
 });
 
+export const submitFeedback = asyncHandler(async (req, res) => {
+  const { rating, comment } = req.body;
+  const feedback = await applicationService.submitFeedback(
+    req.params.idOrRef || req.params.id,
+    { rating, comment },
+    req.user || null
+  );
+  return ApiResponse.created(res, feedback, 'Thank you for your feedback!');
+});
+
+export const getApplicationFeedback = asyncHandler(async (req, res) => {
+  const feedback = await applicationService.getApplicationFeedback(
+    req.params.idOrRef || req.params.id,
+    req.user || null
+  );
+  return ApiResponse.success(res, feedback, 'Application feedback retrieved');
+});
+
+import { passportOcrService } from '../services/passportOcr.service.js';
+import { photoValidationService } from '../services/photoValidation.service.js';
+import { storageService } from '../services/storage.service.js';
+import { Visa } from '../models/Visa.js';
+import logger from '../utils/logger.js';
+
+export const processPassportOcr = asyncHandler(async (req, res) => {
+  if (!req.file || !req.file.buffer) {
+    throw ApiError.badRequest('Please upload a passport image file (JPG, PNG, or WEBP).');
+  }
+
+  let frontExtractedData = {};
+  if (req.body?.frontExtractedData) {
+    try {
+      frontExtractedData = typeof req.body.frontExtractedData === 'string'
+        ? JSON.parse(req.body.frontExtractedData)
+        : req.body.frontExtractedData;
+    } catch {
+      frontExtractedData = {};
+    }
+  }
+
+  const result = await passportOcrService.processPassport({
+    buffer: req.file.buffer,
+    originalFilename: req.file.originalname,
+    mimeType: req.file.mimetype,
+    userFullName: req.body?.fullName || req.body?.name || '',
+    pageType: req.body?.pageType || 'front',
+    frontExtractedData,
+    previousStorageKey: req.body?.previousStorageKey || null
+  });
+
+  return ApiResponse.success(res, result, result.message || 'Passport processing completed');
+});
+
+export const processPassportPhoto = asyncHandler(async (req, res) => {
+  if (!req.file || !req.file.buffer) {
+    throw ApiError.badRequest('Please upload a passport-size photograph (JPG, PNG, or WEBP).');
+  }
+
+  // Fetch visa photo requirements if visaId is provided
+  let photoRequirements = {};
+  if (req.body?.visaId) {
+    try {
+      const visa = await Visa.findById(req.body.visaId);
+      if (visa && visa.photoRequirements) {
+        photoRequirements = visa.photoRequirements;
+      }
+    } catch (e) {
+      logger.warn('Visa fetch for photo requirements notice:', e?.message);
+    }
+  }
+
+  // Clean up previous photo file in R2 if re-uploading
+  if (req.body?.previousStorageKey) {
+    try {
+      await storageService.deleteFile(req.body.previousStorageKey);
+    } catch (err) {
+      logger.warn('Failed to delete previous photo file:', err?.message);
+    }
+  }
+
+  // 1. Run automatic quality and detectable condition validation
+  const validation = await photoValidationService.validatePhoto(req.file.buffer, {
+    photoRequirements
+  });
+
+  // 2. Stage photo safely in R2 private storage
+  let uploadedDocument = null;
+  try {
+    const uploadResult = await storageService.uploadFile({
+      buffer: req.file.buffer,
+      originalFilename: req.file.originalname || 'passport_photograph.jpg',
+      mimeType: req.file.mimetype || 'image/jpeg',
+      folder: 'documents'
+    });
+
+    uploadedDocument = {
+      documentId: `photo_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
+      name: 'Passport Size Photograph',
+      documentType: 'PASSPORT_PHOTO',
+      originalFilename: uploadResult.originalFilename,
+      storageKey: uploadResult.storageKey,
+      fileSize: uploadResult.fileSize,
+      mimeType: uploadResult.mimeType
+    };
+  } catch (uploadErr) {
+    logger.warn('Passport photo storage staging notice:', uploadErr?.message);
+  }
+
+  return ApiResponse.success(
+    res,
+    {
+      uploadedDocument,
+      validation,
+      canContinue: validation.canContinue,
+      status: validation.status,
+      summary: validation.summary,
+      messages: validation.messages
+    },
+    validation.summary || 'Passport photograph processed'
+  );
+});
+
 export default {
   createApplication,
   getApplications,
@@ -143,5 +265,9 @@ export default {
   getApplicationDocuments,
   uploadDocumentForApplication,
   updateCustomerAction,
-  claimGuestApplication
+  claimGuestApplication,
+  submitFeedback,
+  getApplicationFeedback,
+  processPassportOcr,
+  processPassportPhoto
 };

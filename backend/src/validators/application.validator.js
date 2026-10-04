@@ -32,7 +32,12 @@ export const createApplicationSchema = Joi.object({
   documents: Joi.array().items(Joi.object()).optional(),
   applicantName: Joi.string().trim().optional(),
   applicantEmail: Joi.string().email().optional(),
-  applicantPhone: Joi.string().optional()
+  applicantPhone: Joi.string().optional(),
+  additionalInformation: Joi.string().allow('').optional(),
+  previousVisaRefusal: Joi.boolean().optional(),
+  previousVisaRefusalCountry: Joi.string().allow('').optional(),
+  previousVisaRefusalReason: Joi.string().allow('').optional(),
+  passportOcr: Joi.object().optional()
 });
 
 export const updateApplicationSchema = Joi.object({
@@ -45,6 +50,11 @@ export const updateApplicationSchema = Joi.object({
   applicantName: Joi.string().trim().optional(),
   applicantEmail: Joi.string().email().optional(),
   applicantPhone: Joi.string().optional(),
+  additionalInformation: Joi.string().allow('').optional(),
+  previousVisaRefusal: Joi.boolean().optional(),
+  previousVisaRefusalCountry: Joi.string().allow('').optional(),
+  previousVisaRefusalReason: Joi.string().allow('').optional(),
+  passportOcr: Joi.object().optional(),
   documents: Joi.array().items(Joi.object()).optional(),
   visaDetails: Joi.object({
     docNumber: Joi.string().allow('').optional(),
@@ -52,6 +62,17 @@ export const updateApplicationSchema = Joi.object({
     entryType: Joi.string().allow('').optional(),
     downloadUrl: Joi.string().allow('').optional()
   }).optional()
+});
+
+export const submitFeedbackSchema = Joi.object({
+  rating: Joi.number().integer().min(1).max(5).required().messages({
+    'number.base': 'Rating must be a number between 1 and 5',
+    'number.integer': 'Rating must be an integer between 1 and 5',
+    'number.min': 'Rating must be at least 1 star',
+    'number.max': 'Rating cannot exceed 5 stars',
+    'any.required': 'Rating is required'
+  }),
+  comment: Joi.string().max(1000).allow('').optional()
 });
 
 export const submitApplicationSchema = Joi.object({

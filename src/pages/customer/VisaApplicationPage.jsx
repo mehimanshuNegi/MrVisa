@@ -132,10 +132,11 @@ export default function VisaApplicationPage() {
   const [passportUploadError, setPassportUploadError] = useState(null);
   const [passportBackUploadError, setPassportBackUploadError] = useState(null);
   const [consistencyMismatches, setConsistencyMismatches] = useState([]);
+  const [isOcrNameAuthoritative, setIsOcrNameAuthoritative] = useState(false);
   const [ocrStages, setOcrStages] = useState([
-    { id: 'image_checked', label: 'Image checked', status: 'pending' },
+    { id: 'image_checked', label: 'Image quality checked', status: 'pending' },
     { id: 'passport_detected', label: 'Passport detected', status: 'pending' },
-    { id: 'mrz_detected', label: 'MRZ detected', status: 'pending' },
+    { id: 'mrz_detected', label: 'Document format verified', status: 'pending' },
     { id: 'extracting_details', label: 'Extracting details', status: 'pending' },
     { id: 'verifying_details', label: 'Verifying information', status: 'pending' }
   ]);
@@ -642,9 +643,9 @@ export default function VisaApplicationPage() {
 
     // Initial stage states
     setOcrStages([
-      { id: 'image_checked', label: 'Image checked', status: 'completed' },
+      { id: 'image_checked', label: 'Image quality checked', status: 'completed' },
       { id: 'passport_detected', label: 'Passport detected', status: 'in_progress' },
-      { id: 'mrz_detected', label: 'MRZ detected', status: 'pending' },
+      { id: 'mrz_detected', label: 'Document format verified', status: 'pending' },
       { id: 'extracting_details', label: 'Extracting details', status: 'pending' },
       { id: 'verifying_details', label: 'Verifying information', status: 'pending' }
     ]);
@@ -692,12 +693,19 @@ export default function VisaApplicationPage() {
 
       const extracted = result?.extractedData || {};
       const statusMap = result?.fieldStatus || {};
+      const ocrFullName = (extracted.fullName || '').trim();
+      const hasValidOcrName = ocrFullName.length >= 2;
+
+      if (hasValidOcrName) {
+        setIsOcrNameAuthoritative(true);
+        setApplicantFullName(ocrFullName);
+      }
 
       setOcrExtractedData((prev) => ({
         ...prev,
-        fullName: extracted.fullName || applicantFullName || prev.fullName || '',
-        firstName: extracted.firstName || (applicantFullName ? applicantFullName.split(' ')[0] : prev.firstName || ''),
-        lastName: extracted.lastName || (applicantFullName ? applicantFullName.split(' ').slice(1).join(' ') : prev.lastName || ''),
+        fullName: hasValidOcrName ? ocrFullName : (prev.fullName || applicantFullName || ''),
+        firstName: (hasValidOcrName && extracted.firstName) ? extracted.firstName : (extracted.firstName || (applicantFullName ? applicantFullName.split(' ')[0] : prev.firstName || '')),
+        lastName: (hasValidOcrName && extracted.lastName !== undefined) ? extracted.lastName : (extracted.lastName || (applicantFullName ? applicantFullName.split(' ').slice(1).join(' ') : prev.lastName || '')),
         passportNumber: extracted.passportNumber || prev.passportNumber || '',
         dateOfBirth: extracted.dateOfBirth || prev.dateOfBirth || '',
         nationality: extracted.nationality || prev.nationality || 'Indian',
@@ -815,6 +823,7 @@ export default function VisaApplicationPage() {
 
   const handleSkipToManualDetails = () => {
     setIsProcessingPassport(false);
+    setIsOcrNameAuthoritative(false);
     setOcrExtractedData((prev) => ({
       ...prev,
       fullName: prev.fullName || applicantFullName || '',
@@ -885,10 +894,16 @@ export default function VisaApplicationPage() {
       return;
     }
 
-    // Split name parts cleanly
-    const parts = (ocrExtractedData.fullName || '').trim().split(/\s+/);
+    // Authoritative passport name is source of truth
+    const authoritativeFullName = (ocrExtractedData.fullName || '').trim();
+    const parts = authoritativeFullName.split(/\s+/);
     const firstName = ocrExtractedData.firstName || parts[0] || 'Applicant';
     const lastName = ocrExtractedData.lastName || parts.slice(1).join(' ') || '';
+
+    // Synchronize applicantFullName with authoritative passport name
+    if (authoritativeFullName) {
+      setApplicantFullName(authoritativeFullName);
+    }
 
     // Apply auto-filled data to primary traveller & pre-attach passport document
     setTravellers((prev) =>
@@ -2165,7 +2180,7 @@ export default function VisaApplicationPage() {
                           Reading passport photo page...
                         </h2>
                         <p className="text-xs text-slate-400 font-medium">
-                          Automatically verifying image, MRZ zone, and identity fields
+                          Verifying passport details...
                         </p>
                       </>
                     )}
@@ -2237,17 +2252,6 @@ export default function VisaApplicationPage() {
                     <p className="text-sm sm:text-base text-slate-500 font-medium">
                       Upload the back side / second page
                     </p>
-                  </div>
-
-                  {/* Visual Instruction / Flip Badge */}
-                  <div className="flex items-center justify-center gap-4 py-2 px-4 rounded-2xl bg-slate-50 border border-slate-200/80 max-w-sm mx-auto text-left">
-                    <div className="w-12 h-12 rounded-xl bg-white border border-slate-200 flex items-center justify-center flex-shrink-0 text-[#2563EB] shadow-2xs">
-                      <RefreshCw size={22} className="text-[#2563EB]" />
-                    </div>
-                    <div className="text-xs text-slate-600">
-                      <strong className="text-[#082B61] block">Second page details</strong>
-                      Contains parents' names, spouse, and permanent address
-                    </div>
                   </div>
 
                   {/* Error banner if back page failed detection */}
@@ -2322,7 +2326,7 @@ export default function VisaApplicationPage() {
                       onClick={handleSkipBackPage}
                       className="text-xs font-semibold text-slate-400 hover:text-[#2563EB] transition-colors cursor-pointer inline-flex items-center gap-1"
                     >
-                      No second page or want to skip? <span className="underline">Review details now</span>
+                      Skip this step
                     </button>
                   </div>
                 </div>
@@ -2356,10 +2360,10 @@ export default function VisaApplicationPage() {
 
                   <div className="space-y-1">
                     <h2 className="text-lg sm:text-xl font-black text-[#082B61] tracking-tight">
-                      Reading second page details...
+                      Processing back page...
                     </h2>
                     <p className="text-xs text-slate-400 font-medium">
-                      Extracting parents' names, address, and document identifiers
+                      Verifying passport details...
                     </p>
                   </div>
 
@@ -2405,34 +2409,6 @@ export default function VisaApplicationPage() {
                       </p>
                     </div>
 
-                    {/* Step 1 vs Extracted Name comparison banner if different */}
-                    {applicantFullName && ocrExtractedData.fullName && applicantFullName.trim().toLowerCase() !== ocrExtractedData.fullName.trim().toLowerCase() && (
-                      <div className="p-4 rounded-2xl bg-amber-50/80 border border-amber-200/80 text-xs text-amber-900 space-y-2 text-left">
-                        <div className="flex items-center gap-1.5 font-bold text-amber-800 text-sm">
-                          <AlertCircle size={16} />
-                          <span>Your entered name doesn't exactly match the passport.</span>
-                        </div>
-                        <p className="text-slate-600">
-                          You entered <strong className="text-[#082B61]">"{applicantFullName}"</strong> in step 1, but we detected <strong className="text-[#082B61]">"{ocrExtractedData.fullName}"</strong> on your passport.
-                        </p>
-                        <div className="flex flex-wrap gap-2 pt-1">
-                          <button
-                            type="button"
-                            onClick={() => handleReviewFieldChange('fullName', ocrExtractedData.fullName)}
-                            className="text-[11px] font-bold bg-white border border-amber-300 px-3 py-1.5 rounded-lg text-amber-900 hover:bg-amber-100/60 cursor-pointer shadow-2xs"
-                          >
-                            Use Passport Name: "{ocrExtractedData.fullName}"
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleReviewFieldChange('fullName', applicantFullName)}
-                            className="text-[11px] font-bold bg-white border border-amber-300 px-3 py-1.5 rounded-lg text-amber-900 hover:bg-amber-100/60 cursor-pointer shadow-2xs"
-                          >
-                            Use Entered Name: "{applicantFullName}"
-                          </button>
-                        </div>
-                      </div>
-                    )}
 
                     {/* Front + Back Consistency Mismatch Warning (Requirement 2) */}
                     {consistencyMismatches.length > 0 && (
@@ -2539,14 +2515,30 @@ export default function VisaApplicationPage() {
                             <div className="sm:col-span-2 space-y-1.5">
                               <div className="flex items-center justify-between">
                                 <label className="text-xs font-bold text-[#082B61]">Full name *</label>
-                                {renderConfidenceBadge('fullName')}
+                                {isOcrNameAuthoritative ? (
+                                  <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200/60 px-2 py-0.5 rounded-full">
+                                    <Check size={12} strokeWidth={3} className="text-emerald-600" />
+                                    Passport verified
+                                  </span>
+                                ) : (
+                                  renderConfidenceBadge('fullName')
+                                )}
                               </div>
                               <input
                                 type="text"
                                 value={ocrExtractedData.fullName}
-                                onChange={(e) => handleReviewFieldChange('fullName', e.target.value)}
+                                onChange={(e) => {
+                                  if (!isOcrNameAuthoritative) {
+                                    handleReviewFieldChange('fullName', e.target.value);
+                                  }
+                                }}
+                                readOnly={isOcrNameAuthoritative}
                                 placeholder="e.g. Rahul Sharma"
-                                className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs sm:text-sm font-semibold text-[#082B61] focus:border-[#2563EB] focus:ring-1 focus:ring-[#2563EB]/20 focus:outline-none"
+                                className={`w-full px-3.5 py-2.5 rounded-xl border text-xs sm:text-sm font-semibold transition-all ${
+                                  isOcrNameAuthoritative
+                                    ? 'bg-slate-50/80 border-slate-200 text-[#082B61] select-none cursor-default'
+                                    : 'border-slate-200 text-[#082B61] focus:border-[#2563EB] focus:ring-1 focus:ring-[#2563EB]/20 focus:outline-none'
+                                }`}
                               />
                               {ocrReviewErrors.fullName && (
                                 <p className="text-[11px] font-semibold text-rose-600">{ocrReviewErrors.fullName}</p>
@@ -2756,65 +2748,13 @@ export default function VisaApplicationPage() {
                           </div>
                         )}
 
-                        {/* Compact "Passport checks" Section (Requirement 10) */}
-                        <div className="p-4 rounded-2xl bg-slate-50/80 border border-slate-200/80 space-y-2.5">
-                          <span className="text-[11px] font-extrabold uppercase tracking-wider text-slate-500 block">
-                            Passport checks
-                          </span>
-                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
-                            <div className="flex items-center gap-2 text-emerald-700 font-medium">
-                              <Check size={14} strokeWidth={3} className="text-emerald-600" />
-                              <span>Passport page detected</span>
-                            </div>
-                            <div className="flex items-center gap-2 text-emerald-700 font-medium">
-                              <Check size={14} strokeWidth={3} className="text-emerald-600" />
-                              <span>MRZ detected</span>
-                            </div>
-                            <div className={`flex items-center gap-2 font-medium ${ocrExtractedData.passportNumber?.length >= 6 ? 'text-emerald-700' : 'text-slate-500'}`}>
-                              {ocrExtractedData.passportNumber?.length >= 6 ? (
-                                <Check size={14} strokeWidth={3} className="text-emerald-600" />
-                              ) : (
-                                <span className="w-3.5 h-3.5 rounded-full border border-slate-300" />
-                              )}
-                              <span>Passport number verified</span>
-                            </div>
-                            <div className={`flex items-center gap-2 font-medium ${ocrExtractedData.dateOfBirth ? 'text-emerald-700' : 'text-slate-500'}`}>
-                              {ocrExtractedData.dateOfBirth ? (
-                                <Check size={14} strokeWidth={3} className="text-emerald-600" />
-                              ) : (
-                                <span className="w-3.5 h-3.5 rounded-full border border-slate-300" />
-                              )}
-                              <span>Date of birth valid</span>
-                            </div>
-                            <div className={`flex items-center gap-2 font-medium ${ocrExtractedData.issueDate ? 'text-emerald-700' : 'text-slate-500'}`}>
-                              {ocrExtractedData.issueDate ? (
-                                <Check size={14} strokeWidth={3} className="text-emerald-600" />
-                              ) : (
-                                <span className="w-3.5 h-3.5 rounded-full border border-slate-300" />
-                              )}
-                              <span>Issue date valid</span>
-                            </div>
-                            <div className={`flex items-center gap-2 font-medium ${ocrExtractedData.expiryDate ? 'text-emerald-700' : 'text-slate-500'}`}>
-                              {ocrExtractedData.expiryDate ? (
-                                <Check size={14} strokeWidth={3} className="text-emerald-600" />
-                              ) : (
-                                <span className="w-3.5 h-3.5 rounded-full border border-slate-300" />
-                              )}
-                              <span>Expiry date valid</span>
-                            </div>
-                            <div className={`flex items-center gap-2 font-medium ${validityCheck.isValid ? 'text-emerald-700' : 'text-amber-700 font-bold'}`}>
-                              {validityCheck.isValid ? (
-                                <Check size={14} strokeWidth={3} className="text-emerald-600" />
-                              ) : (
-                                <AlertCircle size={14} className="text-amber-600" />
-                              )}
-                              <span>Passport validity checked</span>
-                            </div>
-                            <div className="flex items-center gap-2 text-emerald-700 font-medium">
-                              <Check size={14} strokeWidth={3} className="text-emerald-600" />
-                              <span>Name reviewed</span>
-                            </div>
+                        {/* Minimal Verified State */}
+                        <div className="p-3.5 rounded-2xl bg-emerald-50/70 border border-emerald-200/80 flex items-center justify-between text-left">
+                          <div className="flex items-center gap-2 text-emerald-800 text-xs font-bold">
+                            <CheckCircle2 size={16} className="text-emerald-600 flex-shrink-0" />
+                            <span>Passport details verified</span>
                           </div>
+                          <span className="text-[11px] text-emerald-700 font-medium">Ready to continue</span>
                         </div>
 
                       </div>
@@ -3004,32 +2944,38 @@ export default function VisaApplicationPage() {
                           </span>
                         )}
                       </div>
-                      <span className="text-[11px] text-slate-400 font-medium hidden sm:inline">
-                        As printed on your official passport
-                      </span>
                     </div>
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-5">
                       {/* First Name */}
                       <div>
-                        <label className="text-xs font-bold text-[#082B61] block leading-none">
-                          First Name *
-                        </label>
-                        <span className="text-[11px] text-slate-400 font-medium block mt-1 mb-1.5">
-                          Enter your first name
-                        </span>
+                        <div className="flex items-center justify-between mb-1.5">
+                          <label className="text-xs font-bold text-[#082B61] block leading-none">
+                            First Name *
+                          </label>
+                          {activeIndex === 0 && isOcrNameAuthoritative && (
+                            <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200/60">
+                              Passport verified
+                            </span>
+                          )}
+                        </div>
                         <div className="relative">
                           <input
                             ref={(el) => (fieldRefs.current[`${effectiveActiveId}_firstName`] = el)}
                             type="text"
                             placeholder=""
                             value={activeTraveller.firstName}
-                            onChange={(e) => handleFieldChange('firstName', e.target.value)}
-                            className={`w-full px-3.5 py-2.5 pr-9 rounded-xl border text-xs sm:text-sm font-medium text-[#082B61] transition-all focus:outline-none ${getFieldStyleClass(
-                              activeTraveller,
-                              'firstName',
-                              activeIndex === 0
-                            )}`}
+                            onChange={(e) => {
+                              if (!(activeIndex === 0 && isOcrNameAuthoritative)) {
+                                handleFieldChange('firstName', e.target.value);
+                              }
+                            }}
+                            readOnly={activeIndex === 0 && isOcrNameAuthoritative}
+                            className={`w-full px-3.5 py-2.5 pr-9 rounded-xl border text-xs sm:text-sm font-medium transition-all focus:outline-none ${
+                              activeIndex === 0 && isOcrNameAuthoritative
+                                ? 'bg-slate-50/80 border-slate-200 text-[#082B61] select-none cursor-default'
+                                : getFieldStyleClass(activeTraveller, 'firstName', activeIndex === 0)
+                            }`}
                           />
                           {isFieldValid(activeTraveller, 'firstName', activeIndex === 0) ? (
                             <Check size={14} className="text-emerald-600 stroke-[3] absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
@@ -3046,24 +2992,33 @@ export default function VisaApplicationPage() {
 
                       {/* Last Name */}
                       <div>
-                        <label className="text-xs font-bold text-[#082B61] block leading-none">
-                          Last Name *
-                        </label>
-                        <span className="text-[11px] text-slate-400 font-medium block mt-1 mb-1.5">
-                          Enter your last name
-                        </span>
+                        <div className="flex items-center justify-between mb-1.5">
+                          <label className="text-xs font-bold text-[#082B61] block leading-none">
+                            Last Name *
+                          </label>
+                          {activeIndex === 0 && isOcrNameAuthoritative && (
+                            <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200/60">
+                              Passport verified
+                            </span>
+                          )}
+                        </div>
                         <div className="relative">
                           <input
                             ref={(el) => (fieldRefs.current[`${effectiveActiveId}_lastName`] = el)}
                             type="text"
                             placeholder=""
                             value={activeTraveller.lastName}
-                            onChange={(e) => handleFieldChange('lastName', e.target.value)}
-                            className={`w-full px-3.5 py-2.5 pr-9 rounded-xl border text-xs sm:text-sm font-medium text-[#082B61] transition-all focus:outline-none ${getFieldStyleClass(
-                              activeTraveller,
-                              'lastName',
-                              activeIndex === 0
-                            )}`}
+                            onChange={(e) => {
+                              if (!(activeIndex === 0 && isOcrNameAuthoritative)) {
+                                handleFieldChange('lastName', e.target.value);
+                              }
+                            }}
+                            readOnly={activeIndex === 0 && isOcrNameAuthoritative}
+                            className={`w-full px-3.5 py-2.5 pr-9 rounded-xl border text-xs sm:text-sm font-medium transition-all focus:outline-none ${
+                              activeIndex === 0 && isOcrNameAuthoritative
+                                ? 'bg-slate-50/80 border-slate-200 text-[#082B61] select-none cursor-default'
+                                : getFieldStyleClass(activeTraveller, 'lastName', activeIndex === 0)
+                            }`}
                           />
                           {isFieldValid(activeTraveller, 'lastName', activeIndex === 0) ? (
                             <Check size={14} className="text-emerald-600 stroke-[3] absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
@@ -3080,12 +3035,9 @@ export default function VisaApplicationPage() {
 
                       {/* Date of Birth */}
                       <div>
-                        <label className="text-xs font-bold text-[#082B61] block leading-none">
+                        <label className="text-xs font-bold text-[#082B61] block leading-none mb-1.5">
                           Date of Birth *
                         </label>
-                        <span className="text-[11px] text-slate-400 font-medium block mt-1 mb-1.5">
-                          Select your date of birth
-                        </span>
                         <div className="relative">
                           <input
                             ref={(el) => (fieldRefs.current[`${effectiveActiveId}_dob`] = el)}
@@ -3115,12 +3067,9 @@ export default function VisaApplicationPage() {
 
                       {/* Gender */}
                       <div>
-                        <label className="text-xs font-bold text-[#082B61] block leading-none">
+                        <label className="text-xs font-bold text-[#082B61] block leading-none mb-1.5">
                           Gender *
                         </label>
-                        <span className="text-[11px] text-slate-400 font-medium block mt-1 mb-1.5">
-                          Select your gender
-                        </span>
                         <select
                           value={activeTraveller.gender}
                           onChange={(e) => handleFieldChange('gender', e.target.value)}
@@ -3134,12 +3083,9 @@ export default function VisaApplicationPage() {
 
                       {/* Nationality */}
                       <div className="sm:col-span-2">
-                        <label className="text-xs font-bold text-[#082B61] block leading-none">
+                        <label className="text-xs font-bold text-[#082B61] block leading-none mb-1.5">
                           Nationality *
                         </label>
-                        <span className="text-[11px] text-slate-400 font-medium block mt-1 mb-1.5">
-                          Select your nationality
-                        </span>
                         <select
                           value={activeTraveller.nationality || 'Indian'}
                           onChange={(e) => handleFieldChange('nationality', e.target.value)}
@@ -3162,12 +3108,9 @@ export default function VisaApplicationPage() {
                       {activeIndex === 0 && (
                         <>
                           <div>
-                            <label className="text-xs font-bold text-[#082B61] block leading-none">
+                            <label className="text-xs font-bold text-[#082B61] block leading-none mb-1.5">
                               Email Address *
                             </label>
-                            <span className="text-[11px] text-slate-400 font-medium block mt-1 mb-1.5">
-                              Enter your email address
-                            </span>
                             <div className="relative">
                               <input
                                 ref={(el) => (fieldRefs.current[`${effectiveActiveId}_email`] = el)}
@@ -3195,12 +3138,9 @@ export default function VisaApplicationPage() {
                           </div>
 
                           <div>
-                            <label className="text-xs font-bold text-[#082B61] block leading-none">
+                            <label className="text-xs font-bold text-[#082B61] block leading-none mb-1.5">
                               Phone Number *
                             </label>
-                            <span className="text-[11px] text-slate-400 font-medium block mt-1 mb-1.5">
-                              Enter your phone number
-                            </span>
                             <div className="relative">
                               <input
                                 ref={(el) => (fieldRefs.current[`${effectiveActiveId}_phone`] = el)}
@@ -3250,12 +3190,9 @@ export default function VisaApplicationPage() {
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-5">
                       {/* Passport Number */}
                       <div>
-                        <label className="text-xs font-bold text-[#082B61] block leading-none">
+                        <label className="text-xs font-bold text-[#082B61] block leading-none mb-1.5">
                           Passport Number *
                         </label>
-                        <span className="text-[11px] text-slate-400 font-medium block mt-1 mb-1.5">
-                          Enter your passport number
-                        </span>
                         <div className="relative">
                           <input
                             ref={(el) => (fieldRefs.current[`${effectiveActiveId}_passportNumber`] = el)}
@@ -3286,12 +3223,9 @@ export default function VisaApplicationPage() {
 
                       {/* Place of Issue */}
                       <div>
-                        <label className="text-xs font-bold text-[#082B61] block leading-none">
+                        <label className="text-xs font-bold text-[#082B61] block leading-none mb-1.5">
                           Place of Issue *
                         </label>
-                        <span className="text-[11px] text-slate-400 font-medium block mt-1 mb-1.5">
-                          Enter your passport place of issue
-                        </span>
                         <div className="relative">
                           <input
                             ref={(el) => (fieldRefs.current[`${effectiveActiveId}_placeOfIssue`] = el)}
@@ -3320,12 +3254,9 @@ export default function VisaApplicationPage() {
 
                       {/* Issue Date */}
                       <div>
-                        <label className="text-xs font-bold text-[#082B61] block leading-none">
+                        <label className="text-xs font-bold text-[#082B61] block leading-none mb-1.5">
                           Passport Issue Date *
                         </label>
-                        <span className="text-[11px] text-slate-400 font-medium block mt-1 mb-1.5">
-                          Select your passport issue date
-                        </span>
                         <div className="relative">
                           <input
                             ref={(el) => (fieldRefs.current[`${effectiveActiveId}_issueDate`] = el)}
@@ -3355,12 +3286,9 @@ export default function VisaApplicationPage() {
 
                       {/* Expiry Date */}
                       <div>
-                        <label className="text-xs font-bold text-[#082B61] block leading-none">
+                        <label className="text-xs font-bold text-[#082B61] block leading-none mb-1.5">
                           Passport Expiry Date *
                         </label>
-                        <span className="text-[11px] text-slate-400 font-medium block mt-1 mb-1.5">
-                          Select your passport expiry date
-                        </span>
                         <div className="relative">
                           <input
                             ref={(el) => (fieldRefs.current[`${effectiveActiveId}_expiryDate`] = el)}

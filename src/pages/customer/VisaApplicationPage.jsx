@@ -220,91 +220,69 @@ export default function VisaApplicationPage() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }, [currentStep, isSubmitted]);
 
-  // Dynamic document requirements per selected visa destination (Declared unconditionally at top of component!)
+  // Dynamic document requirements per selected visa destination (Admin-configured in MongoDB, no hardcoded fallbacks!)
   const requiredDocs = React.useMemo(() => {
-    if (destination?.documentsRequired && destination.documentsRequired.length > 0) {
-      return destination.documentsRequired.map((doc, idx) => {
-        const docName = typeof doc === 'string' ? doc : (doc?.name || doc?.title || 'Document');
-        const lower = docName.toLowerCase();
-        let id = doc?.id || `doc_${idx}`;
-        let title = docName;
-        // Use database-driven acceptedFormats or default
-        const acceptedFormats = Array.isArray(doc?.acceptedFormats) && doc.acceptedFormats.length > 0
-          ? doc.acceptedFormats.map((f) => f.toUpperCase())
-          : ['PDF', 'JPG', 'PNG'];
-        const formatsLabel = acceptedFormats.join(', ');
-        const readableFormats = acceptedFormats.length === 1
-          ? acceptedFormats[0]
-          : `${acceptedFormats.slice(0, -1).join(', ')} or ${acceptedFormats[acceptedFormats.length - 1]}`;
-        let subtitle = doc?.subtitle || `${formatsLabel} (Max 5 MB)`;
-        let guidance = doc?.detail || doc?.guidance || 'Upload a clear, readable copy.';
-        let errorMsg = `Please upload a ${readableFormats} file.`;
-
-        // Check Photograph FIRST to prevent "Passport-Size Photograph" matching generic "passport"
-        if (lower.includes('photo') || lower.includes('portrait')) {
-          id = 'photo';
-          title = 'Passport-Size Photograph';
-          subtitle = `${formatsLabel} (Max 5 MB) - Recent color photograph`;
-          guidance = 'Recent colored photo with white background, 35mm x 45mm.';
-          errorMsg = `Please upload a ${readableFormats} file.`;
-        } else if (lower.includes('passport')) {
-          id = 'passport';
-          title = 'Passport Front & Back';
-          subtitle = `${formatsLabel} (Max 5 MB)`;
-          guidance = 'Clear scan of bio and address page. All 4 corners visible.';
-          errorMsg = `Please upload a ${readableFormats} file.`;
-        } else if (lower.includes('ticket') || lower.includes('flight')) {
-          id = 'flight_ticket';
-          title = 'Confirmed Flight Ticket';
-          subtitle = `${formatsLabel} (Max 5 MB)`;
-          guidance = 'Confirmed return or onward flight itinerary.';
-          errorMsg = `Please upload a ${readableFormats} file.`;
-        } else if (lower.includes('itinerary') || lower.includes('hotel') || lower.includes('booking')) {
-          id = 'itinerary';
-          title = 'Travel Itinerary';
-          subtitle = `${formatsLabel} (Max 5 MB)`;
-          guidance = 'Hotel reservation or trip itinerary.';
-          errorMsg = `Please upload a ${readableFormats} file.`;
-        } else if (lower.includes('bank') || lower.includes('statement')) {
-          id = 'bank_statement';
-          title = 'Bank Statement';
-          subtitle = `${formatsLabel} (Max 5 MB)`;
-          guidance = 'Last 3-6 months official bank statement.';
-          errorMsg = `Please upload a ${readableFormats} file.`;
-        }
-
-        return {
-          id,
-          name: docName,
-          title,
-          subtitle,
-          guidance,
-          errorMsg,
-          acceptedFormats
-        };
-      });
+    const rawList = destination?.requiredDocuments || destination?.documentsRequired || destination?.documents;
+    if (!Array.isArray(rawList) || rawList.length === 0) {
+      return [];
     }
 
-    return [
-      {
-        id: 'passport',
-        name: 'Passport Front & Back',
-        title: 'Passport Front & Back',
-        subtitle: 'PDF, JPG or PNG (Max 5 MB)',
-        guidance: 'Clear scan of bio and address page. All 4 corners visible.',
-        errorMsg: 'Passport document is required',
-        acceptedFormats: ['PDF', 'JPG', 'JPEG', 'PNG']
-      },
-      {
-        id: 'photo',
-        name: 'Passport-Size Photograph',
-        title: 'Passport-Size Photograph',
-        subtitle: 'Recent color passport-size photograph',
-        guidance: 'Recent colored photo with white background, 35mm x 45mm.',
-        errorMsg: 'Please upload a valid photograph',
-        acceptedFormats: ['JPG', 'JPEG', 'PNG']
+    return rawList.map((doc, idx) => {
+      const docName = typeof doc === 'string' ? doc : (doc?.name || doc?.title || `Document ${idx + 1}`);
+      const lower = docName.toLowerCase();
+      const isReq = typeof doc === 'object' && doc !== null
+        ? (doc.required !== false && doc.isRequired !== false)
+        : true;
+
+      // Identify whether requirement is photograph or passport scan
+      const isPhoto = lower.includes('photo') || lower.includes('photograph') || lower.includes('portrait');
+      const isPassport = !isPhoto && lower.includes('passport');
+
+      let id = (typeof doc === 'object' && doc?.id) ? doc.id : null;
+      if (!id) {
+        if (isPhoto) id = 'passport_photo';
+        else if (isPassport) id = 'passport';
+        else id = `doc_${idx}_${docName.toLowerCase().replace(/[^a-z0-9]/g, '_')}`;
       }
-    ];
+
+      const title = (typeof doc === 'object' && (doc?.title || doc?.name)) ? (doc.title || doc.name) : docName;
+      const acceptedFormats = Array.isArray(doc?.acceptedFormats) && doc.acceptedFormats.length > 0
+        ? doc.acceptedFormats.map((f) => String(f).toUpperCase())
+        : (isPhoto ? ['JPG', 'JPEG', 'PNG'] : ['PDF', 'JPG', 'PNG']);
+      const formatsLabel = acceptedFormats.join(', ');
+      const readableFormats = acceptedFormats.length === 1
+        ? acceptedFormats[0]
+        : `${acceptedFormats.slice(0, -1).join(', ')} or ${acceptedFormats[acceptedFormats.length - 1]}`;
+
+      const subtitle = (typeof doc === 'object' && (doc?.subtitle || doc?.description))
+        ? (doc.subtitle || doc.description)
+        : `${formatsLabel} (Max 5 MB)`;
+      const guidance = (typeof doc === 'object' && (doc?.guidance || doc?.detail || doc?.description))
+        ? (doc.guidance || doc.detail || doc.description)
+        : (
+          isPhoto
+            ? 'Recent colored photo with white background, 35mm x 45mm.'
+            : isPassport
+            ? 'Clear scan of bio and address page. All 4 corners visible.'
+            : 'Upload a clear, readable copy.'
+        );
+      const errorMsg = `Please upload a valid ${readableFormats} file.`;
+
+      return {
+        id,
+        name: docName,
+        title,
+        subtitle,
+        guidance,
+        errorMsg,
+        acceptedFormats,
+        formatsLabel,
+        required: isReq,
+        isRequired: isReq,
+        isPhoto,
+        isPassport
+      };
+    });
   }, [destination]);
 
   // Loading State Guard
@@ -483,13 +461,72 @@ export default function VisaApplicationPage() {
     };
   };
 
+  // Helper to resolve the matching uploaded document object for a given requirement definition
+  const getDocForRequirement = (traveller, docDef) => {
+    if (!traveller?.docs || !docDef) return null;
+    const docs = traveller.docs;
+
+    // 1. Direct match by exact ID
+    if (docs[docDef.id]) {
+      return docs[docDef.id];
+    }
+
+    // 2. Photo requirement match
+    if (docDef.isPhoto || docDef.id === 'photo' || docDef.id === 'passport_photo') {
+      if (docs.passport_photo) return docs.passport_photo;
+      if (docs.photo) return docs.photo;
+      if (docs.photograph) return docs.photograph;
+    }
+
+    // 3. Passport scan requirement match
+    if (docDef.isPassport || docDef.id === 'passport' || docDef.id === 'passport_scan') {
+      if (docs.passport) return docs.passport;
+      if (docs.passport_front) return docs.passport_front;
+    }
+
+    // 4. Case-insensitive key/title search
+    const lowerDocTitle = (docDef.title || docDef.name || '').toLowerCase();
+    for (const [key, val] of Object.entries(docs)) {
+      if (!val) continue;
+      const lowerKey = key.toLowerCase();
+      if (lowerKey === lowerDocTitle) return val;
+      if (docDef.isPhoto && (lowerKey.includes('photo') || lowerKey.includes('portrait'))) return val;
+      if (docDef.isPassport && lowerKey.includes('passport') && !lowerKey.includes('photo')) return val;
+    }
+
+    return null;
+  };
+
   const getDocsStatus = (t) => {
-    if (!t?.docs) return { completed: false, count: 0, total: requiredDocs.length };
-    const uploadedDocs = requiredDocs.filter((d) => t.docs[d.id] && !t.docs[d.id].error);
+    if (!requiredDocs || requiredDocs.length === 0) {
+      return { completed: true, count: 0, total: 0, missingMandatoryDocs: [] };
+    }
+    if (!t?.docs) {
+      const missingMandatoryDocs = requiredDocs.filter((d) => d.required !== false);
+      return {
+        completed: missingMandatoryDocs.length === 0,
+        count: 0,
+        total: requiredDocs.length,
+        missingMandatoryDocs
+      };
+    }
+
+    const uploadedDocs = requiredDocs.filter((d) => {
+      const docData = getDocForRequirement(t, d);
+      return docData && !docData.error;
+    });
+
+    const missingMandatoryDocs = requiredDocs.filter((d) => {
+      if (d.required === false) return false;
+      const docData = getDocForRequirement(t, d);
+      return !docData || docData.error;
+    });
+
     return {
-      completed: uploadedDocs.length === requiredDocs.length,
+      completed: missingMandatoryDocs.length === 0,
       count: uploadedDocs.length,
-      total: requiredDocs.length
+      total: requiredDocs.length,
+      missingMandatoryDocs
     };
   };
 
@@ -510,7 +547,7 @@ export default function VisaApplicationPage() {
 
     if (step === 'documents') {
       const dStatus = getDocsStatus(t);
-      return dStatus.total - dStatus.count;
+      return dStatus.missingMandatoryDocs?.length || 0;
     }
 
     return errCount;
@@ -551,7 +588,8 @@ export default function VisaApplicationPage() {
 
       requiredDocs.forEach((d) => {
         totalPoints++;
-        if (t.docs?.[d.id] && !t.docs[d.id].error) earnedPoints++;
+        const docData = getDocForRequirement(t, d);
+        if (docData && !docData.error) earnedPoints++;
       });
     });
 
@@ -946,19 +984,21 @@ export default function VisaApplicationPage() {
       setTravellers((prev) =>
         prev.map((t, idx) => {
           if (idx === 0) {
+            const photoEntry = {
+              name: passportPhotoDoc?.originalFilename || passportPhotoFile?.name || 'Passport Photograph',
+              size: formatFileSize(passportPhotoFile?.size || 0),
+              uploadedAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+              storageKey: passportPhotoDoc?.storageKey || '',
+              documentId: passportPhotoDoc?.documentId || '',
+              mimeType: passportPhotoDoc?.mimeType || 'image/jpeg',
+              validationResult: passportPhotoValidation || null
+            };
             return {
               ...t,
               docs: {
                 ...t.docs,
-                passport_photo: {
-                  name: passportPhotoDoc?.originalFilename || passportPhotoFile?.name || 'Passport Photograph',
-                  size: formatFileSize(passportPhotoFile?.size || 0),
-                  uploadedAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-                  storageKey: passportPhotoDoc?.storageKey || '',
-                  documentId: passportPhotoDoc?.documentId || '',
-                  mimeType: passportPhotoDoc?.mimeType || 'image/jpeg',
-                  validationResult: passportPhotoValidation || null
-                }
+                passport_photo: photoEntry,
+                photo: photoEntry
               }
             };
           }
@@ -1125,17 +1165,26 @@ export default function VisaApplicationPage() {
         setTravellers((all) =>
           all.map((t) => {
             if (t.id === travellerId) {
+              const newDocEntry = {
+                name: file.name,
+                size: formatFileSize(file.size),
+                uploadedAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                error: null
+              };
+              const updatedDocs = {
+                ...t.docs,
+                [docId]: newDocEntry
+              };
+              if (docDef?.isPhoto || docId === 'photo' || docId === 'passport_photo') {
+                updatedDocs.passport_photo = newDocEntry;
+                updatedDocs.photo = newDocEntry;
+              }
+              if (docDef?.isPassport || docId === 'passport') {
+                updatedDocs.passport = newDocEntry;
+              }
               return {
                 ...t,
-                docs: {
-                  ...t.docs,
-                  [docId]: {
-                    name: file.name,
-                    size: formatFileSize(file.size),
-                    uploadedAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-                    error: null
-                  }
-                }
+                docs: updatedDocs
               };
             }
             return t;
@@ -1149,14 +1198,10 @@ export default function VisaApplicationPage() {
 
   // Quick simulation / sample document helper
   const handleSimulateUpload = (travellerId, docId) => {
-    const mockNames = {
-      passport: 'Passport.pdf',
-      photo: 'Passport_Photo.jpg',
-      flight_ticket: 'Flight_Ticket.pdf',
-      itinerary: 'Travel_Itinerary.pdf',
-      bank_statement: 'Bank_Statement.pdf'
-    };
-    const sampleName = mockNames[docId] || `${docId.toUpperCase()}.pdf`;
+    const docDef = requiredDocs.find((d) => d.id === docId);
+    let sampleName = `${(docDef?.name || docId).replace(/[^a-zA-Z0-9]/g, '_')}.pdf`;
+    if (docDef?.isPhoto) sampleName = 'Passport_Photograph.jpg';
+    else if (docDef?.isPassport) sampleName = 'Passport_Scan.pdf';
     const mockFile = {
       name: sampleName,
       size: 1420000 // ~1.4 MB
@@ -1172,11 +1217,21 @@ export default function VisaApplicationPage() {
   };
 
   const handleRemoveDoc = (travellerId, docId) => {
+    const docDef = requiredDocs.find((d) => d.id === docId);
     setTravellers((prev) =>
       prev.map((t) => {
         if (t.id === travellerId) {
           const updatedDocs = { ...t.docs };
           delete updatedDocs[docId];
+          if (docDef?.isPhoto || docId === 'photo' || docId === 'passport_photo') {
+            delete updatedDocs.passport_photo;
+            delete updatedDocs.photo;
+            delete updatedDocs.photograph;
+          }
+          if (docDef?.isPassport || docId === 'passport') {
+            delete updatedDocs.passport;
+            delete updatedDocs.passport_front;
+          }
           return {
             ...t,
             docs: updatedDocs
@@ -1234,12 +1289,12 @@ export default function VisaApplicationPage() {
         if (firstTravellerWithDocError) {
           setActiveTravellerId(firstTravellerWithDocError.id);
 
-          // Find first missing or errored doc for this traveller
-          const firstMissingDoc = requiredDocs.find(
-            (d) =>
-              !firstTravellerWithDocError.docs?.[d.id] ||
-              firstTravellerWithDocError.docs[d.id].error
-          );
+          // Find first missing or errored mandatory doc for this traveller
+          const firstMissingDoc = requiredDocs.find((d) => {
+            if (d.required === false) return false;
+            const docData = getDocForRequirement(firstTravellerWithDocError, d);
+            return !docData || docData.error;
+          });
 
           if (firstMissingDoc) {
             setTimeout(() => {
@@ -1343,12 +1398,14 @@ export default function VisaApplicationPage() {
             docs: t.docs || {}
           })),
           documents: requiredDocs.map((d, idx) => {
-            const isUploaded = !!primaryTraveller.docs?.[d.id];
+            const docData = getDocForRequirement(primaryTraveller, d);
+            const isUploaded = Boolean(docData && !docData.error);
             return {
               id: `doc_${idx + 1}`,
               documentId: `doc_${idx + 1}`,
               name: d.title,
               documentType: d.title,
+              storageKey: docData?.storageKey || '',
               status: isUploaded ? 'Verified' : 'Pending',
               verificationStatus: isUploaded ? 'Verified' : 'Pending'
             };
@@ -3521,11 +3578,11 @@ export default function VisaApplicationPage() {
                                 ) : hasDocErrors ? (
                                   <span className="text-red-600 bg-red-50 px-2.5 py-1 rounded-full text-[11px] font-bold border border-red-200/60 flex items-center gap-1">
                                     <AlertCircle size={12} />
-                                    <span>{requiredDocs.length - dStatus.count} required</span>
+                                    <span>{dStatus.missingMandatoryDocs?.length || (requiredDocs.length - dStatus.count)} required</span>
                                   </span>
                                 ) : (
                                   <span className="text-slate-500 bg-slate-50 px-2.5 py-1 rounded-full text-[11px] font-medium border border-slate-200/60">
-                                    {requiredDocs.length - dStatus.count} {requiredDocs.length - dStatus.count === 1 ? 'document' : 'documents'} required
+                                    {dStatus.missingMandatoryDocs?.length || (requiredDocs.length - dStatus.count)} {(dStatus.missingMandatoryDocs?.length || (requiredDocs.length - dStatus.count)) === 1 ? 'document' : 'documents'} required
                                   </span>
                                 )}
                               </div>
@@ -3565,243 +3622,264 @@ export default function VisaApplicationPage() {
                       </div>
 
                       {/* Document Upload Cards */}
-                      <div className="space-y-4">
-                        {requiredDocs.map((doc) => {
-                          const docData = activeTraveller.docs?.[doc.id];
-                          const isUploading = uploadingProgress[`${effectiveActiveId}_${doc.id}`] !== undefined;
-                          const uploadPct = uploadingProgress[`${effectiveActiveId}_${doc.id}`] || 0;
-                          const isError = Boolean(docData?.error);
-                          const isUploaded = Boolean(docData?.name && !docData?.error && !isUploading);
-                          const isMissing = !docData || docData?.error;
-                          const hasFieldError = submittedAttempted && isMissing;
+                      {requiredDocs.length === 0 ? (
+                        <div className="text-center py-10 px-4 bg-slate-50/60 rounded-2xl border border-dashed border-slate-200">
+                          <Check className="mx-auto text-emerald-600 mb-2" size={32} />
+                          <h4 className="text-sm font-bold text-[#082B61]">No Documents Required</h4>
+                          <p className="text-xs text-slate-500 mt-1">This visa offering does not require any document uploads. You may proceed directly to review.</p>
+                        </div>
+                      ) : (
+                        <div className="space-y-4">
+                          {requiredDocs.map((doc) => {
+                            const docData = getDocForRequirement(activeTraveller, doc);
+                            const isUploading = uploadingProgress[`${effectiveActiveId}_${doc.id}`] !== undefined;
+                            const uploadPct = uploadingProgress[`${effectiveActiveId}_${doc.id}`] || 0;
+                            const isError = Boolean(docData?.error);
+                            const isUploaded = Boolean(docData?.name && !docData?.error && !isUploading);
+                            const isRequired = doc.required !== false;
+                            const isMissing = !docData || docData?.error;
+                            const hasFieldError = submittedAttempted && isRequired && isMissing;
 
-                          return (
-                            <div
-                              key={doc.id}
-                              ref={(el) => (docCardRefs.current[`${effectiveActiveId}_${doc.id}`] = el)}
-                              className={`rounded-2xl p-5 border transition-all ${
-                                isError
-                                  ? 'border-red-400 bg-red-50/15 ring-1 ring-red-300/40'
-                                  : isUploaded
-                                  ? 'border-emerald-300 bg-emerald-50/15 ring-1 ring-emerald-300/40'
-                                  : isUploading
-                                  ? 'border-[#2563EB]/40 bg-[#F5F9FF]'
-                                  : hasFieldError
-                                  ? 'border-red-400 bg-red-50/15 ring-1 ring-red-300/40'
-                                  : 'border-slate-200/90 bg-white hover:border-slate-300'
-                              }`}
-                            >
-                              {/* Hidden File Input for Native File Selection */}
-                              <input
-                                type="file"
-                                ref={(el) => (docInputRefs.current[`${effectiveActiveId}_${doc.id}`] = el)}
-                                accept={doc.acceptedFormats?.map((f) => '.' + f.toLowerCase()).join(',') || '.pdf,.jpg,.jpeg,.png'}
-                                className="hidden"
-                                onChange={(e) => {
-                                  const file = e.target.files?.[0];
-                                  if (file) {
-                                    handleProcessSelectedFile(effectiveActiveId, doc.id, file);
-                                  }
-                                  e.target.value = '';
-                                }}
-                              />
+                            return (
+                              <div
+                                key={doc.id}
+                                ref={(el) => (docCardRefs.current[`${effectiveActiveId}_${doc.id}`] = el)}
+                                className={`rounded-2xl p-5 border transition-all ${
+                                  isError
+                                    ? 'border-red-400 bg-red-50/15 ring-1 ring-red-300/40'
+                                    : isUploaded
+                                    ? 'border-emerald-300 bg-emerald-50/15 ring-1 ring-emerald-300/40'
+                                    : isUploading
+                                    ? 'border-[#2563EB]/40 bg-[#F5F9FF]'
+                                    : hasFieldError
+                                    ? 'border-red-400 bg-red-50/15 ring-1 ring-red-300/40'
+                                    : 'border-slate-200/90 bg-white hover:border-slate-300'
+                                }`}
+                              >
+                                {/* Hidden File Input for Native File Selection */}
+                                <input
+                                  type="file"
+                                  ref={(el) => (docInputRefs.current[`${effectiveActiveId}_${doc.id}`] = el)}
+                                  accept={doc.acceptedFormats?.map((f) => '.' + f.toLowerCase()).join(',') || '.pdf,.jpg,.jpeg,.png'}
+                                  className="hidden"
+                                  onChange={(e) => {
+                                    const file = e.target.files?.[0];
+                                    if (file) {
+                                      handleProcessSelectedFile(effectiveActiveId, doc.id, file);
+                                    }
+                                    e.target.value = '';
+                                  }}
+                                />
 
-                              {/* STATE 1: UPLOADING */}
-                              {isUploading ? (
-                                <div className="space-y-3 py-2 text-center">
-                                  <div className="flex items-center justify-center gap-2 text-xs font-bold text-[#2563EB]">
-                                    <RefreshCw size={15} className="animate-spin" />
-                                    <span>Uploading {doc.title}... {uploadPct}%</span>
+                                {/* STATE 1: UPLOADING */}
+                                {isUploading ? (
+                                  <div className="space-y-3 py-2 text-center">
+                                    <div className="flex items-center justify-center gap-2 text-xs font-bold text-[#2563EB]">
+                                      <RefreshCw size={15} className="animate-spin" />
+                                      <span>Uploading {doc.title}... {uploadPct}%</span>
+                                    </div>
+                                    <div className="w-full max-w-xs mx-auto h-1.5 bg-blue-100 rounded-full overflow-hidden">
+                                      <div
+                                        className="h-full bg-[#2563EB] transition-all duration-150 rounded-full"
+                                        style={{ width: `${uploadPct}%` }}
+                                      />
+                                    </div>
+                                    <p className="text-[11px] text-slate-400 font-medium">
+                                      Uploading file securely...
+                                    </p>
                                   </div>
-                                  <div className="w-full max-w-xs mx-auto h-1.5 bg-blue-100 rounded-full overflow-hidden">
-                                    <div
-                                      className="h-full bg-[#2563EB] transition-all duration-150 rounded-full"
-                                      style={{ width: `${uploadPct}%` }}
-                                    />
-                                  </div>
-                                  <p className="text-[11px] text-slate-400 font-medium">
-                                    Uploading file securely...
-                                  </p>
-                                </div>
-                              ) : isUploaded ? (
-                                /* STATE 2: UPLOADED / APPROVED (Subtle Green Outline) */
-                                <div className="space-y-3">
-                                  <div className="flex items-center justify-between">
-                                    <div className="flex items-center gap-2">
-                                      <span className="w-5 h-5 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center">
-                                        <Check size={13} strokeWidth={3} />
-                                      </span>
-                                      <span className="text-xs sm:text-sm font-black text-[#082B61]">
-                                        {doc.title}
+                                ) : isUploaded ? (
+                                  /* STATE 2: UPLOADED / APPROVED (Subtle Green Outline) */
+                                  <div className="space-y-3">
+                                    <div className="flex items-center justify-between">
+                                      <div className="flex items-center gap-2">
+                                        <span className="w-5 h-5 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center">
+                                          <Check size={13} strokeWidth={3} />
+                                        </span>
+                                        <span className="text-xs sm:text-sm font-black text-[#082B61]">
+                                          {doc.title}
+                                        </span>
+                                      </div>
+                                      <span className="text-[11px] font-bold text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-200/60 flex items-center gap-1">
+                                        <span>Already uploaded</span>
+                                        <Check size={12} strokeWidth={3} />
                                       </span>
                                     </div>
-                                    <span className="text-[11px] font-bold text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-200/60">
-                                      Uploaded successfully
-                                    </span>
-                                  </div>
 
-                                  <div className="p-3.5 rounded-xl bg-white border border-emerald-200/80 flex items-center justify-between gap-3 shadow-2xs">
-                                    <div className="flex items-center gap-2.5 min-w-0">
-                                      <FileText size={20} className="text-emerald-600 flex-shrink-0" />
-                                      <div className="min-w-0">
-                                        <span className="text-xs font-bold text-[#082B61] truncate block">
-                                          {docData.name}
-                                        </span>
-                                        <span className="text-[10px] text-slate-400 font-medium block">
-                                          {docData.size} • {docData.uploadedAt || 'Verified'}
-                                        </span>
+                                    <div className="p-3.5 rounded-xl bg-white border border-emerald-200/80 flex items-center justify-between gap-3 shadow-2xs">
+                                      <div className="flex items-center gap-2.5 min-w-0">
+                                        <FileText size={20} className="text-emerald-600 flex-shrink-0" />
+                                        <div className="min-w-0">
+                                          <span className="text-xs font-bold text-[#082B61] truncate block">
+                                            {docData.name}
+                                          </span>
+                                          <span className="text-[10px] text-slate-400 font-medium block">
+                                            {docData.size} • {docData.uploadedAt || 'Verified'}
+                                          </span>
+                                        </div>
+                                      </div>
+
+                                      <div className="flex items-center gap-2 flex-shrink-0">
+                                        <button
+                                          type="button"
+                                          onClick={() => handleTriggerFileSelect(effectiveActiveId, doc.id)}
+                                          className="px-3.5 py-1.5 rounded-lg border border-slate-200 hover:border-[#2563EB] bg-white hover:bg-blue-50/50 text-xs font-bold text-[#2563EB] transition-colors cursor-pointer shadow-2xs"
+                                        >
+                                          Replace
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() => handleRemoveDoc(effectiveActiveId, doc.id)}
+                                          className="text-slate-400 hover:text-red-500 p-1.5 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer"
+                                          title="Remove file"
+                                        >
+                                          <Trash2 size={14} />
+                                        </button>
                                       </div>
                                     </div>
 
-                                    <div className="flex items-center gap-2 flex-shrink-0">
+                                    {doc.guidance && (
+                                      <p className="text-[11px] text-slate-400 font-medium italic">
+                                        "{doc.guidance}"
+                                      </p>
+                                    )}
+                                  </div>
+                                ) : isError ? (
+                                  /* STATE 3: ERROR (Subtle Red Outline) */
+                                  <div className="space-y-3">
+                                    <div className="flex items-center justify-between">
+                                      <div className="flex items-center gap-2 text-red-600">
+                                        <AlertCircle size={16} />
+                                        <span className="text-xs sm:text-sm font-black">{doc.title}</span>
+                                      </div>
+                                      <span className="text-[11px] font-bold text-red-600 bg-red-50 px-2.5 py-0.5 rounded-full border border-red-200/80">
+                                        Upload failed
+                                      </span>
+                                    </div>
+
+                                    <div className="p-3.5 rounded-xl bg-white border border-red-200 flex items-center justify-between gap-3 shadow-2xs">
+                                      <div className="flex items-center gap-2.5 min-w-0">
+                                        <AlertCircle size={20} className="text-red-500 flex-shrink-0" />
+                                        <div className="min-w-0">
+                                          <span className="text-xs font-bold text-red-700 truncate block">
+                                            {docData.name}
+                                          </span>
+                                          <span className="text-[11px] text-red-600 font-medium block">
+                                            {docData.error || 'File type or size is not supported.'}
+                                          </span>
+                                        </div>
+                                      </div>
+
                                       <button
                                         type="button"
                                         onClick={() => handleTriggerFileSelect(effectiveActiveId, doc.id)}
-                                        className="px-3.5 py-1.5 rounded-lg border border-slate-200 hover:border-[#2563EB] bg-white hover:bg-blue-50/50 text-xs font-bold text-[#2563EB] transition-colors cursor-pointer shadow-2xs"
+                                        className="px-3.5 py-1.5 rounded-lg bg-red-50 hover:bg-red-100 text-xs font-bold text-red-700 border border-red-200 transition-colors cursor-pointer flex-shrink-0"
                                       >
                                         Replace
                                       </button>
-                                      <button
-                                        type="button"
-                                        onClick={() => handleRemoveDoc(effectiveActiveId, doc.id)}
-                                        className="text-slate-400 hover:text-red-500 p-1.5 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer"
-                                        title="Remove file"
-                                      >
-                                        <Trash2 size={14} />
-                                      </button>
                                     </div>
                                   </div>
-
-                                  {doc.guidance && (
-                                    <p className="text-[11px] text-slate-400 font-medium italic">
-                                      "{doc.guidance}"
-                                    </p>
-                                  )}
-                                </div>
-                              ) : isError ? (
-                                /* STATE 3: ERROR (Subtle Red Outline) */
-                                <div className="space-y-3">
-                                  <div className="flex items-center justify-between">
-                                    <div className="flex items-center gap-2 text-red-600">
-                                      <AlertCircle size={16} />
-                                      <span className="text-xs sm:text-sm font-black">{doc.title}</span>
+                                ) : (
+                                  /* STATE 4: DEFAULT (BEFORE UPLOAD) */
+                                  <div className="space-y-3">
+                                    <div className="flex items-start justify-between gap-3">
+                                      <div>
+                                        <div className="flex items-center gap-2">
+                                          <h4 className="text-xs sm:text-sm font-black text-[#082B61]">
+                                            {doc.title}
+                                          </h4>
+                                          {isRequired ? (
+                                            <span className="text-[10px] font-bold text-red-600 bg-red-50 px-2 py-0.5 rounded-full border border-red-200/80">
+                                              Required
+                                            </span>
+                                          ) : (
+                                            <span className="text-[10px] font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full border border-slate-200">
+                                              Optional
+                                            </span>
+                                          )}
+                                        </div>
+                                        <p className="text-[11px] text-slate-400 font-medium mt-0.5">
+                                          {doc.subtitle || `${doc.formatsLabel || 'PDF, JPG or PNG'} (Max 5 MB)`}
+                                        </p>
+                                      </div>
+                                      {doc.guidance && (
+                                        <span className="text-[11px] text-slate-500 font-medium italic bg-slate-50 border border-slate-100 px-2.5 py-1 rounded-lg hidden sm:inline-block flex-shrink-0">
+                                          "{doc.guidance}"
+                                        </span>
+                                      )}
                                     </div>
-                                    <span className="text-[11px] font-bold text-red-600 bg-red-50 px-2.5 py-0.5 rounded-full border border-red-200/80">
-                                      Upload failed
-                                    </span>
-                                  </div>
 
-                                  <div className="p-3.5 rounded-xl bg-white border border-red-200 flex items-center justify-between gap-3 shadow-2xs">
-                                    <div className="flex items-center gap-2.5 min-w-0">
-                                      <AlertCircle size={20} className="text-red-500 flex-shrink-0" />
-                                      <div className="min-w-0">
-                                        <span className="text-xs font-bold text-red-700 truncate block">
-                                          {docData.name}
+                                    {/* Minimal Drop/Upload Box */}
+                                    <div
+                                      onDragOver={(e) => {
+                                        e.preventDefault();
+                                        e.stopPropagation();
+                                      }}
+                                      onDrop={(e) => {
+                                        e.preventDefault();
+                                        e.stopPropagation();
+                                        const file = e.dataTransfer.files?.[0];
+                                        if (file) handleProcessSelectedFile(effectiveActiveId, doc.id, file);
+                                      }}
+                                      className={`p-5 rounded-xl border border-dashed text-center flex flex-col items-center justify-center gap-2 transition-all ${
+                                        hasFieldError
+                                          ? 'border-red-300 bg-red-50/20'
+                                          : 'border-slate-200/90 bg-slate-50/50 hover:bg-slate-50 hover:border-[#2563EB]/50'
+                                      }`}
+                                    >
+                                      <div className="w-8 h-8 rounded-full bg-white shadow-2xs border border-slate-200 flex items-center justify-center text-slate-500">
+                                        <Upload size={14} />
+                                      </div>
+
+                                      <div>
+                                        <span className="text-xs font-bold text-[#082B61] block">
+                                          Upload {doc.title}
                                         </span>
-                                        <span className="text-[11px] text-red-600 font-medium block">
-                                          {docData.error || 'File type or size is not supported.'}
+                                        <span className="text-[10px] text-slate-400 font-medium block">
+                                          {doc.formatsLabel || 'PDF, JPG or PNG'} (Max 5 MB)
                                         </span>
+                                      </div>
+
+                                      <div className="pt-1 flex items-center gap-2">
+                                        <button
+                                          type="button"
+                                          onClick={() => handleTriggerFileSelect(effectiveActiveId, doc.id)}
+                                          className="px-4 py-2 rounded-xl bg-white border border-slate-200 hover:border-[#2563EB] hover:text-[#2563EB] text-xs font-bold text-[#082B61] shadow-2xs transition-all cursor-pointer"
+                                        >
+                                          Choose File
+                                        </button>
+
+                                        <button
+                                          type="button"
+                                          onClick={() => handleSimulateUpload(effectiveActiveId, doc.id)}
+                                          className="text-[11px] font-bold text-[#2563EB] hover:underline px-2 py-1 cursor-pointer"
+                                          title="Simulate sample document upload"
+                                        >
+                                          Use sample
+                                        </button>
                                       </div>
                                     </div>
 
-                                    <button
-                                      type="button"
-                                      onClick={() => handleTriggerFileSelect(effectiveActiveId, doc.id)}
-                                      className="px-3.5 py-1.5 rounded-lg bg-red-50 hover:bg-red-100 text-xs font-bold text-red-700 border border-red-200 transition-colors cursor-pointer flex-shrink-0"
-                                    >
-                                      Replace
-                                    </button>
-                                  </div>
-                                </div>
-                              ) : (
-                                /* STATE 4: DEFAULT (BEFORE UPLOAD) */
-                                <div className="space-y-3">
-                                  <div className="flex items-start justify-between gap-3">
-                                    <div>
-                                      <h4 className="text-xs sm:text-sm font-black text-[#082B61]">
-                                        {doc.title}
-                                      </h4>
-                                      <p className="text-[11px] text-slate-400 font-medium mt-0.5">
-                                        {doc.detail || doc.subtitle}
-                                      </p>
-                                    </div>
+                                    {/* Short error message if Continue was pressed and document is missing */}
+                                    {hasFieldError && (
+                                      <div className="flex items-center gap-1.5 text-xs font-medium text-red-600 pt-0.5">
+                                        <AlertCircle size={13} className="text-red-500 flex-shrink-0" />
+                                        <span>{doc.errorMsg}</span>
+                                      </div>
+                                    )}
+
                                     {doc.guidance && (
-                                      <span className="text-[11px] text-slate-500 font-medium italic bg-slate-50 border border-slate-100 px-2.5 py-1 rounded-lg hidden sm:inline-block flex-shrink-0">
+                                      <p className="text-[11px] text-slate-400 font-medium italic sm:hidden">
                                         "{doc.guidance}"
-                                      </span>
+                                      </p>
                                     )}
                                   </div>
-
-                                  {/* Minimal Drop/Upload Box */}
-                                  <div
-                                    onDragOver={(e) => {
-                                      e.preventDefault();
-                                      e.stopPropagation();
-                                    }}
-                                    onDrop={(e) => {
-                                      e.preventDefault();
-                                      e.stopPropagation();
-                                      const file = e.dataTransfer.files?.[0];
-                                      if (file) handleProcessSelectedFile(effectiveActiveId, doc.id, file);
-                                    }}
-                                    className={`p-5 rounded-xl border border-dashed text-center flex flex-col items-center justify-center gap-2 transition-all ${
-                                      hasFieldError
-                                        ? 'border-red-300 bg-red-50/20'
-                                        : 'border-slate-200/90 bg-slate-50/50 hover:bg-slate-50 hover:border-[#2563EB]/50'
-                                    }`}
-                                  >
-                                    <div className="w-8 h-8 rounded-full bg-white shadow-2xs border border-slate-200 flex items-center justify-center text-slate-500">
-                                      <Upload size={14} />
-                                    </div>
-
-                                    <div>
-                                      <span className="text-xs font-bold text-[#082B61] block">
-                                        Upload {doc.title}
-                                      </span>
-                                      <span className="text-[10px] text-slate-400 font-medium block">
-                                        PDF, JPG or PNG (Max 5 MB)
-                                      </span>
-                                    </div>
-
-                                    <div className="pt-1 flex items-center gap-2">
-                                      <button
-                                        type="button"
-                                        onClick={() => handleTriggerFileSelect(effectiveActiveId, doc.id)}
-                                        className="px-4 py-2 rounded-xl bg-white border border-slate-200 hover:border-[#2563EB] hover:text-[#2563EB] text-xs font-bold text-[#082B61] shadow-2xs transition-all cursor-pointer"
-                                      >
-                                        Choose File
-                                      </button>
-
-                                      <button
-                                        type="button"
-                                        onClick={() => handleSimulateUpload(effectiveActiveId, doc.id)}
-                                        className="text-[11px] font-bold text-[#2563EB] hover:underline px-2 py-1 cursor-pointer"
-                                        title="Simulate sample document upload"
-                                      >
-                                        Use sample
-                                      </button>
-                                    </div>
-                                  </div>
-
-                                  {/* Short error message if Continue was pressed and document is missing */}
-                                  {hasFieldError && (
-                                    <div className="flex items-center gap-1.5 text-xs font-medium text-red-600 pt-0.5">
-                                      <AlertCircle size={13} className="text-red-500 flex-shrink-0" />
-                                      <span>{doc.errorMsg}</span>
-                                    </div>
-                                  )}
-
-                                  {doc.guidance && (
-                                    <p className="text-[11px] text-slate-400 font-medium italic sm:hidden">
-                                      "{doc.guidance}"
-                                    </p>
-                                  )}
-                                </div>
-                              )}
-                            </div>
-                          );
-                        })}
-                      </div>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
 
                       {/* Optional "Upload from phone" button */}
                       <div className="pt-2 text-center space-y-3">

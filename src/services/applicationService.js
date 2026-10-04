@@ -453,26 +453,18 @@ class ApplicationService {
     if (options.visaId) formData.append('visaId', options.visaId);
     if (options.previousStorageKey) formData.append('previousStorageKey', options.previousStorageKey);
 
-    const token = getAuthToken();
-    const headers = {};
-    if (token) headers['Authorization'] = `Bearer ${token}`;
-
     try {
-      const response = await fetch(`${API_BASE_URL}/applications/passport-photo`, {
+      const response = await apiClient('/applications/passport-photo', {
         method: 'POST',
-        headers,
         body: formData
       });
 
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.message || 'Passport photo validation failed');
-      }
-
-      const result = await response.json();
-      return result.data || result;
+      return response?.data || response;
     } catch (err) {
-      console.warn('Backend photo validation error, using local fallback:', err);
+      if (err?.status === 401) {
+        throw new Error('Your session has expired. Please sign in again.');
+      }
+      console.warn('Backend photo validation notice:', err?.message || err);
       return {
         canContinue: true,
         status: 'REVIEW_NEEDED',
@@ -482,7 +474,7 @@ class ApplicationService {
           documentId: `photo_${Date.now()}`,
           name: 'Passport Size Photograph',
           documentType: 'PASSPORT_PHOTO',
-          originalFilename: file.name
+          originalFilename: file?.name || 'passport_photo.jpg'
         }
       };
     }

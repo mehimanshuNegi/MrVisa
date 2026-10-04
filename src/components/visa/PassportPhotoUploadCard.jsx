@@ -11,7 +11,10 @@ import {
   CheckCircle2,
   Sparkles,
   HelpCircle,
-  FileText
+  FileText,
+  ChevronDown,
+  XCircle,
+  AlertTriangle
 } from 'lucide-react';
 
 export default function PassportPhotoUploadCard({
@@ -28,6 +31,7 @@ export default function PassportPhotoUploadCard({
   onBack
 }) {
   const [isDragOver, setIsDragOver] = useState(false);
+  const [showAllChecks, setShowAllChecks] = useState(false);
   const fileInputRef = useRef(null);
 
   const handleDragOver = (e) => {
@@ -57,7 +61,7 @@ export default function PassportPhotoUploadCard({
     }
   };
 
-  // Status mapping
+  // Status mapping directly from existing validation result
   const status = validation?.status || (photoFile ? 'VALID' : 'IDLE');
   const isReviewNeeded = status === 'REVIEW_NEEDED';
   const isValid = status === 'VALID';
@@ -71,6 +75,103 @@ export default function PassportPhotoUploadCard({
     quality: !!photoFile,
     background: true
   };
+
+  // Full specification checklist definitions
+  const checklistItems = [
+    {
+      id: 'fileValid',
+      label: 'Valid format (JPG, PNG, WEBP)',
+      pass: !!checks.fileValid,
+      failTitle: 'Invalid image format',
+      defaultMessage: 'Please upload a standard JPG, PNG, or WEBP image.'
+    },
+    {
+      id: 'orientation',
+      label: 'Portrait orientation',
+      pass: !!checks.orientation,
+      failTitle: 'Portrait orientation required',
+      defaultMessage: 'The photograph appears to be landscape. Portrait orientation is expected.'
+    },
+    {
+      id: 'resolution',
+      label: 'Sufficient resolution (>300px)',
+      pass: !!checks.resolution,
+      failTitle: 'Image resolution too low',
+      defaultMessage: 'Image resolution is lower than the recommended 300×300px.'
+    },
+    {
+      id: 'faceDetected',
+      label: 'Clear face detected & framed',
+      pass: !!checks.faceDetected && checks.faceCentered !== false && checks.faceSize !== false,
+      failTitle: checks.faceDetected === false ? 'Face not detected' : 'Face framing / centering',
+      defaultMessage: checks.faceDetected === false
+        ? 'No clear face detected in the photograph. Please ensure your face is fully visible.'
+        : 'Face does not appear reasonably centered or sized in the frame.'
+    },
+    {
+      id: 'quality',
+      label: 'Good clarity & sharpness',
+      pass: !!checks.quality,
+      failTitle: 'Image may be blurry',
+      defaultMessage: 'Image appears to have noticeable blur or low sharpness.'
+    },
+    {
+      id: 'background',
+      label: 'Light / white background',
+      pass: checks.background !== false,
+      failTitle: 'Background does not meet requirements',
+      defaultMessage: 'Background does not appear to be sufficiently light or plain.'
+    }
+  ];
+
+  // Derive ONLY problematic checks with backend explanations
+  const backendErrors = validation?.errors || [];
+  const backendWarnings = validation?.warnings || [];
+
+  const problematicChecks = [];
+
+  if (backendErrors.length > 0 || backendWarnings.length > 0) {
+    backendErrors.forEach((errMsg) => {
+      let title = 'Action needed';
+      if (/format|file/i.test(errMsg)) title = 'Invalid image format';
+      else if (/resolution|dimension/i.test(errMsg)) title = 'Image resolution too low';
+      else if (/face/i.test(errMsg)) title = 'Face not detected';
+      else if (/background/i.test(errMsg)) title = 'Background does not meet requirements';
+      else if (/blur|sharp/i.test(errMsg)) title = 'Image may be blurry';
+
+      problematicChecks.push({
+        severity: 'error',
+        title,
+        message: errMsg
+      });
+    });
+
+    backendWarnings.forEach((warnMsg) => {
+      let title = 'Review recommended';
+      if (/background/i.test(warnMsg)) title = 'Background may not be sufficiently light';
+      else if (/blur|sharp/i.test(warnMsg)) title = 'Image may be blurry';
+      else if (/resolution/i.test(warnMsg)) title = 'Image resolution lower than recommended';
+      else if (/landscape|orientation/i.test(warnMsg)) title = 'Portrait orientation recommended';
+      else if (/face/i.test(warnMsg)) title = 'Face framing or centering';
+      else if (/dark|brightness|overexposed/i.test(warnMsg)) title = 'Lighting requires review';
+
+      problematicChecks.push({
+        severity: 'warning',
+        title,
+        message: warnMsg
+      });
+    });
+  } else if (!isValid && photoFile) {
+    checklistItems
+      .filter((item) => !item.pass)
+      .forEach((item) => {
+        problematicChecks.push({
+          severity: isInvalid ? 'error' : 'warning',
+          title: item.failTitle,
+          message: item.defaultMessage
+        });
+      });
+  }
 
   return (
     <div className="max-w-4xl mx-auto py-8 sm:py-10">
@@ -216,122 +317,198 @@ export default function PassportPhotoUploadCard({
           </div>
 
           {/* RIGHT: Quality Checks & Visa Photo Guidelines */}
-          <div className="lg:col-span-6 space-y-5">
+          <div className="lg:col-span-6 space-y-4">
             
-            {/* Real-time Quality Checks List */}
-            <div className="p-5 rounded-2xl bg-slate-50 border border-slate-200/90 space-y-3.5">
-              <div className="flex items-center justify-between border-b border-slate-200/70 pb-2.5">
-                <span className="text-xs font-extrabold uppercase tracking-wider text-[#082B61] flex items-center gap-1.5">
-                  <Sparkles size={14} className="text-[#2563EB]" />
-                  Automated Photo Checks
-                </span>
-                <span className="text-[10px] font-bold text-slate-400">
-                  {photoFile ? 'Checked Live' : 'Pending Upload'}
-                </span>
+            {/* Case 0: No Photo Uploaded Yet (Clean Pending State) */}
+            {!photoFile && (
+              <div className="p-4 sm:p-5 rounded-2xl bg-slate-50 border border-slate-200/90 space-y-2 text-left">
+                <div className="flex items-center justify-between border-b border-slate-200/70 pb-2">
+                  <span className="text-xs font-extrabold uppercase tracking-wider text-[#082B61] flex items-center gap-1.5">
+                    <Sparkles size={14} className="text-[#2563EB]" />
+                    Automated Photo Checks
+                  </span>
+                  <span className="text-[10px] font-bold text-slate-400">Pending Upload</span>
+                </div>
+                <p className="text-xs text-slate-500 font-medium leading-relaxed">
+                  Upload your photograph to run automatic quality checks for face framing, portrait orientation, clarity, and background compliance.
+                </p>
               </div>
+            )}
 
-              <div className="space-y-2.5 text-xs">
-                {/* 1. File & Format Check */}
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2 font-medium text-slate-700">
-                    {checks.fileValid ? (
-                      <Check size={14} strokeWidth={3} className="text-emerald-600 flex-shrink-0" />
-                    ) : (
-                      <span className="w-3.5 h-3.5 rounded-full border border-slate-300 flex-shrink-0" />
-                    )}
-                    <span>Valid format (JPG, PNG, WEBP)</span>
+            {/* Case 1: Minimal Success State (ALL Checks Passed) */}
+            {photoFile && isValid && (
+              <div className="p-4 rounded-2xl bg-emerald-50/80 border border-emerald-200/80 space-y-3 transition-all text-left">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-8 h-8 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-600 flex-shrink-0">
+                      <CheckCircle2 size={18} strokeWidth={2.5} />
+                    </div>
+                    <div>
+                      <h4 className="text-sm font-bold text-emerald-950">Photo verified</h4>
+                      <p className="text-[11px] text-emerald-700 font-medium">All photo checks passed</p>
+                    </div>
                   </div>
-                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${checks.fileValid ? 'text-emerald-700 bg-emerald-50' : 'text-slate-400 bg-white'}`}>
-                    {checks.fileValid ? 'Pass' : '—'}
-                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setShowAllChecks((prev) => !prev)}
+                    className="text-[11px] font-semibold text-emerald-700 hover:text-emerald-800 bg-white/80 hover:bg-white px-2.5 py-1.5 rounded-lg border border-emerald-200 transition-colors inline-flex items-center gap-1 cursor-pointer flex-shrink-0"
+                  >
+                    <span>{showAllChecks ? 'Hide checks' : 'View all checks'}</span>
+                    <ChevronDown size={13} className={`transition-transform duration-200 ${showAllChecks ? 'rotate-180' : ''}`} />
+                  </button>
                 </div>
 
-                {/* 2. Portrait Orientation */}
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2 font-medium text-slate-700">
-                    {checks.orientation ? (
-                      <Check size={14} strokeWidth={3} className="text-emerald-600 flex-shrink-0" />
-                    ) : (
-                      <span className="w-3.5 h-3.5 rounded-full border border-slate-300 flex-shrink-0" />
-                    )}
-                    <span>Portrait orientation</span>
+                {/* Collapsible complete checks list if user wants to see details */}
+                {showAllChecks && (
+                  <div className="pt-3 border-t border-emerald-200/60 space-y-2 text-xs">
+                    {checklistItems.map((item) => (
+                      <div key={item.id} className="flex items-center justify-between text-slate-700">
+                        <div className="flex items-center gap-2">
+                          <Check size={14} strokeWidth={3} className="text-emerald-600 flex-shrink-0" />
+                          <span>{item.label}</span>
+                        </div>
+                        <span className="text-[10px] font-bold text-emerald-700 bg-emerald-100/70 px-2 py-0.5 rounded-full">
+                          Pass
+                        </span>
+                      </div>
+                    ))}
                   </div>
-                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${checks.orientation ? 'text-emerald-700 bg-emerald-50' : 'text-slate-400 bg-white'}`}>
-                    {checks.orientation ? 'Pass' : '—'}
-                  </span>
-                </div>
-
-                {/* 3. Resolution & Dimensions */}
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2 font-medium text-slate-700">
-                    {checks.resolution ? (
-                      <Check size={14} strokeWidth={3} className="text-emerald-600 flex-shrink-0" />
-                    ) : (
-                      <span className="w-3.5 h-3.5 rounded-full border border-slate-300 flex-shrink-0" />
-                    )}
-                    <span>Sufficient resolution (&gt;300px)</span>
-                  </div>
-                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${checks.resolution ? 'text-emerald-700 bg-emerald-50' : 'text-slate-400 bg-white'}`}>
-                    {checks.resolution ? 'Pass' : '—'}
-                  </span>
-                </div>
-
-                {/* 4. Face Detection & Centering */}
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2 font-medium text-slate-700">
-                    {checks.faceDetected ? (
-                      <Check size={14} strokeWidth={3} className="text-emerald-600 flex-shrink-0" />
-                    ) : (
-                      <span className="w-3.5 h-3.5 rounded-full border border-slate-300 flex-shrink-0" />
-                    )}
-                    <span>Clear face detected & framed</span>
-                  </div>
-                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${checks.faceDetected ? 'text-emerald-700 bg-emerald-50' : 'text-slate-400 bg-white'}`}>
-                    {checks.faceDetected ? 'Pass' : '—'}
-                  </span>
-                </div>
-
-                {/* 5. Lighting & Sharpness */}
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2 font-medium text-slate-700">
-                    {checks.quality ? (
-                      <Check size={14} strokeWidth={3} className="text-emerald-600 flex-shrink-0" />
-                    ) : (
-                      <span className="w-3.5 h-3.5 rounded-full border border-slate-300 flex-shrink-0" />
-                    )}
-                    <span>Good clarity & sharpness</span>
-                  </div>
-                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${checks.quality ? 'text-emerald-700 bg-emerald-50' : 'text-slate-400 bg-white'}`}>
-                    {checks.quality ? 'Pass' : '—'}
-                  </span>
-                </div>
+                )}
               </div>
-            </div>
+            )}
 
-            {/* Validation Feedback Messages */}
-            {validation && (validation.messages?.length > 0 || validation.warnings?.length > 0) && (
-              <div className={`p-4 rounded-2xl border text-xs text-left space-y-1.5 ${
-                isReviewNeeded
-                  ? 'bg-amber-50/80 border-amber-200 text-amber-900'
-                  : 'bg-emerald-50/80 border-emerald-200 text-emerald-900'
-              }`}>
-                <div className="flex items-center gap-1.5 font-bold">
-                  {isReviewNeeded ? (
-                    <AlertCircle size={15} className="text-amber-700 flex-shrink-0" />
-                  ) : (
-                    <CheckCircle2 size={15} className="text-emerald-700 flex-shrink-0" />
-                  )}
-                  <span>{validation.summary || (isReviewNeeded ? 'Quality Recommendations' : 'Photo Verified')}</span>
+            {/* Case 2: Review Recommended (Show ONLY Problematic Checks) */}
+            {photoFile && isReviewNeeded && (
+              <div className="p-4 rounded-2xl bg-amber-50/80 border border-amber-200/90 space-y-3 transition-all text-left">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-8 h-8 rounded-full bg-amber-100 flex items-center justify-center text-amber-600 flex-shrink-0">
+                      <AlertTriangle size={18} strokeWidth={2.5} />
+                    </div>
+                    <div>
+                      <h4 className="text-sm font-bold text-amber-950">Photo needs attention</h4>
+                      <p className="text-[11px] text-amber-800 font-medium">
+                        {validation?.summary || 'Review recommended before proceeding'}
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setShowAllChecks((prev) => !prev)}
+                    className="text-[11px] font-semibold text-amber-800 hover:text-amber-900 bg-white/80 hover:bg-white px-2.5 py-1.5 rounded-lg border border-amber-200 transition-colors inline-flex items-center gap-1 cursor-pointer flex-shrink-0"
+                  >
+                    <span>{showAllChecks ? 'Hide all checks' : 'View all checks'}</span>
+                    <ChevronDown size={13} className={`transition-transform duration-200 ${showAllChecks ? 'rotate-180' : ''}`} />
+                  </button>
                 </div>
-                <ul className="list-disc pl-5 space-y-0.5 text-[11px] text-slate-600 font-medium">
-                  {(validation.warnings || validation.messages || []).map((msg, i) => (
-                    <li key={i}>{msg}</li>
+
+                {/* ONLY problematic checks shown immediately */}
+                <div className="space-y-2 text-xs pt-1">
+                  {problematicChecks.map((item, idx) => (
+                    <div key={idx} className="p-2.5 rounded-xl bg-white/90 border border-amber-200/80 flex items-start gap-2.5">
+                      <span className="text-amber-600 font-bold flex-shrink-0 text-sm mt-[-1px]">⚠️</span>
+                      <div className="space-y-0.5">
+                        <p className="font-bold text-amber-950 text-xs">{item.title}</p>
+                        <p className="text-[11px] text-slate-600 font-medium">{item.message}</p>
+                      </div>
+                    </div>
                   ))}
-                </ul>
-                {isReviewNeeded && (
-                  <p className="text-[10px] text-amber-800 font-semibold pt-1">
-                    Tip: You can continue with this photo or upload a clearer one. Our team also reviews your photo prior to consulate dispatch.
-                  </p>
+                </div>
+
+                <p className="text-[11px] text-amber-800/90 font-medium pt-0.5">
+                  Tip: You can continue with this photo or upload a different one. Our visa team also reviews every photograph prior to consulate dispatch.
+                </p>
+
+                {/* Collapsible Complete Checklist */}
+                {showAllChecks && (
+                  <div className="pt-3 border-t border-amber-200/60 space-y-2 text-xs">
+                    <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 block mb-1">
+                      Complete Checklist
+                    </span>
+                    {checklistItems.map((item) => (
+                      <div key={item.id} className="flex items-center justify-between text-slate-700">
+                        <div className="flex items-center gap-2">
+                          {item.pass ? (
+                            <Check size={14} strokeWidth={3} className="text-emerald-600 flex-shrink-0" />
+                          ) : (
+                            <AlertCircle size={14} className="text-amber-600 flex-shrink-0" />
+                          )}
+                          <span>{item.label}</span>
+                        </div>
+                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                          item.pass ? 'text-emerald-700 bg-emerald-100/70' : 'text-amber-700 bg-amber-100'
+                        }`}>
+                          {item.pass ? 'Pass' : 'Review'}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Case 3: Action Needed (Show ONLY Failed Checks) */}
+            {photoFile && isInvalid && (
+              <div className="p-4 rounded-2xl bg-rose-50/80 border border-rose-200/90 space-y-3 transition-all text-left">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-8 h-8 rounded-full bg-rose-100 flex items-center justify-center text-rose-600 flex-shrink-0">
+                      <XCircle size={18} strokeWidth={2.5} />
+                    </div>
+                    <div>
+                      <h4 className="text-sm font-bold text-rose-950">Photo needs attention</h4>
+                      <p className="text-[11px] text-rose-700 font-medium">
+                        {validation?.summary || 'One or more required conditions failed'}
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setShowAllChecks((prev) => !prev)}
+                    className="text-[11px] font-semibold text-rose-800 hover:text-rose-900 bg-white/80 hover:bg-white px-2.5 py-1.5 rounded-lg border border-rose-200 transition-colors inline-flex items-center gap-1 cursor-pointer flex-shrink-0"
+                  >
+                    <span>{showAllChecks ? 'Hide all checks' : 'View all checks'}</span>
+                    <ChevronDown size={13} className={`transition-transform duration-200 ${showAllChecks ? 'rotate-180' : ''}`} />
+                  </button>
+                </div>
+
+                {/* ONLY problematic checks shown immediately */}
+                <div className="space-y-2 text-xs pt-1">
+                  {problematicChecks.map((item, idx) => (
+                    <div key={idx} className="p-2.5 rounded-xl bg-white/90 border border-rose-200/80 flex items-start gap-2.5">
+                      <span className="text-rose-600 font-bold flex-shrink-0 text-sm mt-[-1px]">❌</span>
+                      <div className="space-y-0.5">
+                        <p className="font-bold text-rose-950 text-xs">{item.title}</p>
+                        <p className="text-[11px] text-slate-600 font-medium">{item.message}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Collapsible Complete Checklist */}
+                {showAllChecks && (
+                  <div className="pt-3 border-t border-rose-200/60 space-y-2 text-xs">
+                    <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 block mb-1">
+                      Complete Checklist
+                    </span>
+                    {checklistItems.map((item) => (
+                      <div key={item.id} className="flex items-center justify-between text-slate-700">
+                        <div className="flex items-center gap-2">
+                          {item.pass ? (
+                            <Check size={14} strokeWidth={3} className="text-emerald-600 flex-shrink-0" />
+                          ) : (
+                            <XCircle size={14} className="text-rose-600 flex-shrink-0" />
+                          )}
+                          <span>{item.label}</span>
+                        </div>
+                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                          item.pass ? 'text-emerald-700 bg-emerald-100/70' : 'text-rose-700 bg-rose-100'
+                        }`}>
+                          {item.pass ? 'Pass' : 'Action Needed'}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
                 )}
               </div>
             )}

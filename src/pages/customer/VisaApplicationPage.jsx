@@ -972,8 +972,14 @@ export default function VisaApplicationPage() {
         setPassportPhotoValidation(result.validation || result);
       }
     } catch (err) {
-      console.warn('Passport photo upload failed:', err);
-      setPassportPhotoError(err.message || 'Failed to validate photo. You can continue or try another photo.');
+      console.warn('Passport photo upload notice:', err);
+      const isAuth = err?.status === 401 || err?.message?.includes('session has expired');
+      const safeMessage = isAuth
+        ? 'Your session has expired. Please sign in again.'
+        : (err?.message && !err.message.includes('is not defined') && !err.message.includes('ReferenceError')
+            ? err.message
+            : 'Unable to validate photograph. You can continue or upload another photo.');
+      setPassportPhotoError(safeMessage);
     } finally {
       setIsUploadingPassportPhoto(false);
     }

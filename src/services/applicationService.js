@@ -11,7 +11,8 @@ import { apiClient } from './apiClient';
 
 const STORAGE_KEY = 'mrvisa_applications';
 
-export { normalizeDocument } from './documentService';
+import { normalizeDocument } from './documentService';
+export { normalizeDocument };
 
 /**
  * Normalizes traveller record with stable IDs
@@ -37,7 +38,7 @@ export function normalizeTraveller(rawTrav, index = 0) {
     dateOfBirth: rawTrav.dateOfBirth || rawTrav.dob || '—',
     gender: rawTrav.gender || 'Male',
     documents: Array.isArray(rawTrav.documents)
-      ? rawTrav.documents.map((d) => normalizeDocument(d, '', tId))
+      ? rawTrav.documents.map((d) => normalizeDocument(d, '', tId)).filter(Boolean)
       : []
   };
 }
@@ -49,11 +50,11 @@ export function normalizeApplication(raw) {
   if (!raw) return null;
   const appId = raw.referenceNumber || raw.id || raw.applicationId || `MV-${Math.floor(100000 + Math.random() * 900000)}`;
   const travellers = Array.isArray(raw.travellers)
-    ? raw.travellers.map((t, idx) => normalizeTraveller(t, idx))
+    ? raw.travellers.map((t, idx) => normalizeTraveller(t, idx)).filter(Boolean)
     : [];
 
   const rawDocs = Array.isArray(raw.documents) ? raw.documents : [];
-  const documents = rawDocs.map((d) => normalizeDocument(d, appId));
+  const documents = rawDocs.map((d) => normalizeDocument(d, appId)).filter(Boolean);
 
   const countryObj = typeof raw.country === 'object' && raw.country !== null ? raw.country : null;
   const visaObj = typeof raw.visa === 'object' && raw.visa !== null ? raw.visa : null;

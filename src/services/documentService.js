@@ -133,41 +133,67 @@ export function getSensibleFilename(doc, fallbackExt = '') {
  */
 export function normalizeDocument(rawDoc, applicationId = '', travellerId = '') {
   if (!rawDoc) return null;
-  const orig = rawDoc.originalFilename || rawDoc.name || '';
-  const format = detectDocumentFormat(rawDoc);
+  const docObj = typeof rawDoc === 'string' ? { id: rawDoc, name: rawDoc, storageKey: rawDoc } : rawDoc;
 
-  let mimeType = rawDoc.mimeType;
-  if (!mimeType || mimeType === 'application/octet-stream') {
-    if (format === 'JPG') mimeType = 'image/jpeg';
-    else if (format === 'PNG') mimeType = 'image/png';
-    else if (format === 'WEBP') mimeType = 'image/webp';
-    else if (format === 'PDF') mimeType = 'application/pdf';
-    else mimeType = 'image/jpeg';
+  try {
+    const orig = docObj.originalFilename || docObj.filename || docObj.name || '';
+    const format = detectDocumentFormat(docObj);
+
+    let mimeType = docObj.mimeType;
+    if (!mimeType || mimeType === 'application/octet-stream') {
+      if (format === 'JPG') mimeType = 'image/jpeg';
+      else if (format === 'PNG') mimeType = 'image/png';
+      else if (format === 'WEBP') mimeType = 'image/webp';
+      else if (format === 'PDF') mimeType = 'application/pdf';
+      else mimeType = 'image/jpeg';
+    }
+
+    const id = docObj.id || docObj.documentId || docObj._id || `doc_${Math.random().toString(36).substr(2, 9)}`;
+
+    return {
+      id: String(id),
+      documentId: String(docObj.documentId || id),
+      applicationId: String(docObj.applicationId || applicationId || ''),
+      travellerId: String(docObj.travellerId || travellerId || ''),
+      documentType: docObj.documentType || docObj.type || docObj.name || 'DOCUMENT',
+      name: docObj.name || docObj.documentType || 'Uploaded Document',
+      originalFilename: orig,
+      downloadFilename: docObj.downloadFilename || getSensibleFilename(docObj),
+      mimeType,
+      fileFormat: format,
+      format,
+      storageKey: docObj.storageKey || '',
+      status: docObj.status || docObj.verificationStatus || 'Verified',
+      verificationStatus: docObj.verificationStatus || docObj.status || 'Verified',
+      rejectionReason: docObj.rejectionReason || docObj.note || undefined,
+      note: docObj.note || docObj.rejectionReason || undefined,
+      fileUrl: docObj.fileUrl || docObj.signedUrl || docObj.url || '',
+      signedUrl: docObj.signedUrl || docObj.fileUrl || docObj.url || '',
+      uploadedAt: docObj.uploadedAt || new Date().toISOString()
+    };
+  } catch (err) {
+    console.warn('Document normalization notice:', err);
+    const fallbackId = String(docObj.id || docObj._id || `doc_${Date.now()}`);
+    return {
+      id: fallbackId,
+      documentId: fallbackId,
+      applicationId: String(applicationId || ''),
+      travellerId: String(travellerId || ''),
+      documentType: 'DOCUMENT',
+      name: docObj.name || 'Uploaded Document',
+      originalFilename: docObj.name || '',
+      downloadFilename: 'document.jpg',
+      mimeType: 'image/jpeg',
+      fileFormat: '',
+      format: '',
+      storageKey: docObj.storageKey || '',
+      status: 'Verified',
+      verificationStatus: 'Verified',
+      fileUrl: '',
+      signedUrl: '',
+      uploadedAt: new Date().toISOString()
+    };
   }
-
-  const id = rawDoc.id || rawDoc.documentId || rawDoc._id || `doc_${Math.random().toString(36).substr(2, 9)}`;
-
-  return {
-    id,
-    documentId: rawDoc.documentId || id,
-    applicationId: rawDoc.applicationId || applicationId,
-    travellerId: rawDoc.travellerId || travellerId,
-    documentType: rawDoc.documentType || rawDoc.type || rawDoc.name || 'DOCUMENT',
-    name: rawDoc.name || rawDoc.documentType || 'Uploaded Document',
-    originalFilename: orig,
-    downloadFilename: rawDoc.downloadFilename || getSensibleFilename(rawDoc),
-    mimeType,
-    fileFormat: format,
-    format,
-    storageKey: rawDoc.storageKey || '',
-    status: rawDoc.status || rawDoc.verificationStatus || 'Verified',
-    verificationStatus: rawDoc.verificationStatus || rawDoc.status || 'Verified',
-    rejectionReason: rawDoc.rejectionReason || rawDoc.note || undefined,
-    note: rawDoc.note || rawDoc.rejectionReason || undefined,
-    fileUrl: rawDoc.fileUrl || rawDoc.signedUrl || rawDoc.url || '',
-    signedUrl: rawDoc.signedUrl || rawDoc.fileUrl || rawDoc.url || '',
-    uploadedAt: rawDoc.uploadedAt || new Date().toISOString()
-  };
 }
 
 class DocumentService {

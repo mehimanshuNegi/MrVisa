@@ -83,10 +83,13 @@ function AppContent() {
           <Route path="/documentation/:slug" element={<DocumentationDetailPage />} />
           <Route path="/documentation/:slug/apply" element={<DocumentationApplyPlaceholderPage />} />
 
-          {/* Dummy Ticket Routes */}
+          {/* Dummy Ticket Routes (supporting both singular and plural) */}
           <Route path="/dummy-tickets" element={<DummyTicketsPage />} />
           <Route path="/dummy-tickets/apply" element={<DummyTicketApplyPlaceholderPage />} />
           <Route path="/dummy-tickets/:slug/apply" element={<DummyTicketApplyPlaceholderPage />} />
+          <Route path="/dummy-ticket" element={<DummyTicketsPage />} />
+          <Route path="/dummy-ticket/apply" element={<DummyTicketApplyPlaceholderPage />} />
+          <Route path="/dummy-ticket/:slug/apply" element={<DummyTicketApplyPlaceholderPage />} />
 
           {/* Admin Routes */}
           <Route path="/admin" element={<AdminLayout />}>

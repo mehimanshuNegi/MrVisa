@@ -13,9 +13,11 @@ import {
   submitFeedback,
   getApplicationFeedback,
   processPassportOcr,
-  processPassportPhoto
+  processPassportPhoto,
+  deleteApplication
 } from '../controllers/application.controller.js';
-import { authenticate, optionalAuthenticate } from '../middleware/auth.middleware.js';
+import { authenticate, optionalAuthenticate, authorize } from '../middleware/auth.middleware.js';
+import { ROLES } from '../constants/roles.js';
 import { validate } from '../middleware/validate.middleware.js';
 import { uploadMiddleware, passportUploadMiddleware } from '../middleware/upload.middleware.js';
 import {
@@ -55,6 +57,9 @@ router.get('/:idOrRef/status', authenticate, getApplicationStatus);
 // 6. Update Application Details (Customer editing draft or Admin managing status/notes)
 router.put('/:idOrRef', authenticate, validate(updateApplicationSchema), updateApplication);
 router.patch('/:idOrRef', authenticate, validate(updateApplicationSchema), updateApplication);
+
+// 6.1 Delete Application permanently (Admin Only)
+router.delete('/:idOrRef', authenticate, authorize(ROLES.ADMIN), deleteApplication);
 
 // 7. Submit Application for consulate review (Validates required applicant info & documents)
 router.post('/:idOrRef/submit', authenticate, validate(submitApplicationSchema), submitApplication);

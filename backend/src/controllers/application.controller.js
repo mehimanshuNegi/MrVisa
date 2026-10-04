@@ -255,6 +255,12 @@ export const processPassportPhoto = asyncHandler(async (req, res) => {
   );
 });
 
+export const deleteApplication = asyncHandler(async (req, res) => {
+  const { idOrRef } = req.params;
+  const result = await applicationService.deleteApplication(idOrRef, req.user || null, req);
+  return ApiResponse.success(res, result, 'Application permanently deleted');
+});
+
 export default {
   createApplication,
   getApplications,
@@ -269,5 +275,6 @@ export default {
   submitFeedback,
   getApplicationFeedback,
   processPassportOcr,
-  processPassportPhoto
+  processPassportPhoto,
+  deleteApplication
 };

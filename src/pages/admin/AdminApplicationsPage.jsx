@@ -20,7 +20,8 @@ import {
   ShieldCheck,
   FileCheck,
   Download,
-  Star
+  Star,
+  Trash2
 } from 'lucide-react';
 import { applicationService, documentService } from '../../services';
 import {
@@ -66,6 +67,39 @@ export default function AdminApplicationsPage() {
   // Save operation state
   const [isSaving, setIsSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
+
+  // Delete operation state
+  const [applicationToDelete, setApplicationToDelete] = useState(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState(null);
+  const [deleteSuccessNotice, setDeleteSuccessNotice] = useState(null);
+
+  // Handle permanent deletion of an application
+  const handleConfirmDelete = async () => {
+    if (!applicationToDelete) return;
+    const targetId = applicationToDelete.id || applicationToDelete._id;
+    setIsDeleting(true);
+    setDeleteError(null);
+
+    try {
+      await applicationService.deleteApplication(targetId);
+      // Remove from table immediately
+      setApplications((prev) => prev.filter((a) => a.id !== targetId && a._id !== targetId));
+      // Close details modal if open
+      if (selectedApp && (selectedApp.id === targetId || selectedApp._id === targetId)) {
+        setSelectedApp(null);
+      }
+      setApplicationToDelete(null);
+      setDeleteSuccessNotice('Application deleted successfully.');
+      setTimeout(() => setDeleteSuccessNotice(null), 5000);
+    } catch (err) {
+      console.error('Failed to delete application:', err);
+      const msg = err?.response?.data?.message || err?.message || 'Failed to delete application. Please try again.';
+      setDeleteError(msg);
+    } finally {
+      setIsDeleting(false);
+    }
+  };
 
   // Load all applications from applicationService
   const loadApplications = async () => {
@@ -269,7 +303,23 @@ export default function AdminApplicationsPage() {
 
   return (
     <div className="space-y-5">
-      
+      {/* Small Success Notification */}
+      {deleteSuccessNotice && (
+        <div className="p-3.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs sm:text-sm font-bold flex items-center justify-between shadow-2xs animate-in fade-in duration-200">
+          <div className="flex items-center gap-2">
+            <CheckCircle2 size={16} className="text-emerald-600 flex-shrink-0" />
+            <span>{deleteSuccessNotice}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setDeleteSuccessNotice(null)}
+            className="text-emerald-700 hover:text-emerald-900 cursor-pointer"
+          >
+            <X size={14} />
+          </button>
+        </div>
+      )}
+
       {/* 1. PAGE HEADER */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-2 border-b border-slate-200/80">
         <div>
@@ -511,17 +561,31 @@ export default function AdminApplicationsPage() {
 
                       {/* Action */}
                       <td className="py-3 px-3.5 text-right whitespace-nowrap">
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleOpenDetails(app);
-                          }}
-                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border border-slate-200 bg-white hover:bg-blue-50 hover:text-[#2563EB] hover:border-blue-200 text-slate-600 text-xs font-semibold transition-colors cursor-pointer shadow-2xs"
-                        >
-                          <Eye size={12} />
-                          <span>View</span>
-                        </button>
+                        <div className="flex items-center justify-end gap-1.5">
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleOpenDetails(app);
+                            }}
+                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border border-slate-200 bg-white hover:bg-blue-50 hover:text-[#2563EB] hover:border-blue-200 text-slate-600 text-xs font-semibold transition-colors cursor-pointer shadow-2xs"
+                          >
+                            <Eye size={12} />
+                            <span>View</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setApplicationToDelete(app);
+                              setDeleteError(null);
+                            }}
+                            title="Delete Application"
+                            className="inline-flex items-center justify-center p-1.5 rounded-lg border border-slate-200 bg-white hover:bg-rose-50 hover:text-rose-600 hover:border-rose-200 text-slate-400 text-xs font-semibold transition-colors cursor-pointer shadow-2xs"
+                          >
+                            <Trash2 size={13} />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );
@@ -909,19 +973,32 @@ export default function AdminApplicationsPage() {
                 </div>
 
                 {/* Footer Buttons */}
-                <div className="flex items-center justify-end gap-2.5 pt-2">
+                <div className="flex items-center justify-between gap-2.5 pt-2">
                   <button
                     type="button"
-                    onClick={handleCloseDetails}
-                    className="px-4 py-2 rounded-lg border border-slate-200 text-xs font-semibold text-slate-600 hover:bg-slate-50 transition-colors cursor-pointer"
+                    onClick={() => {
+                      setApplicationToDelete(selectedApp);
+                      setDeleteError(null);
+                    }}
+                    className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-rose-200 bg-rose-50 hover:bg-rose-100 text-rose-700 text-xs font-bold transition-colors cursor-pointer"
                   >
-                    Cancel
+                    <Trash2 size={13} />
+                    <span>Delete Application</span>
                   </button>
-                  <button
-                    type="submit"
-                    disabled={isSaving}
-                    className="inline-flex items-center gap-1.5 px-5 py-2 rounded-lg bg-[#2563EB] hover:bg-[#1d4ed8] text-white text-xs font-bold transition-all shadow-sm disabled:opacity-50 cursor-pointer"
-                  >
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={handleCloseDetails}
+                      className="px-4 py-2 rounded-lg border border-slate-200 text-xs font-semibold text-slate-600 hover:bg-slate-50 transition-colors cursor-pointer"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={isSaving}
+                      className="inline-flex items-center gap-1.5 px-5 py-2 rounded-lg bg-[#2563EB] hover:bg-[#1d4ed8] text-white text-xs font-bold transition-all shadow-sm disabled:opacity-50 cursor-pointer"
+                    >
                     {isSaving ? (
                       <>
                         <Loader2 size={13} className="animate-spin" />
@@ -934,6 +1011,7 @@ export default function AdminApplicationsPage() {
                       </>
                     )}
                   </button>
+                  </div>
                 </div>
               </form>
 
@@ -1077,6 +1155,68 @@ export default function AdminApplicationsPage() {
                   </button>
                 </div>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================
+          DELETE CONFIRMATION MODAL
+          ======================================================== */}
+      {applicationToDelete && (
+        <div className="fixed inset-0 z-[70] bg-slate-900/60 backdrop-blur-2xs flex items-center justify-center p-3 sm:p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-xl border border-slate-200 space-y-4 animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center flex-shrink-0">
+                <Trash2 size={20} />
+              </div>
+              <div>
+                <h3 className="text-base font-black text-[#082B61]">Delete Application?</h3>
+                <p className="text-xs font-mono text-slate-500 font-semibold">{applicationToDelete.id || applicationToDelete.referenceNumber || 'Application'}</p>
+              </div>
+            </div>
+
+            <p className="text-xs sm:text-sm text-slate-600 leading-relaxed">
+              This will permanently delete this application and its associated uploaded documents. This action cannot be undone.
+            </p>
+
+            {deleteError && (
+              <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs flex items-center gap-2">
+                <AlertCircle size={15} className="flex-shrink-0" />
+                <span>{deleteError}</span>
+              </div>
+            )}
+
+            <div className="flex items-center justify-end gap-2.5 pt-2">
+              <button
+                type="button"
+                disabled={isDeleting}
+                onClick={() => {
+                  setApplicationToDelete(null);
+                  setDeleteError(null);
+                }}
+                className="px-4 py-2 rounded-xl border border-slate-200 text-slate-700 hover:bg-slate-50 text-xs font-bold transition-colors cursor-pointer disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={isDeleting}
+                onClick={handleConfirmDelete}
+                className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold transition-colors cursor-pointer shadow-sm flex items-center gap-1.5 disabled:opacity-50"
+              >
+                {isDeleting ? (
+                  <>
+                    <Loader2 size={13} className="animate-spin" />
+                    <span>Deleting...</span>
+                  </>
+                ) : (
+                  <>
+                    <Trash2 size={13} />
+                    <span>Delete Application</span>
+                  </>
+                )}
+              </button>
             </div>
           </div>
         </div>

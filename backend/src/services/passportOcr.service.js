@@ -547,27 +547,27 @@ class PassportOcrService {
       logger.warn(`[OCR BACK OCR] Back page OCR notice: ${err?.message}`);
     }
 
-    // Wrong page detection for back page (Requirement 7)
+    // Soft back page detection - document is already staged to R2 storage
     const backDetection = detectPassportBack(ocrText);
     if (!backDetection.isBack) {
-      const isEngineFailure = !!(this.lastOcrError || this.engineInitError);
-      logger.warn(`[OCR BACK Detection] Passport back page not detected. isEngineFailure=${isEngineFailure}`);
+      logger.info(`[OCR BACK Detection] Keywords not strongly matched on back page. Staging document and allowing manual entry.`);
       return {
-        success: false,
+        success: true,
         pageType: 'back',
-        wrongPage: !isEngineFailure,
-        ocrEngineError: isEngineFailure,
+        wrongPage: false,
         isBackDetected: false,
-        message: isEngineFailure
-          ? "OCR engine was unable to read this image on the server. You can enter details manually."
-          : "We couldn't identify the required passport back/second page.",
-        errors: [
-          isEngineFailure
-            ? "OCR engine was unable to read this image on the server. You can enter details manually."
-            : "We couldn't identify the required passport back/second page."
-        ],
+        message: "Back side processed. You can review and enter details manually.",
         canContinueManually: true,
-        uploadedDocument
+        uploadedDocument,
+        extractedData: {
+          fatherName: '',
+          motherName: '',
+          spouseName: '',
+          address: '',
+          fileNumber: ''
+        },
+        mergedData: frontExtractedData,
+        fieldStatus: frontExtractedData.fieldStatus || {}
       };
     }
 

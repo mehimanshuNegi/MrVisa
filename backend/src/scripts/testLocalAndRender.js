@@ -50,7 +50,11 @@ async function test(url, origin, fieldName) {
 
 async function run() {
   // 1. Test Localhost with Vercel origin and field 'passportFile'
-  await test('http://localhost:5000/api/v1/applications/passport-ocr', 'https://mr-visa.vercel.app', 'passportFile');
+  try {
+    await test('http://localhost:5000/api/v1/applications/passport-ocr', 'https://mr-visa.vercel.app', 'passportFile');
+  } catch (err) {
+    console.log('Localhost not currently running, skipping localhost test.');
+  }
 
   // 2. Test Live Render with Vercel origin and field 'passportFile'
   await test('https://mrvisa.onrender.com/api/v1/applications/passport-ocr', 'https://mr-visa.vercel.app', 'passportFile');

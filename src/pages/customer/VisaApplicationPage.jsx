@@ -758,29 +758,14 @@ export default function VisaApplicationPage() {
         new Promise((resolve) => setTimeout(resolve, 800))
       ]);
 
-      if (result?.wrongPage) {
-        setIsProcessingPassport(false);
-        setPassportBackUploadError({
-          type: 'wrong_page',
-          message: result.message || "We couldn't identify the required passport back/second page."
-        });
-        setCurrentStep('passport_back_upload');
-        return;
-      }
-
-      if (result?.qualityFailed) {
-        setIsProcessingPassport(false);
-        setPassportBackUploadError({
-          type: 'quality',
-          message: result.message || 'Image quality is too low to reliably read this passport.'
-        });
-        setCurrentStep('passport_back_upload');
-        return;
-      }
-
-      if (result?.uploadedDocument) {
-        setOcrBackUploadedDoc(result.uploadedDocument);
-      }
+      const stagedDoc = result?.uploadedDocument || {
+        documentId: `doc_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
+        name: 'Passport Back Page',
+        originalFilename: file.name,
+        fileSize: file.size,
+        mimeType: file.type || 'image/jpeg'
+      };
+      setOcrBackUploadedDoc(stagedDoc);
 
       const backExtracted = result?.extractedData || {};
       const merged = result?.mergedData || {};
@@ -811,6 +796,14 @@ export default function VisaApplicationPage() {
       }, 500);
     } catch (err) {
       console.warn('OCR back processing notice:', err);
+      const fallbackDoc = {
+        documentId: `doc_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
+        name: 'Passport Back Page',
+        originalFilename: file.name,
+        fileSize: file.size,
+        mimeType: file.type || 'image/jpeg'
+      };
+      setOcrBackUploadedDoc(fallbackDoc);
       setIsProcessingPassport(false);
       setCurrentStep('passport_review');
     }

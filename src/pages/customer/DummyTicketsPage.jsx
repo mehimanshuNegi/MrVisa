@@ -86,25 +86,30 @@ export default function DummyTicketsPage() {
 
   // Autofill user details if logged in
   useEffect(() => {
-    const user = authService.getUser();
-    if (user) {
-      setContact((prev) => ({
-        ...prev,
-        email: prev.email || user.email || '',
-        phone: prev.phone || user.phone || ''
-      }));
-      if (travellers.length === 1 && !travellers[0].firstName && user.firstName) {
-        setTravellers([
-          {
-            id: 1,
-            title: 'Mr',
-            firstName: user.firstName || '',
-            lastName: user.lastName || '',
-            dateOfBirth: '',
-            nationality: 'Indian'
-          }
-        ]);
+    try {
+      const user = (typeof authService.getUser === 'function' ? authService.getUser() : authService.getCurrentUser?.()) || null;
+      if (user) {
+        setContact((prev) => ({
+          ...prev,
+          email: prev.email || user.email || '',
+          phone: prev.phone || user.phone || ''
+        }));
+        if (travellers.length === 1 && !travellers[0].firstName && (user.firstName || user.name)) {
+          const parts = (user.name || '').split(' ');
+          setTravellers([
+            {
+              id: 1,
+              title: 'Mr',
+              firstName: user.firstName || parts[0] || '',
+              lastName: user.lastName || parts.slice(1).join(' ') || '',
+              dateOfBirth: '',
+              nationality: user.nationality || 'Indian'
+            }
+          ]);
+        }
       }
+    } catch (err) {
+      console.warn('User load notice in DummyTicketsPage:', err);
     }
   }, []);
 

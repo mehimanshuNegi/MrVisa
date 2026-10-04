@@ -10,6 +10,8 @@ import { auditService } from './audit.service.js';
 import { escapeRegex } from '../utils/sanitize.js';
 import { ROLES } from '../constants/roles.js';
 import { validatePassportDates } from '../utils/dateValidator.js';
+import { storageService } from './storage.service.js';
+import { logger } from '../utils/logger.js';
 
 /**
  * Helper to match a required document rule from the Visa configuration against uploaded documents
@@ -864,6 +866,98 @@ class ApplicationService {
     }
 
     return application.feedback?.rating ? application.feedback : null;
+  }
+
+  /**
+   * Permanently delete an application and associated uploaded documents (Admin only)
+   */
+  async deleteApplication(idOrRef, currentUser = null, req = null) {
+    const isObjectId = mongoose.isValidObjectId(idOrRef);
+    const application = await Application.findOne({
+      $or: [
+        { referenceNumber: idOrRef },
+        ...(isObjectId ? [{ _id: idOrRef }] : [])
+      ]
+    });
+
+    if (!application) {
+      throw ApiError.notFound('Application not found');
+    }
+
+    // 1. Clean up attached Document records & R2 files safely
+    const attachedDocs = await Document.find({ application: application._id });
+    for (const doc of attachedDocs) {
+      if (doc.storageKey) {
+        // Safe check: verify no other document/application references this storage key
+        const shared = await Document.countDocuments({
+          storageKey: doc.storageKey,
+          application: { $ne: application._id }
+        });
+        if (shared === 0) {
+          try {
+            await storageService.deleteFile(doc.storageKey);
+          } catch (delErr) {
+            logger.warn(`Failed to delete document ${doc.storageKey} from storage:`, delErr?.message);
+          }
+        }
+      }
+    }
+
+    // 2. Clean up any storage keys stored in application.travellers.docs
+    const travellerKeys = new Set();
+    if (Array.isArray(application.travellers)) {
+      application.travellers.forEach((t) => {
+        if (t.docs) {
+          Object.values(t.docs).forEach((d) => {
+            if (d?.storageKey) travellerKeys.add(d.storageKey);
+            if (d?.frontStorageKey) travellerKeys.add(d.frontStorageKey);
+            if (d?.backStorageKey) travellerKeys.add(d.backStorageKey);
+          });
+        }
+      });
+    }
+
+    for (const key of travellerKeys) {
+      const shared = await Document.countDocuments({ storageKey: key, application: { $ne: application._id } });
+      if (shared === 0) {
+        try {
+          await storageService.deleteFile(key);
+        } catch (delErr) {
+          logger.warn(`Failed to delete traveller document ${key} from storage:`, delErr?.message);
+        }
+      }
+    }
+
+    // 3. Delete Document records from MongoDB
+    await Document.deleteMany({ application: application._id });
+
+    // 4. Delete Feedback if any
+    await Feedback.deleteMany({ application: application._id });
+
+    // 5. Delete the Application
+    await Application.findByIdAndDelete(application._id);
+
+    // 6. Audit log
+    if (currentUser) {
+      try {
+        await auditService.log({
+          action: 'DELETE',
+          entity: 'APPLICATION',
+          entityId: application._id,
+          performedBy: currentUser._id,
+          details: { referenceNumber: application.referenceNumber }
+        }, req);
+      } catch (e) {
+        // audit log failure should not break deletion
+      }
+    }
+
+    logger.info(`[ADMIN] Application ${application.referenceNumber} (${application._id}) permanently deleted`);
+
+    return {
+      deletedId: application._id,
+      referenceNumber: application.referenceNumber
+    };
   }
 }
 

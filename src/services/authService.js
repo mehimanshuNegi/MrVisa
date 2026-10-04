@@ -192,6 +192,13 @@ class AuthService {
   getCurrentUser() {
     return tokenStore.getUser();
   }
+
+  /**
+   * Alias for getCurrentUser for API consistency
+   */
+  getUser() {
+    return this.getCurrentUser();
+  }
 }
 
 export const authService = new AuthService();

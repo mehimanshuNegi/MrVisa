@@ -11,12 +11,31 @@ export function configureSecurity(app) {
     })
   );
 
-  // CORS configuration: In production, strictly disallow localhost and 127.0.0.1
-  const allowedOrigins = (
-    env.NODE_ENV === 'production'
-      ? [env.CLIENT_URL].filter((url) => url && !url.includes('localhost') && !url.includes('127.0.0.1'))
-      : [env.CLIENT_URL, 'http://localhost:5173', 'http://127.0.0.1:5173', 'http://localhost:5174', 'http://127.0.0.1:5174', 'http://localhost:3000']
-  ).filter(Boolean);
+  // CORS configuration: Allow production frontend domains, Vercel deployments, and configured client URLs
+  const rawClientUrls = (env.CLIENT_URL || '')
+    .split(',')
+    .map((u) => u.trim())
+    .filter(Boolean);
+
+  const allowedOrigins = [
+    'https://mr-visa.vercel.app',
+    'https://mrvisa.vercel.app',
+    'https://nimufly.com',
+    'https://www.nimufly.com',
+    ...rawClientUrls
+  ];
+
+  if (env.NODE_ENV !== 'production') {
+    allowedOrigins.push(
+      'http://localhost:5173',
+      'http://127.0.0.1:5173',
+      'http://localhost:5174',
+      'http://127.0.0.1:5174',
+      'http://localhost:3000',
+      'http://127.0.0.1:3000',
+      'http://localhost:5000'
+    );
+  }
 
   app.use(
     cors({
@@ -25,6 +44,17 @@ export function configureSecurity(app) {
         if (!origin || allowedOrigins.includes(origin)) {
           return callback(null, true);
         }
+
+        // Allow Vercel preview and production deployments (*.vercel.app)
+        try {
+          const parsed = new URL(origin);
+          if (parsed.hostname.endsWith('.vercel.app') || parsed.hostname.endsWith('nimufly.com')) {
+            return callback(null, true);
+          }
+        } catch {
+          // Fall through to error
+        }
+
         return callback(new Error(`CORS blocked for origin: ${origin}`));
       },
       credentials: true,

@@ -8,13 +8,14 @@ import paymentRoutes from './payment.routes.js';
 import adminRoutes from './admin.routes.js';
 import documentationRoutes from './documentation.routes.js';
 import dummyTicketRoutes from './dummyTicket.routes.js';
-import { getHealth } from '../controllers/health.controller.js';
+import { getHealth, getOcrDiagnostics } from '../controllers/health.controller.js';
 import { servePublicMedia } from '../controllers/media.controller.js';
 
 const apiV1Router = Router();
 
-// Health Check
+// Health Check & OCR Diagnostics
 apiV1Router.get('/health', getHealth);
+apiV1Router.get('/health/ocr-diagnostics', getOcrDiagnostics);
 
 // Public Media Stream Route
 apiV1Router.get('/media/*', servePublicMedia);

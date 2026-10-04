@@ -10,14 +10,14 @@ import {
 import { processPassportOcr } from '../controllers/application.controller.js';
 import { authenticate, optionalAuthenticate, authorize } from '../middleware/auth.middleware.js';
 import { validate } from '../middleware/validate.middleware.js';
-import { uploadMiddleware } from '../middleware/upload.middleware.js';
+import { uploadMiddleware, passportUploadMiddleware } from '../middleware/upload.middleware.js';
 import { updateDocumentStatusSchema } from '../validators/document.validator.js';
 import { ROLES } from '../constants/roles.js';
 
 const router = Router();
 
 // Passport-first OCR endpoint
-router.post('/passport-ocr', optionalAuthenticate, uploadMiddleware.single('file'), processPassportOcr);
+router.post('/passport-ocr', optionalAuthenticate, passportUploadMiddleware, processPassportOcr);
 
 // 1. Upload document (Attached to application specified in body)
 router.post('/', optionalAuthenticate, uploadMiddleware.single('file'), uploadDocument);

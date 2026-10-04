@@ -17,7 +17,7 @@ import {
 } from '../controllers/application.controller.js';
 import { authenticate, optionalAuthenticate } from '../middleware/auth.middleware.js';
 import { validate } from '../middleware/validate.middleware.js';
-import { uploadMiddleware } from '../middleware/upload.middleware.js';
+import { uploadMiddleware, passportUploadMiddleware } from '../middleware/upload.middleware.js';
 import {
   createApplicationSchema,
   updateApplicationSchema,
@@ -32,10 +32,10 @@ import { claimLimiter } from '../middleware/rateLimiter.middleware.js';
 const router = Router();
 
 // 0. Passport-first OCR endpoint (Guest or Authenticated Customer)
-router.post('/passport-ocr', optionalAuthenticate, uploadMiddleware.single('file'), processPassportOcr);
+router.post('/passport-ocr', optionalAuthenticate, passportUploadMiddleware, processPassportOcr);
 
 // 0.1 Passport Photograph validation and upload endpoint (Guest or Authenticated Customer)
-router.post('/passport-photo', optionalAuthenticate, uploadMiddleware.single('file'), processPassportPhoto);
+router.post('/passport-photo', optionalAuthenticate, passportUploadMiddleware, processPassportPhoto);
 
 // 1. Create or Draft Application (Guest or Authenticated Customer)
 router.post('/', optionalAuthenticate, validate(createApplicationSchema), createApplication);

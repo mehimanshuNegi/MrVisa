@@ -21,6 +21,9 @@
   ],
   "author": "Nimufly Platform Team",
   "license": "ISC",
+  "engines": {
+    "node": ">=22.0.0"
+  },
   "dependencies": {
     "@arcships/light-ocr": "^0.5.8",
     "@aws-sdk/client-s3": "^3.758.0",
@@ -39,5 +42,9 @@
     "picojs": "^1.0.0",
     "sharp": "^0.35.5",
     "xlsx": "^0.18.5"
+  },
+  "optionalDependencies": {
+    "@arcships/light-ocr-linux-x64-gnu": "0.5.8",
+    "@arcships/light-ocr-win32-x64": "0.5.8"
   }
 }

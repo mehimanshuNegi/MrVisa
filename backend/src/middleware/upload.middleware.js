@@ -30,4 +30,20 @@ export const uploadMiddleware = multer({
   }
 });
 
+/**
+ * Flexible passport upload middleware supporting multiple common field names:
+ * 'passportFile', 'file', 'passport', 'photo', or any uploaded file attachment.
+ */
+export const passportUploadMiddleware = (req, res, next) => {
+  uploadMiddleware.any()(req, res, (err) => {
+    if (err) return next(err);
+    if (!req.file && Array.isArray(req.files) && req.files.length > 0) {
+      req.file =
+        req.files.find((f) => ['passportFile', 'file', 'passport', 'image', 'photo'].includes(f.fieldname)) ||
+        req.files[0];
+    }
+    next();
+  });
+};
+
 export default uploadMiddleware;

@@ -34,6 +34,8 @@ class PassportOcrService {
   constructor() {
     this.engine = null;
     this.engineInitializing = null;
+    this.engineInitError = null;
+    this.lastOcrError = null;
   }
 
   /**
@@ -44,13 +46,21 @@ class PassportOcrService {
     if (this.engineInitializing) return this.engineInitializing;
 
     this.engineInitializing = (async () => {
+      const startTime = Date.now();
+      logger.info(`[OCR Runtime] Initializing @arcships/light-ocr engine on platform=${process.platform}, arch=${process.arch}, node=${process.version}`);
       try {
         const engine = await createEngine();
         this.engine = engine;
-        logger.info('Initialized light-ocr passport engine successfully.');
+        this.engineInitError = null;
+        logger.info(`[OCR Runtime] @arcships/light-ocr engine initialized successfully in ${Date.now() - startTime}ms`);
         return engine;
       } catch (err) {
-        logger.error('Failed to initialize light-ocr engine:', err?.message || err);
+        this.engineInitError = err?.message || String(err);
+        logger.error(`[OCR Runtime] Failed to initialize @arcships/light-ocr engine: ${this.engineInitError}`, {
+          platform: process.platform,
+          arch: process.arch,
+          node: process.version
+        });
         this.engineInitializing = null;
         throw err;
       }
@@ -174,6 +184,7 @@ class PassportOcrService {
    * Runs light-ocr recognition safely on an image buffer
    */
   async recognizeText(buffer) {
+    const startTime = Date.now();
     try {
       const engine = await this.getEngine();
       let inputBuffer = buffer;
@@ -182,13 +193,17 @@ class PassportOcrService {
         inputBuffer = await sharp(buffer).png().toBuffer();
       }
 
+      logger.info(`[OCR Execution] recognizeEncoded started: size=${inputBuffer.length} bytes, format=${meta.format || 'unknown'}, dimensions=${meta.width}x${meta.height}`);
       const ocrResult = await engine.recognizeEncoded(inputBuffer);
       const lines = ocrResult.lines || [];
       const fullText = lines.map((l) => l.text).join('\n');
-      return { lines, fullText };
+      this.lastOcrError = null;
+      logger.info(`[OCR Result] recognizeEncoded completed in ${Date.now() - startTime}ms: detectedLines=${lines.length}`);
+      return { lines, fullText, error: null };
     } catch (err) {
-      logger.warn('OCR recognition encountered exception:', err?.message);
-      return { lines: [], fullText: '' };
+      this.lastOcrError = err?.message || String(err);
+      logger.error(`[OCR Error] recognizeEncoded failed in ${Date.now() - startTime}ms: ${this.lastOcrError}`);
+      return { lines: [], fullText: '', error: this.lastOcrError };
     }
   }
 
@@ -203,6 +218,8 @@ class PassportOcrService {
     previousStorageKey = null
   }) {
     const startTime = Date.now();
+    logger.info(`[OCR FRONT Received] originalFilename=${originalFilename || 'unknown'}, mimeType=${mimeType || 'unknown'}, size=${buffer?.length || 0} bytes`);
+
     const stages = [
       { id: 'image_checked', label: 'Image checked', status: 'pending' },
       { id: 'passport_detected', label: 'Passport detected', status: 'pending' },
@@ -217,6 +234,7 @@ class PassportOcrService {
 
     // If quality is critically low, return early with clear non-blocking options
     if (!quality.ok && quality.issues.includes('INSUFFICIENT_RESOLUTION')) {
+      logger.warn(`[OCR FRONT Quality] Insufficient resolution: ${quality.width}x${quality.height}`);
       return {
         success: false,
         pageType: 'front',
@@ -255,6 +273,7 @@ class PassportOcrService {
     // Store document safely using storageService
     let uploadedDocument = null;
     try {
+      logger.info(`[OCR FRONT R2] Uploading document to staging storage (size: ${buffer?.length} bytes)`);
       const uploadResult = await storageService.uploadFile({
         buffer,
         originalFilename: originalFilename || 'passport_front.jpg',
@@ -269,8 +288,9 @@ class PassportOcrService {
         fileSize: uploadResult.fileSize,
         mimeType: uploadResult.mimeType
       };
+      logger.info(`[OCR FRONT R2] Document staged successfully: storageKey=${uploadResult.storageKey}`);
     } catch (uploadErr) {
-      logger.warn('Passport front storage staging notice:', uploadErr?.message);
+      logger.warn(`[OCR FRONT R2] Document staging notice: ${uploadErr?.message}`);
     }
 
     // Stage 2 & 3: Run OCR
@@ -287,12 +307,13 @@ class PassportOcrService {
         parsedMrz = parseTd3Mrz(mrzLines[0], mrzLines[1]);
       }
     } catch (err1) {
-      logger.warn('Attempt 1 raw OCR notice:', err1?.message);
+      logger.warn(`[OCR FRONT Attempt 1] Raw OCR notice: ${err1?.message}`);
     }
 
     // ATTEMPT 2: Preprocessing + MRZ Crop if needed
     if (!parsedMrz || !parsedMrz.checks?.docNumber || !parsedMrz.checks?.expiry) {
       try {
+        logger.info(`[OCR FRONT Preprocessing] Running image enhancements (EXIF, resize, grayscale, normalize)...`);
         const preprocessedBuffer = await this.preprocessImage(buffer);
         const prepOcr = await this.recognizeText(preprocessedBuffer);
         ocrText += '\n' + prepOcr.fullText;
@@ -307,6 +328,7 @@ class PassportOcrService {
         }
 
         if (!parsedMrz) {
+          logger.info(`[OCR FRONT MRZ Crop] Attempting dedicated bottom MRZ crop band...`);
           const croppedMrz = await this.cropMrzBand(buffer);
           if (croppedMrz) {
             const cropOcr = await this.recognizeText(croppedMrz);
@@ -318,20 +340,31 @@ class PassportOcrService {
           }
         }
       } catch (err2) {
-        logger.warn('Attempt 2 preprocessed OCR notice:', err2?.message);
+        logger.warn(`[OCR FRONT Attempt 2] Preprocessed OCR notice: ${err2?.message}`);
       }
     }
+
+    logger.info(`[OCR FRONT MRZ Parsing] linesExtracted=${mrzLines.length}, mrzParsed=${!!parsedMrz}, validDocCheck=${!!parsedMrz?.checks?.docNumber}`);
 
     // Wrong page detection (Requirement 7)
     const frontDetection = detectPassportFront(ocrText);
     if (!frontDetection.isFront && !parsedMrz) {
+      const isEngineFailure = !!(this.lastOcrError || this.engineInitError);
+      logger.warn(`[OCR FRONT Detection] Front passport not identified. isEngineFailure=${isEngineFailure}`);
       return {
         success: false,
         pageType: 'front',
-        wrongPage: true,
+        wrongPage: !isEngineFailure,
+        ocrEngineError: isEngineFailure,
         isFrontDetected: false,
-        message: "We couldn't identify a passport page in this image.",
-        errors: ["We couldn't identify a passport page in this image."],
+        message: isEngineFailure
+          ? "OCR engine was unable to read this image on the server. You can enter details manually."
+          : "We couldn't identify a passport page in this image.",
+        errors: [
+          isEngineFailure
+            ? "OCR engine was unable to read this image on the server. You can enter details manually."
+            : "We couldn't identify a passport page in this image."
+        ],
         canContinueManually: true,
         uploadedDocument,
         stages
@@ -423,6 +456,7 @@ class PassportOcrService {
     }
 
     const durationMs = Date.now() - startTime;
+    logger.info(`[OCR FRONT Response] Success: docDetected=true, hasMrz=${!!parsedMrz}, fieldsPopulated=${Object.keys(merged.extractedData || {}).length}, duration=${durationMs}ms`);
 
     return {
       success: true,
@@ -453,10 +487,12 @@ class PassportOcrService {
     previousStorageKey = null
   }) {
     const startTime = Date.now();
+    logger.info(`[OCR BACK Received] originalFilename=${originalFilename || 'unknown'}, mimeType=${mimeType || 'unknown'}, size=${buffer?.length || 0} bytes`);
 
     // Stage 1: Quality Check
     const quality = await this.checkImageQuality(buffer);
     if (!quality.ok && quality.issues.includes('INSUFFICIENT_RESOLUTION')) {
+      logger.warn(`[OCR BACK Quality] Insufficient resolution: ${quality.width}x${quality.height}`);
       return {
         success: false,
         pageType: 'back',
@@ -481,6 +517,7 @@ class PassportOcrService {
     // Store document safely using storageService
     let uploadedDocument = null;
     try {
+      logger.info(`[OCR BACK R2] Uploading document to staging storage (size: ${buffer?.length} bytes)`);
       const uploadResult = await storageService.uploadFile({
         buffer,
         originalFilename: originalFilename || 'passport_back.jpg',
@@ -495,29 +532,40 @@ class PassportOcrService {
         fileSize: uploadResult.fileSize,
         mimeType: uploadResult.mimeType
       };
+      logger.info(`[OCR BACK R2] Document staged successfully: storageKey=${uploadResult.storageKey}`);
     } catch (uploadErr) {
-      logger.warn('Passport back storage staging notice:', uploadErr?.message);
+      logger.warn(`[OCR BACK R2] Document staging notice: ${uploadErr?.message}`);
     }
 
     // Run OCR on back page
     let ocrText = '';
     try {
+      logger.info(`[OCR BACK OCR] Running text recognition...`);
       const rawOcr = await this.recognizeText(buffer);
       ocrText = rawOcr.fullText;
     } catch (err) {
-      logger.warn('Back page OCR notice:', err?.message);
+      logger.warn(`[OCR BACK OCR] Back page OCR notice: ${err?.message}`);
     }
 
     // Wrong page detection for back page (Requirement 7)
     const backDetection = detectPassportBack(ocrText);
     if (!backDetection.isBack) {
+      const isEngineFailure = !!(this.lastOcrError || this.engineInitError);
+      logger.warn(`[OCR BACK Detection] Passport back page not detected. isEngineFailure=${isEngineFailure}`);
       return {
         success: false,
         pageType: 'back',
-        wrongPage: true,
+        wrongPage: !isEngineFailure,
+        ocrEngineError: isEngineFailure,
         isBackDetected: false,
-        message: "We couldn't identify the required passport back/second page.",
-        errors: ["We couldn't identify the required passport back/second page."],
+        message: isEngineFailure
+          ? "OCR engine was unable to read this image on the server. You can enter details manually."
+          : "We couldn't identify the required passport back/second page.",
+        errors: [
+          isEngineFailure
+            ? "OCR engine was unable to read this image on the server. You can enter details manually."
+            : "We couldn't identify the required passport back/second page."
+        ],
         canContinueManually: true,
         uploadedDocument
       };
@@ -541,6 +589,7 @@ class PassportOcrService {
     });
 
     const durationMs = Date.now() - startTime;
+    logger.info(`[OCR BACK Response] Success: docDetected=true, fieldsPopulated=${Object.keys(backDetails || {}).length}, duration=${durationMs}ms`);
 
     return {
       success: true,

@@ -66,11 +66,12 @@ export default function DestinationSection() {
     }
 
     // Homepage logic:
-    // Active visa/destination records -> isPopular === true -> displayOrder -> Popular Visa Destinations
+    // Active visa/destination records -> isPopular === true -> displayOrder -> Popular Visa Destinations (Limit: 5)
     // If admin switches Thailand -> Popular ON, it appears. If OFF, it disappears.
     return filtered
       .filter((v) => Boolean(v.isPopular))
-      .sort((a, b) => (Number(a.displayOrder) || 0) - (Number(b.displayOrder) || 0));
+      .sort((a, b) => (Number(a.displayOrder) || 0) - (Number(b.displayOrder) || 0))
+      .slice(0, 5);
   }, [destinationsList, countriesList, selectedCountry, selectedVisaType, hasActiveFilters]);
 
   return (

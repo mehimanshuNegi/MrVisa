@@ -67,13 +67,15 @@ class StorageService {
   /**
    * Generates a temporary authorized download URL (Signed URL)
    */
-  async getSignedUrl(storageKey, expiresInSeconds = env.SIGNED_URL_EXPIRY_SECONDS) {
+  async getSignedUrl(storageKey, expiresInSeconds = env.SIGNED_URL_EXPIRY_SECONDS, options = {}) {
     const s3Client = getStorageClient();
 
     if (s3Client) {
       const command = new GetObjectCommand({
         Bucket: env.STORAGE_BUCKET,
-        Key: storageKey
+        Key: storageKey,
+        ...(options.responseContentDisposition ? { ResponseContentDisposition: options.responseContentDisposition } : {}),
+        ...(options.responseContentType ? { ResponseContentType: options.responseContentType } : {})
       });
       return await getSignedUrl(s3Client, command, { expiresIn: expiresInSeconds });
     }
@@ -84,7 +86,12 @@ class StorageService {
 
     // Local Fallback: return tokenized API route URL (development only)
     const token = crypto.createHmac('sha256', env.JWT_ACCESS_SECRET).update(storageKey).digest('hex').substring(0, 16);
-    return `${env.CLIENT_URL ? 'http://localhost:5000' : ''}/api/v1/documents/raw/${encodeURIComponent(storageKey)}?token=${token}`;
+    let localUrl = `${env.CLIENT_URL ? 'http://localhost:5000' : ''}/api/v1/documents/raw/${encodeURIComponent(storageKey)}?token=${token}`;
+    if (options.responseContentDisposition) {
+      const isDownload = options.responseContentDisposition.includes('attachment');
+      localUrl += `&disposition=${isDownload ? 'download' : 'inline'}`;
+    }
+    return localUrl;
   }
 
   /**

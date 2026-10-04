@@ -239,65 +239,89 @@ class ApplicationService {
       passportPhoto: data.passportPhoto || {}
     });
 
-    // 6. Link initial documents if passed
-    if (Array.isArray(data.documents) && data.documents.length > 0) {
-      for (const [idx, doc] of data.documents.entries()) {
-        await Document.create({
-          application: application._id,
-          travellerId: doc.travellerId || (travellers[0]?.travellerId || 'trav_1'),
-          documentType: doc.documentType || doc.name || `Document ${idx + 1}`,
-          name: doc.name || doc.documentType || `Document ${idx + 1}`,
-          originalFilename: doc.originalFilename || doc.name || 'document.pdf',
-          storageKey: doc.storageKey || `initial/${application._id}/${Date.now()}_${idx}.pdf`,
-          status: doc.status === 'Verified' ? 'VERIFIED' : 'PENDING'
-        });
-      }
-    }
-
-    // Link distinct passport and photo documents from application flow (Requirement 12)
+    // 6. Link distinct passport and photo documents from application flow
     const primaryTraveller = travellers[0];
     const travDocs = primaryTraveller?.docs || {};
 
     const frontKey = data.passportOcr?.frontStorageKey || travDocs?.passport?.frontStorageKey || (travDocs?.passport?.storageKey && !travDocs?.passport?.backStorageKey ? travDocs.passport.storageKey : null);
     if (frontKey) {
-      await Document.create({
-        application: application._id,
-        travellerId: primaryTraveller?.travellerId || 'trav_1',
-        documentType: 'PASSPORT_FRONT',
-        name: 'Passport Front Page',
-        originalFilename: 'passport_front.jpg',
-        storageKey: frontKey,
-        mimeType: 'image/jpeg',
-        status: 'VERIFIED'
-      }).catch(() => {});
+      await Document.findOneAndUpdate(
+        { application: application._id, storageKey: frontKey },
+        {
+          application: application._id,
+          travellerId: primaryTraveller?.travellerId || 'trav_1',
+          documentType: 'PASSPORT_FRONT',
+          name: 'Passport Front & Back Scan',
+          originalFilename: 'passport_front.jpg',
+          storageKey: frontKey,
+          mimeType: 'image/jpeg',
+          status: 'VERIFIED'
+        },
+        { upsert: true, new: true, setDefaultsOnInsert: true }
+      ).catch(() => {});
     }
 
     const backKey = data.passportOcr?.backStorageKey || travDocs?.passport?.backStorageKey;
-    if (backKey) {
-      await Document.create({
-        application: application._id,
-        travellerId: primaryTraveller?.travellerId || 'trav_1',
-        documentType: 'PASSPORT_BACK',
-        name: 'Passport Back Page',
-        originalFilename: 'passport_back.jpg',
-        storageKey: backKey,
-        mimeType: 'image/jpeg',
-        status: 'VERIFIED'
-      }).catch(() => {});
+    if (backKey && backKey !== frontKey) {
+      await Document.findOneAndUpdate(
+        { application: application._id, storageKey: backKey },
+        {
+          application: application._id,
+          travellerId: primaryTraveller?.travellerId || 'trav_1',
+          documentType: 'PASSPORT_BACK',
+          name: 'Passport Back Page',
+          originalFilename: 'passport_back.jpg',
+          storageKey: backKey,
+          mimeType: 'image/jpeg',
+          status: 'VERIFIED'
+        },
+        { upsert: true, new: true, setDefaultsOnInsert: true }
+      ).catch(() => {});
     }
 
     const photoKey = data.passportPhoto?.storageKey || data.passportOcr?.photoStorageKey || travDocs?.passport_photo?.storageKey || travDocs?.photograph?.storageKey || travDocs?.photo?.storageKey;
-    if (photoKey) {
-      await Document.create({
-        application: application._id,
-        travellerId: primaryTraveller?.travellerId || 'trav_1',
-        documentType: 'PASSPORT_PHOTO',
-        name: 'Passport Size Photograph',
-        originalFilename: data.passportPhoto?.originalFilename || 'passport_photograph.jpg',
-        storageKey: photoKey,
-        mimeType: data.passportPhoto?.mimeType || 'image/jpeg',
-        status: 'VERIFIED'
-      }).catch(() => {});
+    if (photoKey && photoKey !== frontKey && photoKey !== backKey) {
+      await Document.findOneAndUpdate(
+        { application: application._id, storageKey: photoKey },
+        {
+          application: application._id,
+          travellerId: primaryTraveller?.travellerId || 'trav_1',
+          documentType: 'PASSPORT_PHOTO',
+          name: 'Passport Size Photo',
+          originalFilename: data.passportPhoto?.originalFilename || 'passport_photograph.jpg',
+          storageKey: photoKey,
+          mimeType: data.passportPhoto?.mimeType || 'image/jpeg',
+          status: 'VERIFIED'
+        },
+        { upsert: true, new: true, setDefaultsOnInsert: true }
+      ).catch(() => {});
+    }
+
+    // 6.1 Link any additional customer uploaded documents (e.g. Flight, Accommodation, Financials)
+    if (Array.isArray(data.documents) && data.documents.length > 0) {
+      for (const [idx, doc] of data.documents.entries()) {
+        const docKey = doc.storageKey;
+        // Skip if this doc is already linked as front, back, or photo
+        if (docKey && (docKey === frontKey || docKey === backKey || docKey === photoKey)) {
+          continue;
+        }
+        if (docKey) {
+          await Document.findOneAndUpdate(
+            { application: application._id, storageKey: docKey },
+            {
+              application: application._id,
+              travellerId: doc.travellerId || (travellers[0]?.travellerId || 'trav_1'),
+              documentType: doc.documentType || doc.name || `Document ${idx + 1}`,
+              name: doc.name || doc.documentType || `Document ${idx + 1}`,
+              originalFilename: doc.originalFilename || doc.name || 'document.pdf',
+              storageKey: docKey,
+              mimeType: doc.mimeType || 'application/pdf',
+              status: doc.status === 'Verified' ? 'VERIFIED' : 'PENDING'
+            },
+            { upsert: true, new: true, setDefaultsOnInsert: true }
+          ).catch(() => {});
+        }
+      }
     }
 
     await auditService.log({

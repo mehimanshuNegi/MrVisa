@@ -1,5 +1,5 @@
 import { applicationService } from '../services/application.service.js';
-import { documentService } from '../services/document.service.js';
+import { documentService, getSensibleFilename } from '../services/document.service.js';
 import { ApiResponse } from '../utils/apiResponse.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 import { ApiError } from '../utils/apiError.js';
@@ -107,6 +107,60 @@ export const uploadDocumentForApplication = asyncHandler(async (req, res) => {
   });
 
   return ApiResponse.created(res, result, 'Document uploaded successfully');
+});
+
+export const getApplicationDocumentSignedUrl = asyncHandler(async (req, res) => {
+  const { idOrRef, docId } = req.params;
+  const mode = req.query.mode === 'download' ? 'download' : 'preview';
+  const { document, application } = await documentService.getDocumentForApplication(idOrRef, docId, req.user);
+
+  const sensibleFilename = getSensibleFilename(document, application);
+  const disposition = mode === 'download' ? `attachment; filename="${sensibleFilename}"` : 'inline';
+  const signedUrl = await storageService.getSignedUrl(document.storageKey, 900, {
+    responseContentDisposition: disposition,
+    responseContentType: document.mimeType || 'image/jpeg'
+  });
+
+  return ApiResponse.success(res, {
+    documentId: document._id ? document._id.toString() : docId,
+    id: document._id ? document._id.toString() : docId,
+    name: document.name,
+    documentType: document.documentType,
+    originalFilename: document.originalFilename,
+    downloadFilename: sensibleFilename,
+    mimeType: document.mimeType,
+    fileSize: document.fileSize,
+    signedUrl,
+    fileUrl: signedUrl
+  }, 'Document access URL generated successfully');
+});
+
+export const getApplicationDocumentFile = asyncHandler(async (req, res) => {
+  const { idOrRef, docId } = req.params;
+  const mode = req.query.mode === 'download' ? 'download' : 'preview';
+  const { document, application } = await documentService.getDocumentForApplication(idOrRef, docId, req.user);
+
+  const sensibleFilename = getSensibleFilename(document, application);
+  const mimeType = document.mimeType || 'image/jpeg';
+
+  res.setHeader('Content-Type', mimeType);
+  res.setHeader('Content-Disposition', mode === 'download' ? `attachment; filename="${encodeURIComponent(sensibleFilename)}"` : 'inline');
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('Cache-Control', 'private, no-cache, no-store, must-revalidate');
+
+  try {
+    const { stream, contentType, contentLength } = await storageService.getObjectStream(document.storageKey);
+    if (contentType) res.setHeader('Content-Type', contentType);
+    if (contentLength) res.setHeader('Content-Length', contentLength);
+    return stream.pipe(res);
+  } catch (err) {
+    logger.warn(`Direct stream failed for ${document.storageKey}, redirecting to signed URL:`, { error: err.message });
+    const signedUrl = await storageService.getSignedUrl(document.storageKey, 300, {
+      responseContentDisposition: mode === 'download' ? `attachment; filename="${sensibleFilename}"` : 'inline',
+      responseContentType: mimeType
+    });
+    return res.redirect(signedUrl);
+  }
 });
 
 export const updateCustomerAction = asyncHandler(async (req, res) => {

@@ -6,6 +6,42 @@ import { ApiError } from '../utils/apiError.js';
 import { auditService } from './audit.service.js';
 import { AUDIT_ACTIONS, AUDIT_ENTITIES, APPLICATION_STATUS } from '../constants/statuses.js';
 import { logger } from '../utils/logger.js';
+import { env } from '../config/environment.js';
+
+export function getSensibleFilename(document, application = null) {
+  if (!document) return 'document.pdf';
+  const name = String(document.name || document.originalFilename || document.documentType || 'document').toLowerCase();
+  const docType = String(document.documentType || '').toLowerCase();
+  
+  // Detect extension
+  let ext = '';
+  const orig = document.originalFilename || document.name || '';
+  const extMatch = orig.match(/\.([a-zA-Z0-9]+)$/);
+  if (extMatch) {
+    ext = `.${extMatch[1].toLowerCase()}`;
+  } else if (document.mimeType) {
+    if (document.mimeType.includes('pdf')) ext = '.pdf';
+    else if (document.mimeType.includes('png')) ext = '.png';
+    else if (document.mimeType.includes('webp')) ext = '.webp';
+    else if (document.mimeType.includes('jpeg') || document.mimeType.includes('jpg')) ext = '.jpg';
+  }
+  if (!ext) ext = '.jpg';
+
+  let base = 'document';
+  if (name.includes('photo') || docType.includes('photo') || name.includes('portrait')) {
+    base = 'passport-photo';
+  } else if ((name.includes('front') && name.includes('back')) || (docType.includes('front') && docType.includes('back'))) {
+    base = 'passport-front-back';
+  } else if (name.includes('back') || docType.includes('back')) {
+    base = 'passport-back-page';
+  } else if (name.includes('front') || docType.includes('front') || name.includes('passport')) {
+    base = 'passport-front-back';
+  } else {
+    base = name.replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'document';
+  }
+
+  return `${base}${ext}`;
+}
 
 class DocumentService {
   /**
@@ -172,7 +208,7 @@ class DocumentService {
   }
 
   /**
-   * List all active documents belonging to an application
+   * List all active documents belonging to an application with verified storage mapping
    */
   async getDocumentsByApplication(applicationId, currentUser = null) {
     if (!applicationId) throw ApiError.badRequest('Application ID is required');
@@ -191,8 +227,63 @@ class DocumentService {
         ? application.customer._id.toString()
         : application.customer?.toString();
 
-      if (ownerId && ownerId !== currentUser._id.toString()) {
+      if (!ownerId || ownerId !== currentUser._id.toString()) {
         throw ApiError.forbidden('You do not have permission to view documents for this application');
+      }
+    }
+
+    // Auto-sync / auto-link any documents from passportOcr / passportPhoto if not yet in Document collection
+    const primaryTraveller = application.travellers?.[0];
+    const travDocs = primaryTraveller?.docs || {};
+    const frontKey = application.passportOcr?.frontStorageKey || travDocs?.passport?.frontStorageKey || (travDocs?.passport?.storageKey && !travDocs?.passport?.backStorageKey ? travDocs.passport.storageKey : null);
+    const backKey = application.passportOcr?.backStorageKey || travDocs?.passport?.backStorageKey;
+    const photoKey = application.passportPhoto?.storageKey || application.passportOcr?.photoStorageKey || travDocs?.passport_photo?.storageKey || travDocs?.photograph?.storageKey || travDocs?.photo?.storageKey;
+
+    if (frontKey) {
+      const exists = await Document.findOne({ application: application._id, storageKey: frontKey, isDeleted: false });
+      if (!exists) {
+        await Document.create({
+          application: application._id,
+          travellerId: primaryTraveller?.travellerId || 'trav_1',
+          documentType: 'PASSPORT_FRONT',
+          name: 'Passport Front & Back Scan',
+          originalFilename: 'passport_front.jpg',
+          storageKey: frontKey,
+          mimeType: 'image/jpeg',
+          status: 'VERIFIED'
+        }).catch(() => {});
+      }
+    }
+
+    if (backKey && backKey !== frontKey) {
+      const exists = await Document.findOne({ application: application._id, storageKey: backKey, isDeleted: false });
+      if (!exists) {
+        await Document.create({
+          application: application._id,
+          travellerId: primaryTraveller?.travellerId || 'trav_1',
+          documentType: 'PASSPORT_BACK',
+          name: 'Passport Back Page',
+          originalFilename: 'passport_back.jpg',
+          storageKey: backKey,
+          mimeType: 'image/jpeg',
+          status: 'VERIFIED'
+        }).catch(() => {});
+      }
+    }
+
+    if (photoKey && photoKey !== frontKey && photoKey !== backKey) {
+      const exists = await Document.findOne({ application: application._id, storageKey: photoKey, isDeleted: false });
+      if (!exists) {
+        await Document.create({
+          application: application._id,
+          travellerId: primaryTraveller?.travellerId || 'trav_1',
+          documentType: 'PASSPORT_PHOTO',
+          name: 'Passport Size Photo',
+          originalFilename: application.passportPhoto?.originalFilename || 'passport_photograph.jpg',
+          storageKey: photoKey,
+          mimeType: application.passportPhoto?.mimeType || 'image/jpeg',
+          status: 'VERIFIED'
+        }).catch(() => {});
       }
     }
 
@@ -203,9 +294,23 @@ class DocumentService {
 
     const result = [];
     for (const doc of documents) {
-      const docJson = doc.toJSON();
+      const docJson = doc.toJSON ? doc.toJSON() : { ...doc };
+      docJson.id = doc._id.toString();
+      docJson.documentId = doc._id.toString();
+      docJson.applicationId = application.referenceNumber || application._id.toString();
+      docJson.downloadFilename = getSensibleFilename(doc, application);
+
+      const orig = doc.originalFilename || doc.name || '';
+      const extMatch = orig.match(/\.([a-zA-Z0-9]+)$/);
+      const isPdf = doc.mimeType?.includes('pdf') || extMatch?.[1]?.toLowerCase() === 'pdf';
+      docJson.format = isPdf ? 'PDF' : (extMatch ? extMatch[1].toUpperCase() : 'JPG');
+      docJson.fileFormat = docJson.format;
+
       try {
-        docJson.signedUrl = await storageService.getSignedUrl(doc.storageKey);
+        docJson.signedUrl = await storageService.getSignedUrl(doc.storageKey, env.SIGNED_URL_EXPIRY_SECONDS, {
+          responseContentDisposition: 'inline',
+          responseContentType: doc.mimeType || 'image/jpeg'
+        });
         docJson.fileUrl = docJson.signedUrl;
       } catch (err) {
         logger.warn(`Could not generate signed URL for document ${doc._id}:`, { error: err.message });
@@ -222,12 +327,115 @@ class DocumentService {
   }
 
   /**
+   * Find a specific document belonging to an application
+   */
+  async getDocumentForApplication(applicationId, docId, currentUser = null) {
+    if (!currentUser) throw ApiError.unauthorized('Authentication required to access document');
+    if (!applicationId) throw ApiError.badRequest('Application ID is required');
+    if (!docId) throw ApiError.badRequest('Document ID is required');
+
+    let application = null;
+    if (mongoose.Types.ObjectId.isValid(applicationId)) {
+      application = await Application.findById(applicationId);
+    }
+    if (!application) {
+      application = await Application.findOne({ referenceNumber: String(applicationId).toUpperCase() });
+    }
+    if (!application) throw ApiError.notFound('Application not found');
+
+    if (currentUser.role !== 'ADMIN') {
+      const ownerId = application.customer?._id
+        ? application.customer._id.toString()
+        : application.customer?.toString();
+      if (!ownerId || ownerId !== currentUser._id.toString()) {
+        throw ApiError.forbidden('You do not have permission to view documents for this application');
+      }
+    }
+
+    let document = null;
+    if (mongoose.Types.ObjectId.isValid(docId)) {
+      document = await Document.findOne({ _id: docId, application: application._id, isDeleted: false });
+    }
+    if (!document) {
+      document = await Document.findOne({ storageKey: docId, application: application._id, isDeleted: false });
+    }
+
+    const cleanDocId = String(docId).toLowerCase();
+    if (!document) {
+      if (cleanDocId.includes('front') || cleanDocId === 'passport_scan' || cleanDocId === 'doc_1') {
+        document = await Document.findOne({ application: application._id, documentType: 'PASSPORT_FRONT', isDeleted: false });
+      } else if (cleanDocId.includes('back')) {
+        document = await Document.findOne({ application: application._id, documentType: 'PASSPORT_BACK', isDeleted: false });
+      } else if (cleanDocId.includes('photo')) {
+        document = await Document.findOne({ application: application._id, documentType: 'PASSPORT_PHOTO', isDeleted: false });
+      }
+    }
+
+    // Direct fallback from application data if Document model was missing
+    if (!document) {
+      const travDocs = application.travellers?.[0]?.docs || {};
+      if (cleanDocId.includes('front') || cleanDocId === 'passport_scan' || cleanDocId === 'doc_1' || cleanDocId === 'passport') {
+        const key = application.passportOcr?.frontStorageKey || travDocs?.passport?.frontStorageKey || travDocs?.passport?.storageKey;
+        if (key) {
+          document = {
+            _id: 'passport_front',
+            name: 'Passport Front & Back Scan',
+            documentType: 'PASSPORT_FRONT',
+            originalFilename: 'passport_front.jpg',
+            storageKey: key,
+            mimeType: 'image/jpeg',
+            application: application._id
+          };
+        }
+      } else if (cleanDocId.includes('back')) {
+        const key = application.passportOcr?.backStorageKey || travDocs?.passport?.backStorageKey;
+        if (key) {
+          document = {
+            _id: 'passport_back',
+            name: 'Passport Back Page',
+            documentType: 'PASSPORT_BACK',
+            originalFilename: 'passport_back.jpg',
+            storageKey: key,
+            mimeType: 'image/jpeg',
+            application: application._id
+          };
+        }
+      } else if (cleanDocId.includes('photo')) {
+        const key = application.passportPhoto?.storageKey || application.passportOcr?.photoStorageKey || travDocs?.passport_photo?.storageKey || travDocs?.photo?.storageKey;
+        if (key) {
+          document = {
+            _id: 'passport_photo',
+            name: 'Passport Size Photo',
+            documentType: 'PASSPORT_PHOTO',
+            originalFilename: application.passportPhoto?.originalFilename || 'passport_photograph.jpg',
+            storageKey: key,
+            mimeType: application.passportPhoto?.mimeType || 'image/jpeg',
+            application: application._id
+          };
+        }
+      }
+    }
+
+    if (!document || !document.storageKey) {
+      throw ApiError.notFound('Document not found in this application');
+    }
+
+    return { document, application };
+  }
+
+  /**
    * Get single document metadata
    */
   async getDocumentById(documentId, currentUser = null) {
     if (!documentId) throw ApiError.badRequest('Document ID is required');
 
-    const document = await Document.findOne({ _id: documentId, isDeleted: false });
+    let document = null;
+    if (mongoose.Types.ObjectId.isValid(documentId)) {
+      document = await Document.findOne({ _id: documentId, isDeleted: false });
+    }
+    if (!document) {
+      document = await Document.findOne({ storageKey: documentId, isDeleted: false });
+    }
     if (!document) throw ApiError.notFound('Document not found');
 
     const application = await Application.findById(document.application);
@@ -244,7 +452,20 @@ class DocumentService {
     }
 
     const docJson = document.toJSON();
-    docJson.signedUrl = await storageService.getSignedUrl(document.storageKey);
+    docJson.id = document._id.toString();
+    docJson.documentId = document._id.toString();
+    docJson.downloadFilename = getSensibleFilename(document, application);
+
+    const orig = document.originalFilename || document.name || '';
+    const extMatch = orig.match(/\.([a-zA-Z0-9]+)$/);
+    const isPdf = document.mimeType?.includes('pdf') || extMatch?.[1]?.toLowerCase() === 'pdf';
+    docJson.format = isPdf ? 'PDF' : (extMatch ? extMatch[1].toUpperCase() : 'JPG');
+    docJson.fileFormat = docJson.format;
+
+    docJson.signedUrl = await storageService.getSignedUrl(document.storageKey, env.SIGNED_URL_EXPIRY_SECONDS, {
+      responseContentDisposition: 'inline',
+      responseContentType: document.mimeType || 'image/jpeg'
+    });
     docJson.fileUrl = docJson.signedUrl;
     if (currentUser?.role !== 'ADMIN') {
       delete docJson.storageKey;
@@ -256,12 +477,18 @@ class DocumentService {
   /**
    * Generates a temporary signed download/view URL for an authorized document
    */
-  async getDocumentSignedUrl(documentId, currentUser = null) {
+  async getDocumentSignedUrl(documentId, currentUser = null, options = {}) {
     if (!currentUser) {
       throw ApiError.unauthorized('Authentication required to access documents');
     }
 
-    const document = await Document.findOne({ _id: documentId, isDeleted: false });
+    let document = null;
+    if (mongoose.Types.ObjectId.isValid(documentId)) {
+      document = await Document.findOne({ _id: documentId, isDeleted: false });
+    }
+    if (!document) {
+      document = await Document.findOne({ storageKey: documentId, isDeleted: false });
+    }
     if (!document) {
       throw ApiError.notFound('Document not found');
     }
@@ -281,14 +508,28 @@ class DocumentService {
       }
     }
 
-    const signedUrl = await storageService.getSignedUrl(document.storageKey);
+    const mode = options.mode || (options.download ? 'download' : 'preview');
+    const sensibleFilename = getSensibleFilename(document, application);
+    const disposition = mode === 'download'
+      ? `attachment; filename="${sensibleFilename}"`
+      : 'inline';
+
+    const signedUrl = await storageService.getSignedUrl(document.storageKey, env.SIGNED_URL_EXPIRY_SECONDS, {
+      responseContentDisposition: disposition,
+      responseContentType: document.mimeType || 'image/jpeg'
+    });
+
     return {
-      documentId: document._id,
+      documentId: document._id ? document._id.toString() : documentId,
+      id: document._id ? document._id.toString() : documentId,
       name: document.name,
+      documentType: document.documentType,
       originalFilename: document.originalFilename,
+      downloadFilename: sensibleFilename,
       mimeType: document.mimeType,
       fileSize: document.fileSize,
-      signedUrl
+      signedUrl,
+      fileUrl: signedUrl
     };
   }
 

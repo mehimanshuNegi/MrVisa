@@ -7,6 +7,8 @@ import {
   submitApplication,
   getApplicationStatus,
   getApplicationDocuments,
+  getApplicationDocumentSignedUrl,
+  getApplicationDocumentFile,
   uploadDocumentForApplication,
   updateCustomerAction,
   claimGuestApplication,
@@ -66,6 +68,11 @@ router.post('/:idOrRef/submit', authenticate, validate(submitApplicationSchema),
 
 // 8. Application Documents Sub-routes
 router.get('/:idOrRef/documents', authenticate, getApplicationDocuments);
+router.get('/:idOrRef/documents/:docId/file', authenticate, getApplicationDocumentFile);
+router.get('/:idOrRef/documents/:docId/download', authenticate, getApplicationDocumentFile);
+router.get('/:idOrRef/documents/:docId/preview', authenticate, getApplicationDocumentFile);
+router.get('/:idOrRef/documents/:docId/url', authenticate, getApplicationDocumentSignedUrl);
+router.get('/:idOrRef/documents/:docId', authenticate, getApplicationDocumentSignedUrl);
 router.post('/:idOrRef/documents', optionalAuthenticate, uploadMiddleware.single('file'), uploadDocumentForApplication);
 
 // 9. Customer action response (e.g. re-upload when ADDITIONAL_INFORMATION_REQUIRED)

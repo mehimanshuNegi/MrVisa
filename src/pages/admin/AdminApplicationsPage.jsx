@@ -124,16 +124,31 @@ export default function AdminApplicationsPage() {
   const [previewDoc, setPreviewDoc] = useState(null);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewUrl, setPreviewUrl] = useState('');
+  const [previewError, setPreviewError] = useState(null);
   const [downloadingDocId, setDownloadingDocId] = useState(null);
 
-  // When opening an application, populate the edit form controls
-  const handleOpenDetails = (app) => {
+  // When opening an application, populate the edit form controls and fetch live documents
+  const handleOpenDetails = async (app) => {
     setSelectedApp(app);
     setEditStatus(app.status || APPLICATION_STATUS.APPLICATION_RECEIVED);
     setEditAdminMessage(app.adminMessage || '');
     setEditRequiredAction(app.requiredAction || REQUIRED_ACTION.NONE);
     setEditDocuments(app.documents ? JSON.parse(JSON.stringify(app.documents)) : []);
     setSaveSuccess(false);
+
+    // Refresh application documents with live signed URLs
+    const appId = app.id || app.referenceNumber;
+    if (appId) {
+      try {
+        const freshDocs = await documentService.getDocumentsByApplication(appId);
+        if (Array.isArray(freshDocs) && freshDocs.length > 0) {
+          setEditDocuments(freshDocs);
+          setSelectedApp((prev) => (prev && (prev.id === appId || prev.referenceNumber === appId) ? { ...prev, documents: freshDocs } : prev));
+        }
+      } catch (err) {
+        console.warn('Could not refresh application documents:', err);
+      }
+    }
 
     // Fetch feedback if not attached
     if (!app.feedback && app.id) {
@@ -152,15 +167,33 @@ export default function AdminApplicationsPage() {
     setPreviewDoc(doc);
     setPreviewLoading(true);
     setPreviewUrl('');
+    setPreviewError(null);
+
+    const appId = selectedApp?.id || selectedApp?.referenceNumber || '';
+
     try {
-      if (doc.fileUrl && doc.fileUrl.startsWith('http')) {
-        setPreviewUrl(doc.fileUrl);
-      } else if (doc.id || doc.documentId) {
-        const url = await documentService.getDocumentSignedUrl(doc.id || doc.documentId, 'get');
-        setPreviewUrl(url);
+      let finalUrl = '';
+
+      // Check if doc already has a valid signedUrl
+      if (doc.signedUrl && typeof doc.signedUrl === 'string' && doc.signedUrl.startsWith('http')) {
+        finalUrl = doc.signedUrl;
+      } else if (doc.fileUrl && typeof doc.fileUrl === 'string' && doc.fileUrl.startsWith('http')) {
+        finalUrl = doc.fileUrl;
       }
+
+      // If not yet available, request a fresh signed preview URL from backend
+      if (!finalUrl && (doc.id || doc.documentId || doc.storageKey)) {
+        finalUrl = await documentService.getDocumentPreviewUrl(doc, appId);
+      }
+
+      if (!finalUrl) {
+        throw new Error('Unable to retrieve document preview link.');
+      }
+
+      setPreviewUrl(finalUrl);
     } catch (e) {
       console.warn('Could not retrieve presigned preview URL:', e);
+      setPreviewError('Unable to load document preview. Please check connection or try downloading.');
     } finally {
       setPreviewLoading(false);
     }
@@ -169,20 +202,11 @@ export default function AdminApplicationsPage() {
   // Original customer document download handler
   const handleDownloadDoc = async (doc) => {
     const docId = doc.id || doc.documentId;
-    const docName = doc.name || doc.originalFilename || 'document';
+    const appId = selectedApp?.id || selectedApp?.referenceNumber || '';
     setDownloadingDocId(docId);
+
     try {
-      if (doc.fileUrl && doc.fileUrl.startsWith('http')) {
-        const link = document.createElement('a');
-        link.href = doc.fileUrl;
-        link.download = docName;
-        link.target = '_blank';
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-      } else {
-        await documentService.downloadDocument(docId, docName);
-      }
+      await documentService.downloadDocument(doc, appId);
     } catch (e) {
       console.error('Download document failed:', e);
       alert('Unable to download document. Please check connection and try again.');
@@ -195,6 +219,9 @@ export default function AdminApplicationsPage() {
   const handleCloseDetails = () => {
     setSelectedApp(null);
     setSaveSuccess(false);
+    setPreviewDoc(null);
+    setPreviewUrl('');
+    setPreviewError(null);
   };
 
   // Update specific document verification status in local edit state
@@ -1070,14 +1097,39 @@ export default function AdminApplicationsPage() {
                   <Loader2 size={24} className="animate-spin text-[#2563EB]" />
                   <span>Generating secure presigned preview...</span>
                 </div>
+              ) : previewError ? (
+                <div className="text-center py-10 space-y-3 max-w-sm">
+                  <div className="w-12 h-12 rounded-full bg-rose-50 text-rose-600 mx-auto flex items-center justify-center">
+                    <FileText size={24} />
+                  </div>
+                  <div className="space-y-1">
+                    <h4 className="text-xs font-bold text-[#082B61]">Preview unavailable</h4>
+                    <p className="text-[11px] text-slate-500 font-medium">
+                      {previewError}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => handleDownloadDoc(previewDoc)}
+                    className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold text-white bg-[#2563EB] hover:bg-[#1d4ed8] transition-colors cursor-pointer"
+                  >
+                    <Download size={13} />
+                    <span>Download Original File</span>
+                  </button>
+                </div>
               ) : previewUrl ? (
                 (() => {
                   const docName = previewDoc.name || previewDoc.originalFilename || '';
                   const extMatch = docName.match(/\.([a-zA-Z0-9]+)$/);
                   const ext = extMatch ? extMatch[1].toUpperCase() : '';
                   const format = (previewDoc.fileFormat || previewDoc.format || ext).toUpperCase();
+                  const isPdf = format.includes('PDF') || (typeof previewUrl === 'string' && previewUrl.toLowerCase().includes('.pdf'));
+                  const isImage = ['JPG', 'JPEG', 'PNG', 'WEBP', 'GIF'].some(f => format.includes(f)) ||
+                                  previewDoc.mimeType?.startsWith('image/') ||
+                                  (typeof previewUrl === 'string' && /\.(jpg|jpeg|png|webp|gif)(\?|$)/i.test(previewUrl)) ||
+                                  !isPdf;
 
-                  if (format === 'PDF' || previewUrl.toLowerCase().includes('.pdf')) {
+                  if (isPdf) {
                     return (
                       <div className="w-full space-y-3">
                         <iframe
@@ -1100,9 +1152,9 @@ export default function AdminApplicationsPage() {
                     );
                   }
 
-                  if (['JPG', 'JPEG', 'PNG', 'WEBP', 'GIF'].includes(format)) {
+                  if (isImage) {
                     return (
-                      <div className="max-h-[65vh] flex items-center justify-center p-2">
+                      <div className="max-h-[65vh] w-full flex items-center justify-center p-2">
                         <img
                           src={previewUrl}
                           alt={docName}

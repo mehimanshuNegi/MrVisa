@@ -3,6 +3,7 @@ import {
   uploadDocument,
   getDocumentById,
   getSignedUrl,
+  getDocumentFile,
   deleteDocument,
   updateDocumentStatus,
   serveLocalRawFile
@@ -31,6 +32,7 @@ router.get('/:id/signed-url', authenticate, getSignedUrl);
 router.get('/:id/url', authenticate, getSignedUrl);
 router.get('/:id/download', authenticate, getSignedUrl);
 router.get('/:id/preview', authenticate, getSignedUrl);
+router.get('/:id/file', authenticate, getDocumentFile);
 
 // 4. Delete document (Deletes from Cloudflare R2 and marks deleted in MongoDB)
 router.delete('/:id', authenticate, deleteDocument);

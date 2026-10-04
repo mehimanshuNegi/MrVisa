@@ -40,8 +40,32 @@ export const getDocumentById = asyncHandler(async (req, res) => {
 });
 
 export const getSignedUrl = asyncHandler(async (req, res) => {
-  const result = await documentService.getDocumentSignedUrl(req.params.id, req.user);
+  const mode = req.query.mode === 'download' ? 'download' : 'preview';
+  const result = await documentService.getDocumentSignedUrl(req.params.id, req.user, { mode });
   return ApiResponse.success(res, result, 'Signed download URL generated');
+});
+
+export const getDocumentFile = asyncHandler(async (req, res) => {
+  const mode = req.query.mode === 'download' ? 'download' : 'preview';
+  const doc = await documentService.getDocumentById(req.params.id, req.user);
+  const result = await documentService.getDocumentSignedUrl(req.params.id, req.user, { mode });
+
+  const sensibleFilename = result.downloadFilename || doc.originalFilename || 'document';
+  const mimeType = doc.mimeType || 'image/jpeg';
+
+  res.setHeader('Content-Type', mimeType);
+  res.setHeader('Content-Disposition', mode === 'download' ? `attachment; filename="${encodeURIComponent(sensibleFilename)}"` : 'inline');
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('Cache-Control', 'private, no-cache, no-store, must-revalidate');
+
+  try {
+    const { stream, contentType, contentLength } = await storageService.getObjectStream(doc.storageKey);
+    if (contentType) res.setHeader('Content-Type', contentType);
+    if (contentLength) res.setHeader('Content-Length', contentLength);
+    return stream.pipe(res);
+  } catch (err) {
+    return res.redirect(result.signedUrl);
+  }
 });
 
 export const deleteDocument = asyncHandler(async (req, res) => {
@@ -86,6 +110,7 @@ export default {
   uploadDocument,
   getDocumentById,
   getSignedUrl,
+  getDocumentFile,
   deleteDocument,
   updateDocumentStatus,
   serveLocalRawFile

@@ -31,7 +31,8 @@ export function normalizeTraveller(rawTrav, index = 0) {
     phone: rawTrav.phone || '',
     passportNumber: rawTrav.passportNumber || '',
     placeOfIssue: rawTrav.placeOfIssue || '',
-    issueDate: rawTrav.issueDate || rawTrav.passportIssueDate || '',
+    issueDate: rawTrav.issueDate || rawTrav.passportIssueDate || rawTrav.passportIssuedOn || '',
+    passportIssuedOn: rawTrav.passportIssuedOn || rawTrav.issueDate || rawTrav.passportIssueDate || '',
     expiryDate: rawTrav.expiryDate || rawTrav.passportExpiry || '',
     nationality: rawTrav.nationality || 'Indian',
     dob: rawTrav.dob || rawTrav.dateOfBirth || '—',
@@ -444,6 +445,7 @@ class ApplicationService {
               nationality: 'Indian',
               gender: 'Male',
               issueDate: '',
+              passportIssuedOn: '',
               expiryDate: ''
             },
         fieldStatus: {
@@ -453,6 +455,7 @@ class ApplicationService {
           nationality: 'HIGH',
           gender: 'HIGH',
           issueDate: 'MISSING',
+          passportIssuedOn: 'MISSING',
           expiryDate: 'MISSING'
         }
       };

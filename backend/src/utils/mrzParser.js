@@ -4,6 +4,8 @@
  * Implements ICAO 9303 check digit verification, date parsing, and country code mapping.
  */
 
+import { validatePassportDates } from './dateValidator.js';
+
 // ISO 3166-1 alpha-3 / ICAO 9303 country code mapping to common demonyms/countries
 const COUNTRY_CODES = {
   IND: 'Indian',
@@ -379,7 +381,8 @@ const MONTH_MAP = {
  */
 export function parseDateString(str) {
   if (!str) return null;
-  const clean = String(str).trim();
+  const raw = String(str).trim();
+  const clean = raw.replace(/^[^\w\d]+|[^\w\d]+$/g, '').trim();
 
   // 14 Dec 2016 or 14-Dec-2016 or 14/DEC/2016
   const textMonthMatch = clean.match(/^(\d{1,2})[\s/-]+([A-Za-z]{3,9})[\s/-]+(\d{4})$/);
@@ -391,12 +394,13 @@ export function parseDateString(str) {
     if (m) return `${y}-${m}-${d}`;
   }
 
-  // DD/MM/YYYY or DD-MM-YYYY or DD.MM.YYYY
-  const dmy = /^(\d{1,2})[./-](\d{1,2})[./-](\d{4})$/.exec(clean);
+  // DD/MM/YYYY or DD-MM-YYYY or DD.MM.YYYY or DD MM YYYY (including OCR 2O16 -> 2016)
+  const dmy = /^(\d{1,2})[./\s-](\d{1,2})[./\s-](20[0-9OIl]{2}|19[0-9OIl]{2}|\d{4})$/.exec(clean);
   if (dmy) {
     const d = String(parseInt(dmy[1], 10)).padStart(2, '0');
     const m = String(parseInt(dmy[2], 10)).padStart(2, '0');
-    const y = dmy[3];
+    const fixedYear = dmy[3].replace(/O/g, '0').replace(/[Il]/g, '1');
+    const y = fixedYear;
     return `${y}-${m}-${d}`;
   }
 
@@ -417,14 +421,81 @@ export function parseDateString(str) {
     return `${y}-${m}-${day}`;
   }
 
+  // Try extracting any date substring from free text
+  const extracted = extractAllDatesFromText(raw);
+  if (extracted.length > 0) {
+    return extracted[0];
+  }
+
   return null;
 }
 
 /**
- * Attempts to parse date of issue from Visual Inspection Zone (VIZ) text
- * Searches for keywords like Date of Issue, Issue Date, Date de délivrance, etc.
- * Checks both same-line and next-line patterns.
+ * Extracts all valid dates (YYYY-MM-DD) from a text block or line.
+ * Normalizes DD/MM/YYYY, DD MMM YYYY, DD-MM-YYYY, YYYY-MM-DD to ISO format.
  */
+export function extractAllDatesFromText(text = '') {
+  if (!text) return [];
+  const results = [];
+  const str = String(text);
+
+  // Match 1: Alphanumeric month dates, e.g. "14 Dec 2016", "14-DEC-2016", "14/DEC/2016"
+  const alphaRegex = /\b(\d{1,2})[\s/.-]+([A-Za-z]{3,9})[\s/.-]+(\d{4})\b/g;
+  let m;
+  while ((m = alphaRegex.exec(str)) !== null) {
+    const day = parseInt(m[1], 10);
+    const mStr = m[2].toUpperCase().substring(0, 3);
+    const month = MONTH_MAP[mStr];
+    const year = parseInt(m[3], 10);
+    if (month && day >= 1 && day <= 31 && year >= 1900 && year <= 2099) {
+      results.push({
+        date: `${year}-${month}-${String(day).padStart(2, '0')}`,
+        index: m.index,
+        raw: m[0]
+      });
+    }
+  }
+
+  // Match 2: DD/MM/YYYY, DD-MM-YYYY, DD.MM.YYYY, DD MM YYYY
+  // Also allowing OCR substitution in year (e.g. 2O16 -> 2016, 20I6 -> 2016)
+  const dmyRegex = /\b(\d{1,2})[./\s-](\d{1,2})[./\s-](20[0-9OIl]{2}|19[0-9OIl]{2}|\d{4})\b/g;
+  while ((m = dmyRegex.exec(str)) !== null) {
+    const day = parseInt(m[1], 10);
+    const monthNum = parseInt(m[2], 10);
+    const fixedYear = m[3].replace(/O/g, '0').replace(/[Il]/g, '1');
+    const year = parseInt(fixedYear, 10);
+    if (day >= 1 && day <= 31 && monthNum >= 1 && monthNum <= 12 && year >= 1900 && year <= 2099) {
+      if (!results.some((r) => Math.abs(r.index - m.index) < 5)) {
+        results.push({
+          date: `${year}-${String(monthNum).padStart(2, '0')}-${String(day).padStart(2, '0')}`,
+          index: m.index,
+          raw: m[0]
+        });
+      }
+    }
+  }
+
+  // Match 3: YYYY-MM-DD or YYYY/MM/DD
+  const ymdRegex = /\b(19\d{2}|20\d{2})[./-](\d{1,2})[./-](\d{1,2})\b/g;
+  while ((m = ymdRegex.exec(str)) !== null) {
+    const year = parseInt(m[1], 10);
+    const monthNum = parseInt(m[2], 10);
+    const day = parseInt(m[3], 10);
+    if (day >= 1 && day <= 31 && monthNum >= 1 && monthNum <= 12 && year >= 1900 && year <= 2099) {
+      if (!results.some((r) => Math.abs(r.index - m.index) < 5)) {
+        results.push({
+          date: `${year}-${String(monthNum).padStart(2, '0')}-${String(day).padStart(2, '0')}`,
+          index: m.index,
+          raw: m[0]
+        });
+      }
+    }
+  }
+
+  results.sort((a, b) => a.index - b.index);
+  return results.map((r) => r.date);
+}
+
 /**
  * Cleans extracted person name
  */
@@ -438,67 +509,28 @@ export function cleanPersonName(str) {
 }
 
 /**
- * Attempts to parse date of issue from Visual Inspection Zone (VIZ) text
- * Searches for keywords like Date of Issue, Issue Date, Date de délivrance, etc.
- * Checks both same-line and next-line patterns.
+ * Extracts and disambiguates passport dates from Visual Inspection Zone (VIZ) text.
+ * Supports:
+ * - Issue date and expiry date on same line
+ * - Issue and expiry labels split across OCR lines with dates on following lines
+ * - Issue date on line immediately below label
+ * - Cross-checks against MRZ dates where available
+ * - Assigns confidence:
+ *   - HIGH: VIZ + MRZ agree (issueDate <= today, < mrzExpiry, > mrzDob, valid <=10-yr period)
+ *   - MEDIUM: Only one reliable source is available (e.g. VIZ issue date available, MRZ unavailable)
+ *   - LOW: Uncertain extraction, invalid date range, or failed validity rule
+ *   - MISSING: If not found (allows manual entry)
  */
-export function extractIssueDateFromText(text = '') {
-  if (!text) return null;
-
-  const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
-
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-
-    // Combined issue and expiry line (e.g. "fa/Date of Issuemic aDate xpiry")
-    if (/(?:date\s+of\s+issue|issue\s+date).*?(?:e?xpir)/i.test(line)) {
-      for (let j = i + 1; j < Math.min(i + 4, lines.length); j++) {
-        const parsed = parseDateString(lines[j]);
-        if (parsed) return parsed;
-      }
-    }
-
-    // Label with value on same line
-    const sameLineMatch = line.match(/(?:date\s+of\s+issue|issue\s+date|date\s+d['’]?[eé]mission|date\s+de\s+d[ée]livrance|issued\s+on|d\.o\.i\.?)[:\s]+([0-9]{1,2}[./-][0-9]{1,2}[./-][0-9]{4}|[0-9]{1,2}[\s/-]+[a-zA-Z]{3,9}[\s/-]+[0-9]{4})/i);
-    if (sameLineMatch && sameLineMatch[1]) {
-      const parsed = parseDateString(sameLineMatch[1]);
-      if (parsed) return parsed;
-    }
-
-    // Label on line i, value on line i + 1
-    if (
-      /(?:date\s+of\s+issue|issue\s+date|date\s+de\s+d[ée]livrance|issued\s+on|d\.o\.i\.?)/i.test(line) &&
-      i + 1 < lines.length
-    ) {
-      const nextLine = lines[i + 1];
-      const parsed = parseDateString(nextLine);
-      if (parsed) return parsed;
-
-      const dateInNextLine = nextLine.match(/([0-9]{1,2}[./-][0-9]{1,2}[./-][0-9]{4}|[0-9]{1,2}[\s/-]+[a-zA-Z]{3,9}[\s/-]+[0-9]{4})/);
-      if (dateInNextLine && dateInNextLine[1]) {
-        const p = parseDateString(dateInNextLine[1]);
-        if (p) return p;
-      }
-    }
-  }
-
-  return null;
-}
-
-/**
- * Extracts structured fields from the Visual Inspection Zone (VIZ) of passport front page.
- */
-export function extractVizFieldsFromText(text = '') {
+export function extractPassportDatesFromViz(text = '', mrzData = null) {
   if (!text) {
     return {
-      placeOfIssue: '',
-      placeOfBirth: '',
       issueDate: '',
       expiryDate: '',
-      dateOfBirth: '',
-      visibleDocNumber: '',
-      nationality: '',
-      gender: ''
+      confidence: {
+        issueDate: 'MISSING',
+        expiryDate: 'MISSING'
+      },
+      source: 'MISSING'
     };
   }
 
@@ -507,10 +539,244 @@ export function extractVizFieldsFromText(text = '') {
     .map((l) => l.trim())
     .filter(Boolean);
 
+  const ISSUE_LABEL_REGEX = /(?:date\s+of\s+[il1]ssu(?:e|ing)?|issue\s+date|date\s+d['’]?[eé]mission|date\s+de\s+d[ée]livrance|issued\s+on|date\s+issued|d\.o\.i\.?|dt\.?\s*of\s*[il1]ssue|जारी\s*(?:करने\s*की)?\s*तिथि|जारी)/i;
+  const EXPIRY_LABEL_REGEX = /(?:date\s+of\s+expir(?:y|e|ation)?|expiry\s+date|date\s+d['’]?[eé]xpiration|expires?\s+on|d\.o\.e\.?|dt\.?\s*of\s*expiry|समाप्ति\s*(?:की)?\s*तिथि|समाप्ति|xpir)/i;
+  const COMBINED_LABEL_REGEX = /(?:(?:date\s+of\s+[il1]ssu|issue\s+date|issued\s+on|जारी).*?(?:expir|xpir|समाप्ति)|(?:expir|xpir|समाप्ति).*?(?:date\s+of\s+[il1]ssu|issue\s+date|issued\s+on|जारी))/i;
+
+  let candidateIssueDate = '';
+  let candidateExpiryDate = '';
+  let issueSource = 'MISSING';
+
+  const today = new Date().toISOString().split('T')[0];
+  const mrzExpiry = mrzData?.expiryDate || '';
+  const mrzDob = mrzData?.dateOfBirth || '';
+
+  // 1. Scan lines for combined or split layouts
+  for (let i = 0; i < cleanLines.length; i++) {
+    const line = cleanLines[i];
+
+    // CASE A: Combined Issue & Expiry labels on same line
+    // e.g. "Date of Issue: 14/12/2016 Date of Expiry: 13/12/2026"
+    // or "Date of Issue / Date de délivrance   Date of Expiry / Date d'expiration"
+    if (COMBINED_LABEL_REGEX.test(line)) {
+      const datesInLine = extractAllDatesFromText(line);
+      if (datesInLine.length >= 2) {
+        if (!candidateIssueDate) candidateIssueDate = datesInLine[0];
+        if (!candidateExpiryDate) candidateExpiryDate = datesInLine[1];
+        issueSource = 'SAME_LINE_COMBINED';
+        break;
+      } else if (datesInLine.length === 1 && !candidateIssueDate) {
+        candidateIssueDate = datesInLine[0];
+        issueSource = 'SAME_LINE_COMBINED';
+      }
+
+      // Check following lines (e.g. line i+1 has "14/12/2016  13/12/2026")
+      for (let j = i + 1; j < Math.min(i + 4, cleanLines.length); j++) {
+        const nextDates = extractAllDatesFromText(cleanLines[j]);
+        if (nextDates.length >= 2) {
+          if (!candidateIssueDate) candidateIssueDate = nextDates[0];
+          if (!candidateExpiryDate) candidateExpiryDate = nextDates[1];
+          issueSource = 'FOLLOWING_LINE_COMBINED';
+          break;
+        } else if (nextDates.length === 1) {
+          if (!candidateIssueDate) {
+            candidateIssueDate = nextDates[0];
+            issueSource = 'FOLLOWING_LINE_COMBINED';
+          } else if (!candidateExpiryDate && nextDates[0] !== candidateIssueDate) {
+            candidateExpiryDate = nextDates[0];
+            break;
+          }
+        }
+      }
+      if (candidateIssueDate) break;
+    }
+
+    // CASE B: Issue and Expiry labels split across consecutive lines
+    // Line i: "Date of Issue" (or "Date of Issu...")
+    // Line i+1: "Date of Expiry" (or "Date of Expir...")
+    // Line i+2: "14/12/2016 13/12/2026" (or Line i+2: "14/12/2016", Line i+3: "13/12/2026")
+    if (
+      ISSUE_LABEL_REGEX.test(line) &&
+      i + 1 < cleanLines.length &&
+      EXPIRY_LABEL_REGEX.test(cleanLines[i + 1])
+    ) {
+      for (let j = i + 2; j < Math.min(i + 5, cleanLines.length); j++) {
+        const nextDates = extractAllDatesFromText(cleanLines[j]);
+        if (nextDates.length >= 2) {
+          if (!candidateIssueDate) candidateIssueDate = nextDates[0];
+          if (!candidateExpiryDate) candidateExpiryDate = nextDates[1];
+          issueSource = 'SPLIT_LABELS_FOLLOWING_LINES';
+          break;
+        } else if (nextDates.length === 1) {
+          if (!candidateIssueDate) {
+            candidateIssueDate = nextDates[0];
+            issueSource = 'SPLIT_LABELS_FOLLOWING_LINES';
+          } else if (!candidateExpiryDate && nextDates[0] !== candidateIssueDate) {
+            candidateExpiryDate = nextDates[0];
+            break;
+          }
+        }
+      }
+      if (candidateIssueDate) break;
+    }
+
+    // CASE C: Standalone Issue Label on Line i
+    // Check line i itself, then line i+1 (immediately below), then line i+2
+    if (!candidateIssueDate && ISSUE_LABEL_REGEX.test(line)) {
+      const datesInLine = extractAllDatesFromText(line);
+      if (datesInLine.length > 0) {
+        candidateIssueDate = datesInLine[0];
+        issueSource = 'SAME_LINE_LABEL';
+        if (datesInLine.length >= 2 && !candidateExpiryDate) {
+          candidateExpiryDate = datesInLine[1];
+        }
+      } else if (i + 1 < cleanLines.length) {
+        // Line immediately below label
+        const nextDates = extractAllDatesFromText(cleanLines[i + 1]);
+        if (nextDates.length > 0) {
+          candidateIssueDate = nextDates[0];
+          issueSource = 'LINE_IMMEDIATELY_BELOW';
+          if (nextDates.length >= 2 && !candidateExpiryDate) {
+            candidateExpiryDate = nextDates[1];
+          }
+        } else if (i + 2 < cleanLines.length) {
+          // Line i+2 (skip bilingual subtitle line if present)
+          const nextDates2 = extractAllDatesFromText(cleanLines[i + 2]);
+          if (nextDates2.length > 0) {
+            candidateIssueDate = nextDates2[0];
+            issueSource = 'LINE_BELOW_SUBTITLE';
+            if (nextDates2.length >= 2 && !candidateExpiryDate) {
+              candidateExpiryDate = nextDates2[1];
+            }
+          }
+        }
+      }
+    }
+
+    // Standalone Expiry Label
+    if (!candidateExpiryDate && EXPIRY_LABEL_REGEX.test(line)) {
+      const datesInLine = extractAllDatesFromText(line);
+      if (datesInLine.length > 0) {
+        candidateExpiryDate = datesInLine[0];
+      } else if (i + 1 < cleanLines.length) {
+        const nextDates = extractAllDatesFromText(cleanLines[i + 1]);
+        if (nextDates.length > 0) {
+          candidateExpiryDate = nextDates[0];
+        } else if (i + 2 < cleanLines.length) {
+          const nextDates2 = extractAllDatesFromText(cleanLines[i + 2]);
+          if (nextDates2.length > 0) {
+            candidateExpiryDate = nextDates2[0];
+          }
+        }
+      }
+    }
+  }
+
+  // 2. Disambiguation & Cross-check with MRZ
+  const effectiveExpiry = mrzExpiry || candidateExpiryDate;
+  if (candidateIssueDate && effectiveExpiry && candidateIssueDate === effectiveExpiry) {
+    candidateIssueDate = '';
+  }
+
+  // If candidateIssueDate and candidateExpiryDate are both present and swapped (issue > expiry):
+  if (candidateIssueDate && candidateExpiryDate && candidateIssueDate > candidateExpiryDate) {
+    if (candidateExpiryDate <= today) {
+      const temp = candidateIssueDate;
+      candidateIssueDate = candidateExpiryDate;
+      candidateExpiryDate = temp;
+    }
+  }
+
+  // If candidateIssueDate is in the future:
+  if (candidateIssueDate && candidateIssueDate > today) {
+    candidateIssueDate = ''; // Cannot issue a passport in the future
+  }
+
+  // If candidateIssueDate is before DOB:
+  if (candidateIssueDate && mrzDob && candidateIssueDate <= mrzDob) {
+    candidateIssueDate = '';
+  }
+
+  // 3. Confidence determination
+  let issueConfidence = 'MISSING';
+  if (candidateIssueDate) {
+    if (mrzExpiry) {
+      const isBeforeExpiry = candidateIssueDate < mrzExpiry;
+      const isPastOrToday = candidateIssueDate <= today;
+      const validRange = validatePassportDates(candidateIssueDate, mrzExpiry);
+
+      if (isPastOrToday && isBeforeExpiry && validRange.isValid) {
+        issueConfidence = 'HIGH'; // Verified: VIZ and MRZ agree
+      } else if (!isBeforeExpiry || !isPastOrToday) {
+        issueConfidence = 'LOW';
+      } else {
+        issueConfidence = 'MEDIUM';
+      }
+    } else {
+      // VIZ issue date available but MRZ issue date unavailable
+      issueConfidence = 'MEDIUM'; // Review: only one reliable source
+    }
+  } else {
+    issueConfidence = 'MISSING';
+  }
+
+  return {
+    issueDate: candidateIssueDate || '',
+    passportIssuedOn: candidateIssueDate || '',
+    expiryDate: candidateExpiryDate || '',
+    confidence: {
+      issueDate: issueConfidence,
+      passportIssuedOn: issueConfidence,
+      expiryDate: candidateExpiryDate ? (mrzExpiry === candidateExpiryDate ? 'HIGH' : 'MEDIUM') : 'MISSING'
+    },
+    source: issueSource
+  };
+}
+
+/**
+ * Attempts to parse date of issue from Visual Inspection Zone (VIZ) text.
+ * Searches for keywords like Date of Issue, Issue Date, Date de délivrance, etc.
+ * Supports cross-checking against MRZ where provided.
+ */
+export function extractIssueDateFromText(text = '', mrzData = null) {
+  if (!text) return null;
+  const dates = extractPassportDatesFromViz(text, mrzData);
+  return dates.issueDate || null;
+}
+
+/**
+ * Extracts structured fields from the Visual Inspection Zone (VIZ) of passport front page.
+ */
+export function extractVizFieldsFromText(text = '', mrzData = null) {
+  if (!text) {
+    return {
+      placeOfIssue: '',
+      placeOfBirth: '',
+      issueDate: '',
+      passportIssuedOn: '',
+      expiryDate: '',
+      dateOfBirth: '',
+      visibleDocNumber: '',
+      nationality: '',
+      gender: '',
+      dateConfidence: {
+        issueDate: 'MISSING',
+        passportIssuedOn: 'MISSING',
+        expiryDate: 'MISSING'
+      }
+    };
+  }
+
+  const cleanLines = text
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter(Boolean);
+
+  const dateInfo = extractPassportDatesFromViz(text, mrzData);
   let placeOfIssue = '';
   let placeOfBirth = '';
-  let issueDate = '';
-  let expiryDate = '';
+  let issueDate = dateInfo.issueDate || '';
+  let expiryDate = dateInfo.expiryDate || '';
   let dateOfBirth = '';
   let visibleDocNumber = '';
   let nationality = '';
@@ -634,11 +900,13 @@ export function extractVizFieldsFromText(text = '') {
     placeOfIssue,
     placeOfBirth,
     issueDate,
+    passportIssuedOn: issueDate,
     expiryDate,
     dateOfBirth,
     visibleDocNumber,
     nationality,
-    gender
+    gender,
+    dateConfidence: dateInfo.confidence
   };
 }
 
@@ -1096,13 +1364,17 @@ export function mergePassportFrontBack({
 
   // Issue Date / passportIssuedOn (MRZ does not have it, VIZ is primary source)
   const issueVal = frontData.issueDate || frontData.passportIssuedOn || backData.issueDate || '';
-  const issueConf = frontFieldStatus.issueDate || (issueVal ? 'HIGH' : 'MISSING');
+  const issueConf = frontFieldStatus.issueDate || (issueVal ? (mrzData?.expiryDate ? 'HIGH' : 'MEDIUM') : 'MISSING');
   fields.issueDate = {
     value: issueVal,
     source: issueVal ? 'FRONT_PAGE_VIZ' : 'MISSING',
     confidence: issueConf
   };
-  fields.passportIssuedOn = fields.issueDate;
+  fields.passportIssuedOn = {
+    value: issueVal,
+    source: issueVal ? 'FRONT_PAGE_VIZ' : 'MISSING',
+    confidence: issueConf
+  };
 
   // Place of Issue
   const placeOfIssueVal = frontData.placeOfIssue || backData.placeOfIssue || '';

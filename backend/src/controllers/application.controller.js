@@ -235,17 +235,23 @@ export const processPassportOcr = asyncHandler(async (req, res) => {
     }
   }
 
-  const result = await passportOcrService.processPassport({
-    buffer: req.file.buffer,
-    originalFilename: req.file.originalname,
-    mimeType: req.file.mimetype,
-    userFullName: req.body?.fullName || req.body?.name || '',
-    pageType: req.body?.pageType || 'front',
-    frontExtractedData,
-    previousStorageKey: req.body?.previousStorageKey || null
-  });
+  try {
+    const result = await passportOcrService.processPassport({
+      buffer: req.file.buffer,
+      originalFilename: req.file.originalname,
+      mimeType: req.file.mimetype,
+      userFullName: req.body?.fullName || req.body?.name || '',
+      pageType: req.body?.pageType || 'front',
+      frontExtractedData,
+      previousStorageKey: req.body?.previousStorageKey || null
+    });
 
-  return ApiResponse.success(res, result, result.message || 'Passport processing completed');
+    return ApiResponse.success(res, result, result.message || 'Passport processing completed');
+  } finally {
+    if (req.file) {
+      req.file.buffer = null;
+    }
+  }
 });
 
 export const processPassportPhoto = asyncHandler(async (req, res) => {

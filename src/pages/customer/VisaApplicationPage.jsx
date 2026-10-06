@@ -31,7 +31,8 @@ import {
   validateMinimumPassportValidity,
   calculateAge,
   validateDateOfBirth,
-  validateAgeEligibility
+  validateAgeEligibility,
+  formatDateToISO
 } from '../../utils';
 import {
   determinePassportUploadFlow,
@@ -728,8 +729,8 @@ export default function VisaApplicationPage() {
         dateOfBirth: extracted.dateOfBirth || prev.dateOfBirth || '',
         nationality: extracted.nationality || prev.nationality || 'Indian',
         gender: extracted.gender || prev.gender || 'Male',
-        issueDate: extracted.issueDate || prev.issueDate || '',
-        expiryDate: extracted.expiryDate || prev.expiryDate || '',
+        issueDate: formatDateToISO(extracted.issueDate || extracted.passportIssuedOn) || extracted.issueDate || extracted.passportIssuedOn || prev.issueDate || '',
+        expiryDate: formatDateToISO(extracted.expiryDate) || extracted.expiryDate || prev.expiryDate || '',
         placeOfIssue: extracted.placeOfIssue || prev.placeOfIssue || '',
         fatherName: extracted.fatherName || prev.fatherName || '',
         motherName: extracted.motherName || prev.motherName || '',
@@ -738,7 +739,11 @@ export default function VisaApplicationPage() {
         fileNumber: extracted.fileNumber || prev.fileNumber || ''
       }));
 
-      setOcrFieldStatus((prev) => ({ ...prev, ...statusMap }));
+      setOcrFieldStatus((prev) => ({
+        ...prev,
+        ...statusMap,
+        issueDate: statusMap.issueDate || statusMap.passportIssuedOn || prev.issueDate
+      }));
       setFrontDetectedSuccess(true);
 
       // Determine next step based on upload format (PDF -> review directly; Images -> flip passport)
@@ -796,18 +801,29 @@ export default function VisaApplicationPage() {
       const merged = result?.mergedData || {};
       const statusMap = result?.fieldStatus || {};
 
-      setOcrExtractedData((prev) => ({
-        ...prev,
-        ...merged,
-        fatherName: backExtracted.fatherName || merged.fatherName || prev.fatherName || '',
-        motherName: backExtracted.motherName || merged.motherName || prev.motherName || '',
-        spouseName: backExtracted.spouseName || merged.spouseName || prev.spouseName || '',
-        address: backExtracted.address || merged.address || prev.address || '',
-        fileNumber: backExtracted.fileNumber || merged.fileNumber || prev.fileNumber || '',
-        placeOfIssue: merged.placeOfIssue || prev.placeOfIssue || ''
-      }));
+      setOcrExtractedData((prev) => {
+        const rawIssue = merged.issueDate || merged.passportIssuedOn || prev.issueDate || prev.passportIssuedOn || '';
+        return {
+          ...prev,
+          ...merged,
+          issueDate: formatDateToISO(rawIssue) || rawIssue,
+          expiryDate: formatDateToISO(merged.expiryDate) || merged.expiryDate || prev.expiryDate || '',
+          dateOfBirth: merged.dateOfBirth || prev.dateOfBirth || '',
+          passportNumber: merged.passportNumber || prev.passportNumber || '',
+          placeOfIssue: merged.placeOfIssue || prev.placeOfIssue || '',
+          fatherName: backExtracted.fatherName || merged.fatherName || prev.fatherName || '',
+          motherName: backExtracted.motherName || merged.motherName || prev.motherName || '',
+          spouseName: backExtracted.spouseName || merged.spouseName || prev.spouseName || '',
+          address: backExtracted.address || merged.address || prev.address || '',
+          fileNumber: backExtracted.fileNumber || merged.fileNumber || prev.fileNumber || ''
+        };
+      });
 
-      setOcrFieldStatus((prev) => ({ ...prev, ...statusMap }));
+      setOcrFieldStatus((prev) => ({
+        ...prev,
+        ...statusMap,
+        issueDate: prev.issueDate || statusMap.issueDate || statusMap.passportIssuedOn || 'MEDIUM'
+      }));
 
       if (result?.consistency?.mismatches?.length > 0) {
         setConsistencyMismatches(result.consistency.mismatches);
@@ -941,6 +957,7 @@ export default function VisaApplicationPage() {
             gender: ocrExtractedData.gender || 'Male',
             nationality: ocrExtractedData.nationality || 'Indian',
             issueDate: ocrExtractedData.issueDate || '',
+            passportIssuedOn: ocrExtractedData.issueDate || '',
             expiryDate: ocrExtractedData.expiryDate || '',
             placeOfIssue: ocrExtractedData.placeOfIssue || t.placeOfIssue || '—',
             fatherName: ocrExtractedData.fatherName || '',
@@ -1056,7 +1073,7 @@ export default function VisaApplicationPage() {
     const status = ocrFieldStatus[fieldName] || 'MEDIUM';
     const val = ocrExtractedData[fieldName];
 
-    if (!val) {
+    if (!val || status === 'LOW' || status === 'MISSING') {
       return (
         <span className="inline-flex items-center gap-1 text-[11px] font-medium text-slate-500 bg-slate-100/90 px-2 py-0.5 rounded-full">
           <span className="w-1.5 h-1.5 rounded-full bg-slate-400" />

@@ -26,8 +26,8 @@ export function parseDate(dateInput) {
 
   const str = String(dateInput).trim();
 
-  // YYYY-MM-DD or YYYY/MM/DD
-  const ymd = /^(\d{4})[/-](\d{1,2})[/-](\d{1,2})$/.exec(str);
+  // YYYY-MM-DD or YYYY/MM/DD or YYYY.MM.DD
+  const ymd = /^(\d{4})[./-](\d{1,2})[./-](\d{1,2})$/.exec(str);
   if (ymd) {
     const y = parseInt(ymd[1], 10);
     const m = parseInt(ymd[2], 10) - 1;
@@ -38,8 +38,8 @@ export function parseDate(dateInput) {
     }
   }
 
-  // DD-MM-YYYY or DD/MM/YYYY
-  const dmy = /^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/.exec(str);
+  // DD-MM-YYYY or DD/MM/YYYY or DD.MM.YYYY
+  const dmy = /^(\d{1,2})[./-](\d{1,2})[./-](\d{4})$/.exec(str);
   if (dmy) {
     const d = parseInt(dmy[1], 10);
     const m = parseInt(dmy[2], 10) - 1;
@@ -47,6 +47,22 @@ export function parseDate(dateInput) {
     const date = new Date(y, m, d);
     if (date.getFullYear() === y && date.getMonth() === m && date.getDate() === d) {
       return date;
+    }
+  }
+
+  // Alphanumeric month e.g. 14-DEC-2016 or 14 Dec 2016 or 14/DEC/2016
+  const alphaMatch = /^(\d{1,2})[\s/.-]+([A-Za-z]{3,9})[\s/.-]+(\d{4})$/.exec(str);
+  if (alphaMatch) {
+    const months = { JAN: 0, FEB: 1, MAR: 2, APR: 3, MAY: 4, JUN: 5, JUL: 6, AUG: 7, SEP: 8, OCT: 9, NOV: 10, DEC: 11 };
+    const mStr = alphaMatch[2].toUpperCase().substring(0, 3);
+    if (months[mStr] !== undefined) {
+      const d = parseInt(alphaMatch[1], 10);
+      const m = months[mStr];
+      const y = parseInt(alphaMatch[3], 10);
+      const date = new Date(y, m, d);
+      if (date.getFullYear() === y && date.getMonth() === m && date.getDate() === d) {
+        return date;
+      }
     }
   }
 

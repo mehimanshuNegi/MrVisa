@@ -9,7 +9,7 @@ import { pdf } from 'pdf-to-img';
 import { logger } from './logger.js';
 
 export const MAX_PDF_SIZE_BYTES = 10 * 1024 * 1024; // 10MB limit
-export const DEFAULT_PDF_OCR_SCALE = 2.0; // ~150-200 DPI suitable for OCR
+export const DEFAULT_PDF_OCR_SCALE = 1.6; // ~150-200 DPI suitable for OCR (1800-1920px max dimension)
 
 /**
  * Detects whether a payload represents a PDF file based on MIME, extension, or %PDF- magic bytes
@@ -60,19 +60,24 @@ export async function withPdfDocument(pdfBuffer, callback, options = {}) {
   }
 
   const scale = options.scale || DEFAULT_PDF_OCR_SCALE;
-  const format = options.format || 'png';
+  const format = options.format || 'jpeg';
 
   let doc = null;
   try {
-    doc = await pdf(pdfBuffer, { scale, format });
+    // Pass isolated Uint8Array so pdfjs does not detach the caller's ArrayBuffer
+    const uint8View = new Uint8Array(pdfBuffer.buffer.slice(pdfBuffer.byteOffset, pdfBuffer.byteOffset + pdfBuffer.byteLength));
+    doc = await pdf(uint8View, { scale, format });
     return await callback(doc);
   } finally {
-    if (doc && typeof doc.destroy === 'function') {
+    if (doc) {
       try {
-        await doc.destroy();
+        if (typeof doc.destroy === 'function') {
+          await doc.destroy();
+        }
       } catch (destroyErr) {
         logger.warn('PDF resource cleanup notice:', destroyErr?.message);
       }
+      doc = null;
     }
   }
 }

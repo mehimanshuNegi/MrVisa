@@ -31,12 +31,74 @@ import { storageService } from './storage.service.js';
 import { logger } from '../utils/logger.js';
 import { isPdfPayload, withPdfDocument } from '../utils/pdfConverter.js';
 
+// =========================================================================
+// PRODUCTION MEMORY OPTIMIZATIONS (Render 512MB RAM instance protection)
+// =========================================================================
+
+// 1. Disable Sharp/libvips cache so intermediate images are freed immediately from native RAM
+sharp.cache(false);
+// 2. Limit Sharp concurrency to 1 thread to prevent thread-pool memory multiplication
+sharp.concurrency(1);
+// 3. Enable SIMD CPU vectorization for speed and compact processing
+sharp.simd(true);
+
+/**
+ * Lightweight concurrency serializer ensuring heavy native ONNX/Light-OCR operations
+ * do not run concurrently in parallel and multiply native memory beyond the 512MB limit.
+ */
+class OcrConcurrencyLock {
+  constructor(maxConcurrent = 1) {
+    this.queue = [];
+    this.running = 0;
+    this.maxConcurrent = maxConcurrent;
+  }
+
+  async acquire() {
+    if (this.running < this.maxConcurrent) {
+      this.running++;
+      return;
+    }
+    return new Promise((resolve) => {
+      this.queue.push(resolve);
+    });
+  }
+
+  release() {
+    this.running--;
+    if (this.queue.length > 0) {
+      this.running++;
+      const next = this.queue.shift();
+      next();
+    }
+  }
+
+  async runExclusive(fn) {
+    await this.acquire();
+    try {
+      return await fn();
+    } finally {
+      this.release();
+    }
+  }
+}
+
+/**
+ * Production-safe memory diagnostics logger.
+ * Logs process memory numbers only. NEVER logs any PII, text, or image data.
+ */
+function logMemoryDiagnostic(stage, details = '') {
+  const mem = process.memoryUsage();
+  const toMb = (bytes) => (bytes / 1024 / 1024).toFixed(1) + 'MB';
+  logger.info(`[PDF OCR MEMORY] [${stage}] rss=${toMb(mem.rss)} heapUsed=${toMb(mem.heapUsed)} heapTotal=${toMb(mem.heapTotal)} external=${toMb(mem.external)} arrayBuffers=${toMb(mem.arrayBuffers)}${details ? ` (${details})` : ''}`);
+}
+
 class PassportOcrService {
   constructor() {
     this.engine = null;
     this.engineInitializing = null;
     this.engineInitError = null;
     this.lastOcrError = null;
+    this.ocrLock = new OcrConcurrencyLock(1);
   }
 
   /**
@@ -185,27 +247,33 @@ class PassportOcrService {
    * Runs light-ocr recognition safely on an image buffer
    */
   async recognizeText(buffer) {
-    const startTime = Date.now();
-    try {
-      const engine = await this.getEngine();
+    return await this.ocrLock.runExclusive(async () => {
+      const startTime = Date.now();
       let inputBuffer = buffer;
-      const meta = await sharp(buffer).metadata();
-      if (!['jpeg', 'png', 'webp'].includes(meta.format)) {
-        inputBuffer = await sharp(buffer).png().toBuffer();
-      }
+      try {
+        const engine = await this.getEngine();
+        const meta = await sharp(buffer).metadata();
+        if (!['jpeg', 'png', 'webp'].includes(meta.format)) {
+          inputBuffer = await sharp(buffer).jpeg({ quality: 90 }).toBuffer();
+        }
 
-      logger.info(`[OCR Execution] recognizeEncoded started: size=${inputBuffer.length} bytes, format=${meta.format || 'unknown'}, dimensions=${meta.width}x${meta.height}`);
-      const ocrResult = await engine.recognizeEncoded(inputBuffer);
-      const lines = ocrResult.lines || [];
-      const fullText = lines.map((l) => l.text).join('\n');
-      this.lastOcrError = null;
-      logger.info(`[OCR Result] recognizeEncoded completed in ${Date.now() - startTime}ms: detectedLines=${lines.length}`);
-      return { lines, fullText, error: null };
-    } catch (err) {
-      this.lastOcrError = err?.message || String(err);
-      logger.error(`[OCR Error] recognizeEncoded failed in ${Date.now() - startTime}ms: ${this.lastOcrError}`);
-      return { lines: [], fullText: '', error: this.lastOcrError };
-    }
+        logger.info(`[OCR Execution] recognizeEncoded started: size=${inputBuffer.length} bytes, format=${meta.format || 'unknown'}, dimensions=${meta.width}x${meta.height}`);
+        const ocrResult = await engine.recognizeEncoded(inputBuffer);
+        const lines = ocrResult.lines || [];
+        const fullText = lines.map((l) => l.text).join('\n');
+        this.lastOcrError = null;
+        logger.info(`[OCR Result] recognizeEncoded completed in ${Date.now() - startTime}ms: detectedLines=${lines.length}`);
+        return { lines, fullText, error: null };
+      } catch (err) {
+        this.lastOcrError = err?.message || String(err);
+        logger.error(`[OCR Error] recognizeEncoded failed in ${Date.now() - startTime}ms: ${this.lastOcrError}`);
+        return { lines: [], fullText: '', error: this.lastOcrError };
+      } finally {
+        if (inputBuffer && inputBuffer !== buffer) {
+          inputBuffer = null;
+        }
+      }
+    });
   }
 
   /**
@@ -283,9 +351,10 @@ class PassportOcrService {
 
     // ATTEMPT 2: Preprocessing + MRZ Crop if needed
     if (!parsedMrz || !parsedMrz.checks?.docNumber || !parsedMrz.checks?.expiry) {
+      let preprocessedBuffer = null;
       try {
         logger.info(`[OCR FRONT Preprocessing] Running image enhancements (EXIF, resize, grayscale, normalize)...`);
-        const preprocessedBuffer = await this.preprocessImage(imageBuffer);
+        preprocessedBuffer = await this.preprocessImage(imageBuffer);
         const prepOcr = await this.recognizeText(preprocessedBuffer);
         ocrText += '\n' + prepOcr.fullText;
         const newMrzLines = extractMrzLinesFromText(prepOcr.fullText);
@@ -297,10 +366,17 @@ class PassportOcrService {
             mrzLines = newMrzLines;
           }
         }
+      } catch (err2) {
+        logger.warn(`[OCR FRONT Attempt 2] Preprocessed OCR notice: ${err2?.message}`);
+      } finally {
+        preprocessedBuffer = null;
+      }
 
-        if (!parsedMrz) {
+      if (!parsedMrz) {
+        let croppedMrz = null;
+        try {
           logger.info(`[OCR FRONT MRZ Crop] Attempting dedicated bottom MRZ crop band...`);
-          const croppedMrz = await this.cropMrzBand(imageBuffer);
+          croppedMrz = await this.cropMrzBand(imageBuffer);
           if (croppedMrz) {
             const cropOcr = await this.recognizeText(croppedMrz);
             const cropLines = extractMrzLinesFromText(cropOcr.fullText);
@@ -309,9 +385,11 @@ class PassportOcrService {
               mrzLines = cropLines;
             }
           }
+        } catch (err3) {
+          logger.warn(`[OCR FRONT Attempt 2 Crop] MRZ crop notice: ${err3?.message}`);
+        } finally {
+          croppedMrz = null;
         }
-      } catch (err2) {
-        logger.warn(`[OCR FRONT Attempt 2] Preprocessed OCR notice: ${err2?.message}`);
       }
     }
 
@@ -348,8 +426,8 @@ class PassportOcrService {
     stages[3].status = 'completed';
 
     // Extract Visual Inspection Zone (VIZ) fields
-    const vizFields = extractVizFieldsFromText(ocrText);
-    const detectedIssueDate = vizFields.issueDate || extractIssueDateFromText(ocrText);
+    const vizFields = extractVizFieldsFromText(ocrText, parsedMrz);
+    const detectedIssueDate = vizFields.issueDate || extractIssueDateFromText(ocrText, parsedMrz);
     const visibleDocNumber = vizFields.visibleDocNumber || extractVisiblePassportNumber(ocrText);
     const detectedPlaceOfIssue = vizFields.placeOfIssue || '';
     const detectedExpiryDate = vizFields.expiryDate || '';
@@ -397,10 +475,38 @@ class PassportOcrService {
     if (parsedMrz?.checks?.expiry || (detectedExpiryDate && parsedMrz?.expiryDate === detectedExpiryDate)) {
       fieldStatus.expiryDate = 'HIGH';
     }
+
+    // Determine issueDate confidence status
+    // HIGH: Verified when VIZ + MRZ agree (issueDate <= today, < mrzExpiry, > mrzDob, valid period)
+    // MEDIUM: Review when only one reliable source is available (e.g. VIZ issue date available, MRZ unavailable)
+    // LOW: Enter manually when extraction is uncertain or violates date rules
     if (detectedIssueDate) {
-      fieldStatus.issueDate = 'HIGH';
-      fieldStatus.passportIssuedOn = 'HIGH';
+      if (parsedMrz?.expiryDate) {
+        const today = new Date().toISOString().split('T')[0];
+        const dateCheck = validatePassportDates(detectedIssueDate, parsedMrz.expiryDate);
+        const isPastOrToday = detectedIssueDate <= today;
+        const isBeforeExpiry = detectedIssueDate < parsedMrz.expiryDate;
+        const isAfterDob = !parsedMrz.dateOfBirth || detectedIssueDate > parsedMrz.dateOfBirth;
+
+        if (isPastOrToday && isBeforeExpiry && isAfterDob && dateCheck.isValid) {
+          fieldStatus.issueDate = 'HIGH';
+          fieldStatus.passportIssuedOn = 'HIGH';
+        } else if (!isPastOrToday || !isBeforeExpiry || !dateCheck.isValid) {
+          fieldStatus.issueDate = 'LOW';
+          fieldStatus.passportIssuedOn = 'LOW';
+        } else {
+          fieldStatus.issueDate = 'MEDIUM';
+          fieldStatus.passportIssuedOn = 'MEDIUM';
+        }
+      } else {
+        fieldStatus.issueDate = 'MEDIUM';
+        fieldStatus.passportIssuedOn = 'MEDIUM';
+      }
+    } else {
+      fieldStatus.issueDate = 'MISSING';
+      fieldStatus.passportIssuedOn = 'MISSING';
     }
+
     if (detectedPlaceOfIssue) {
       fieldStatus.placeOfIssue = 'HIGH';
     }
@@ -423,7 +529,15 @@ class PassportOcrService {
       if (!dateValidation.isValid) {
         fieldStatus.expiryDate = 'LOW';
         fieldStatus.issueDate = 'LOW';
+        fieldStatus.passportIssuedOn = 'LOW';
       }
+    }
+
+    if (merged.fields?.issueDate) {
+      merged.fields.issueDate.confidence = fieldStatus.issueDate;
+    }
+    if (merged.fields?.passportIssuedOn) {
+      merged.fields.passportIssuedOn.confidence = fieldStatus.passportIssuedOn;
     }
 
     const durationMs = Date.now() - startTime;
@@ -503,6 +617,7 @@ class PassportOcrService {
     }
 
     // PDF -> Image -> OCR Flow
+    logMemoryDiagnostic('memory before PDF processing', `fileSize=${buffer?.length || 0} bytes`);
     try {
       return await withPdfDocument(buffer, async (pdfDoc) => {
         const totalPages = pdfDoc.length || 0;
@@ -516,50 +631,98 @@ class PassportOcrService {
         let firstPageResult = null;
 
         for (let pageNum = 1; pageNum <= maxPagesToCheck; pageNum++) {
+          logMemoryDiagnostic('memory before page rendering', `page ${pageNum}/${totalPages}`);
           logger.info(`[OCR FRONT PDF] Rendering page ${pageNum}/${totalPages} for OCR...`);
-          const pageImgBuffer = await pdfDoc.getPage(pageNum);
+          
+          let pageImgBuffer = await pdfDoc.getPage(pageNum);
+          logMemoryDiagnostic('memory after page rendering', `page ${pageNum}/${totalPages}, size=${pageImgBuffer?.length || 0} bytes`);
 
-          const pageResult = await this._extractPassportFrontFromImageBuffer({
-            imageBuffer: pageImgBuffer,
-            userFullName,
-            originalFilename,
-            uploadedDocument,
-            startTime
-          });
+          let pageResult = null;
+          try {
+            pageResult = await this._extractPassportFrontFromImageBuffer({
+              imageBuffer: pageImgBuffer,
+              userFullName,
+              originalFilename,
+              uploadedDocument,
+              startTime
+            });
+          } finally {
+            // Requirement 1 & 2: Process sequentially and immediately release rendered image buffer
+            pageImgBuffer = null;
+            logMemoryDiagnostic('memory after page cleanup', `page ${pageNum}/${totalPages}`);
+          }
+          logMemoryDiagnostic('memory after OCR', `page ${pageNum}/${totalPages}`);
 
           if (pageResult.isFrontDetected || pageResult.success) {
             logger.info(`[OCR FRONT PDF] Passport front identified on PDF page ${pageNum}.`);
 
-            // If a multi-page PDF is uploaded, automatically inspect the other page for back details (parents, address)
+            // If a multi-page PDF is uploaded, sequentially inspect the other page for back details (parents, address)
+            // Page 1 buffer was already released above, so page 1 and page 2 buffers are NEVER in memory simultaneously
             if (totalPages >= 2) {
               const otherPageNum = pageNum === 1 ? 2 : 1;
               try {
+                logMemoryDiagnostic('memory before page rendering', `page ${otherPageNum}/${totalPages} (back inspection)`);
                 logger.info(`[OCR FRONT PDF] Checking page ${otherPageNum} for back page details...`);
-                const otherImgBuffer = await pdfDoc.getPage(otherPageNum);
-                const backResult = await this._extractPassportBackFromImageBuffer({
-                  imageBuffer: otherImgBuffer,
-                  frontExtractedData: pageResult.extractedData,
-                  uploadedDocument,
-                  startTime
-                });
+                
+                let otherImgBuffer = await pdfDoc.getPage(otherPageNum);
+                logMemoryDiagnostic('memory after page rendering', `page ${otherPageNum}/${totalPages}, size=${otherImgBuffer?.length || 0} bytes`);
+
+                let backResult = null;
+                try {
+                  backResult = await this._extractPassportBackFromImageBuffer({
+                    imageBuffer: otherImgBuffer,
+                    frontExtractedData: pageResult.extractedData,
+                    uploadedDocument,
+                    startTime
+                  });
+                } finally {
+                  // Requirement 1: Immediately release page 2 buffer
+                  otherImgBuffer = null;
+                  logMemoryDiagnostic('memory after page cleanup', `page ${otherPageNum}/${totalPages} (back inspection)`);
+                }
+                logMemoryDiagnostic('memory after OCR', `page ${otherPageNum}/${totalPages} (back inspection)`);
 
                 if (backResult?.isBackDetected || Object.values(backResult?.extractedData || {}).some(v => Boolean(v))) {
                   logger.info(`[OCR FRONT PDF] Successfully merged back page details from page ${otherPageNum}.`);
+                  const mergedExtracted = {
+                    ...pageResult.extractedData,
+                    ...(backResult.extractedData || {}),
+                    ...(backResult.mergedData || {})
+                  };
+                  if (pageResult.extractedData?.issueDate && !mergedExtracted.issueDate) {
+                    mergedExtracted.issueDate = pageResult.extractedData.issueDate;
+                  }
+                  if (pageResult.extractedData?.passportIssuedOn && !mergedExtracted.passportIssuedOn) {
+                    mergedExtracted.passportIssuedOn = pageResult.extractedData.passportIssuedOn;
+                  }
+
+                  const mergedFields = {
+                    ...(pageResult.fields || {}),
+                    ...(backResult.fields || {})
+                  };
+                  if (pageResult.fields?.issueDate && !mergedFields.issueDate?.value) {
+                    mergedFields.issueDate = pageResult.fields.issueDate;
+                  }
+                  if (pageResult.fields?.passportIssuedOn && !mergedFields.passportIssuedOn?.value) {
+                    mergedFields.passportIssuedOn = pageResult.fields.passportIssuedOn;
+                  }
+
+                  const mergedFieldStatus = {
+                    ...(pageResult.fieldStatus || {}),
+                    ...(backResult.fieldStatus || {}),
+                    // Preserve verified front page confidence statuses
+                    ...(pageResult.fieldStatus?.issueDate ? { issueDate: pageResult.fieldStatus.issueDate } : {}),
+                    ...(pageResult.fieldStatus?.passportIssuedOn ? { passportIssuedOn: pageResult.fieldStatus.passportIssuedOn } : {}),
+                    ...(pageResult.fieldStatus?.passportNumber ? { passportNumber: pageResult.fieldStatus.passportNumber } : {}),
+                    ...(pageResult.fieldStatus?.dateOfBirth ? { dateOfBirth: pageResult.fieldStatus.dateOfBirth } : {}),
+                    ...(pageResult.fieldStatus?.expiryDate ? { expiryDate: pageResult.fieldStatus.expiryDate } : {})
+                  };
+
                   return {
                     ...pageResult,
-                    extractedData: {
-                      ...pageResult.extractedData,
-                      ...(backResult.extractedData || {}),
-                      ...(backResult.mergedData || {})
-                    },
-                    fields: {
-                      ...(pageResult.fields || {}),
-                      ...(backResult.fields || {})
-                    },
-                    fieldStatus: {
-                      ...(pageResult.fieldStatus || {}),
-                      ...(backResult.fieldStatus || {})
-                    },
+                    extractedData: mergedExtracted,
+                    fields: mergedFields,
+                    fieldStatus: mergedFieldStatus,
                     consistency: backResult.consistency || null,
                     isCompleteDocument: true,
                     isBackDetected: true
@@ -634,6 +797,11 @@ class PassportOcrService {
           expiryDate: 'MISSING'
         }
       };
+    } finally {
+      logMemoryDiagnostic('memory after PDF processing');
+      if (typeof global.gc === 'function') {
+        try { global.gc(); } catch { /* ignore */ }
+      }
     }
   }
 
@@ -716,6 +884,13 @@ class PassportOcrService {
       frontFieldStatus: frontExtractedData.fieldStatus || {}
     });
 
+    if (frontExtractedData?.issueDate && !merged.extractedData?.issueDate) {
+      merged.extractedData.issueDate = frontExtractedData.issueDate;
+    }
+    if (frontExtractedData?.passportIssuedOn && !merged.extractedData?.passportIssuedOn) {
+      merged.extractedData.passportIssuedOn = frontExtractedData.passportIssuedOn;
+    }
+
     const durationMs = Date.now() - startTime;
     logger.info(`[OCR BACK Response] Success: docDetected=true, fieldsPopulated=${Object.keys(backDetails || {}).length}, duration=${durationMs}ms`);
 
@@ -791,6 +966,7 @@ class PassportOcrService {
     }
 
     // PDF -> Image -> OCR Flow
+    logMemoryDiagnostic('memory before PDF processing', `back-page, fileSize=${buffer?.length || 0} bytes`);
     try {
       return await withPdfDocument(buffer, async (pdfDoc) => {
         const totalPages = pdfDoc.length || 0;
@@ -804,15 +980,25 @@ class PassportOcrService {
         let firstPageResult = null;
 
         for (let pageNum = 1; pageNum <= maxPagesToCheck; pageNum++) {
+          logMemoryDiagnostic('memory before page rendering', `back page ${pageNum}/${totalPages}`);
           logger.info(`[OCR BACK PDF] Rendering page ${pageNum}/${totalPages} for OCR...`);
-          const pageImgBuffer = await pdfDoc.getPage(pageNum);
+          
+          let pageImgBuffer = await pdfDoc.getPage(pageNum);
+          logMemoryDiagnostic('memory after page rendering', `back page ${pageNum}/${totalPages}, size=${pageImgBuffer?.length || 0} bytes`);
 
-          const pageResult = await this._extractPassportBackFromImageBuffer({
-            imageBuffer: pageImgBuffer,
-            frontExtractedData,
-            uploadedDocument,
-            startTime
-          });
+          let pageResult = null;
+          try {
+            pageResult = await this._extractPassportBackFromImageBuffer({
+              imageBuffer: pageImgBuffer,
+              frontExtractedData,
+              uploadedDocument,
+              startTime
+            });
+          } finally {
+            pageImgBuffer = null;
+            logMemoryDiagnostic('memory after page cleanup', `back page ${pageNum}/${totalPages}`);
+          }
+          logMemoryDiagnostic('memory after OCR', `back page ${pageNum}/${totalPages}`);
 
           if (pageResult.isBackDetected) {
             logger.info(`[OCR BACK PDF] Passport back identified on PDF page ${pageNum}.`);
@@ -845,6 +1031,11 @@ class PassportOcrService {
           fileNumber: ''
         }
       };
+    } finally {
+      logMemoryDiagnostic('memory after PDF processing', 'back-page');
+      if (typeof global.gc === 'function') {
+        try { global.gc(); } catch { /* ignore */ }
+      }
     }
   }
 

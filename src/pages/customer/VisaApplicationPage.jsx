@@ -33,6 +33,12 @@ import {
   validateDateOfBirth,
   validateAgeEligibility
 } from '../../utils';
+import {
+  determinePassportUploadFlow,
+  getNextPassportStep,
+  shouldShowBackUploadStep,
+  isPdfPassport
+} from '../../utils/passportFlow';
 
 export default function VisaApplicationPage() {
   const { country: countryParam, visaId: visaParam } = useParams();
@@ -220,6 +226,16 @@ export default function VisaApplicationPage() {
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }, [currentStep, isSubmitted]);
+
+  // Safety guard: Ensure PDF path cannot accidentally trigger back-side upload screen
+  useEffect(() => {
+    if (currentStep === 'passport_back_upload' && isPdfPassport(passportFile)) {
+      const timer = setTimeout(() => {
+        setCurrentStep('passport_review');
+      }, 0);
+      return () => clearTimeout(timer);
+    }
+  }, [currentStep, passportFile]);
 
   // Dynamic document requirements per selected visa destination (Admin-configured in MongoDB, no hardcoded fallbacks!)
   const requiredDocs = React.useMemo(() => {
@@ -625,11 +641,11 @@ export default function VisaApplicationPage() {
   // STAGE 1: FRONT / PHOTO PAGE UPLOAD
   const handlePassportFrontUpload = async (file) => {
     if (!file) return;
-    const isImage =
-      ['image/jpeg', 'image/png', 'image/webp'].includes(file.type) ||
-      /\.(jpe?g|png|webp)$/i.test(file.name);
-    if (!isImage) {
-      alert('Please upload a clear photo of your passport in JPG, JPEG, PNG, or WEBP format.');
+    const isSupported =
+      ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'].includes(file.type) ||
+      /\.(jpe?g|png|webp|pdf)$/i.test(file.name);
+    if (!isSupported) {
+      alert('Please upload your passport in PDF, JPG, JPEG, PNG, or WEBP format.');
       return;
     }
 
@@ -649,6 +665,8 @@ export default function VisaApplicationPage() {
       { id: 'extracting_details', label: 'Extracting details', status: 'pending' },
       { id: 'verifying_details', label: 'Verifying information', status: 'pending' }
     ]);
+
+    const flow = determinePassportUploadFlow(file);
 
     try {
       const [result] = await Promise.all([
@@ -671,7 +689,7 @@ export default function VisaApplicationPage() {
         setIsProcessingPassport(false);
         setPassportUploadError({
           type: 'wrong_page',
-          message: result.message || "We couldn't identify a passport page in this image."
+          message: result.message || (flow === 'pdf' ? "We couldn't read this PDF. Please upload a clearer passport scan." : "We couldn't identify a passport page in this image.")
         });
         setCurrentStep('passport_upload');
         return;
@@ -681,7 +699,7 @@ export default function VisaApplicationPage() {
         setIsProcessingPassport(false);
         setPassportUploadError({
           type: 'quality',
-          message: result.message || 'Image quality is too low to reliably read this passport.'
+          message: result.message || (flow === 'pdf' ? "We couldn't read this PDF. Please upload a clearer passport scan." : 'Image quality is too low to reliably read this passport.')
         });
         setCurrentStep('passport_upload');
         return;
@@ -712,32 +730,39 @@ export default function VisaApplicationPage() {
         gender: extracted.gender || prev.gender || 'Male',
         issueDate: extracted.issueDate || prev.issueDate || '',
         expiryDate: extracted.expiryDate || prev.expiryDate || '',
-        placeOfIssue: extracted.placeOfIssue || prev.placeOfIssue || ''
+        placeOfIssue: extracted.placeOfIssue || prev.placeOfIssue || '',
+        fatherName: extracted.fatherName || prev.fatherName || '',
+        motherName: extracted.motherName || prev.motherName || '',
+        spouseName: extracted.spouseName || prev.spouseName || '',
+        address: extracted.address || prev.address || '',
+        fileNumber: extracted.fileNumber || prev.fileNumber || ''
       }));
 
       setOcrFieldStatus((prev) => ({ ...prev, ...statusMap }));
       setFrontDetectedSuccess(true);
 
-      // Brief transition showing "Front side detected" before flipping to Stage 2
+      // Determine next step based on upload format (PDF -> review directly; Images -> flip passport)
+      const nextStep = getNextPassportStep({ flow, ocrSuccess: true });
       setTimeout(() => {
         setIsProcessingPassport(false);
-        setCurrentStep('passport_back_upload');
+        setCurrentStep(nextStep);
       }, 1000);
     } catch (err) {
       console.warn('OCR front processing notice:', err);
+      const fallbackStep = getNextPassportStep({ flow, ocrSuccess: false });
       setIsProcessingPassport(false);
-      setCurrentStep('passport_back_upload');
+      setCurrentStep(fallbackStep);
     }
   };
 
   // STAGE 2: BACK / SECOND PAGE UPLOAD
   const handlePassportBackUpload = async (file) => {
     if (!file) return;
-    const isImage =
-      ['image/jpeg', 'image/png', 'image/webp'].includes(file.type) ||
-      /\.(jpe?g|png|webp)$/i.test(file.name);
-    if (!isImage) {
-      alert('Please upload a clear photo of your passport second page in JPG, JPEG, PNG, or WEBP format.');
+    const isSupported =
+      ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'].includes(file.type) ||
+      /\.(jpe?g|png|webp|pdf)$/i.test(file.name);
+    if (!isSupported) {
+      alert('Please upload your passport second page in PDF, JPG, JPEG, PNG, or WEBP format.');
       return;
     }
 
@@ -2083,7 +2108,7 @@ export default function VisaApplicationPage() {
                       const file = e.target.files?.[0];
                       if (file) handlePassportFrontUpload(file);
                     }}
-                    accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp"
+                    accept="image/jpeg,image/png,image/webp,application/pdf,.jpg,.jpeg,.png,.webp,.pdf"
                     className="hidden"
                   />
 
@@ -2106,11 +2131,11 @@ export default function VisaApplicationPage() {
                         Upload front / photo page
                       </span>
                       <span className="text-xs text-slate-400 font-medium block">
-                        or drag & drop your image here
+                        or drag & drop your image or PDF here
                       </span>
                     </div>
                     <div className="mt-4 inline-block text-[11px] font-bold text-slate-500 bg-white border border-slate-200/80 px-3 py-1 rounded-full shadow-2xs">
-                      Accepted: JPG / JPEG / PNG / WEBP
+                      Accepted: PDF / JPG / JPEG / PNG / WEBP
                     </div>
                   </div>
 
@@ -2137,7 +2162,13 @@ export default function VisaApplicationPage() {
                   
                   {/* Passport Front Preview with Animated Scanning Line */}
                   <div className="relative w-full max-w-sm mx-auto aspect-[16/10] rounded-2xl overflow-hidden border border-slate-200 bg-slate-900 shadow-md">
-                    {passportPreviewUrl ? (
+                    {passportFile?.type === 'application/pdf' || passportFile?.name?.toLowerCase().endsWith('.pdf') ? (
+                      <div className="w-full h-full flex flex-col items-center justify-center bg-slate-900 text-white gap-2 p-4">
+                        <FileText size={42} className="text-[#3B82F6]" />
+                        <span className="text-sm font-bold tracking-tight">Passport PDF</span>
+                        <span className="text-[11px] text-slate-400 truncate max-w-[200px]">{passportFile.name}</span>
+                      </div>
+                    ) : passportPreviewUrl ? (
                       <img src={passportPreviewUrl} alt="Passport front preview" className="w-full h-full object-cover opacity-85" />
                     ) : (
                       <div className="w-full h-full flex items-center justify-center bg-slate-900 text-slate-400">
@@ -2158,19 +2189,19 @@ export default function VisaApplicationPage() {
                       <div className="space-y-1">
                         <div className="inline-flex items-center gap-1.5 text-emerald-700 bg-emerald-50 border border-emerald-200/80 px-3.5 py-1 rounded-full text-xs font-bold mb-1">
                           <Check size={14} strokeWidth={3} className="text-emerald-600" />
-                          <span>Front side detected</span>
+                          <span>{isPdfPassport(passportFile) ? 'Passport verified' : 'Front side detected'}</span>
                         </div>
                         <h2 className="text-lg sm:text-xl font-black text-[#082B61] tracking-tight">
-                          Front side detected
+                          {isPdfPassport(passportFile) ? 'Passport verified' : 'Front side detected'}
                         </h2>
                         <p className="text-xs text-slate-400 font-medium">
-                          Next, flip your passport for the second page...
+                          {isPdfPassport(passportFile) ? 'Opening details review...' : 'Next, flip your passport for the second page...'}
                         </p>
                       </div>
                     ) : (
                       <>
                         <h2 className="text-lg sm:text-xl font-black text-[#082B61] tracking-tight">
-                          Reading passport photo page...
+                          {isPdfPassport(passportFile) ? 'Reading passport document...' : 'Reading passport photo page...'}
                         </h2>
                         <p className="text-xs text-slate-400 font-medium">
                           Verifying passport details...
@@ -2222,7 +2253,7 @@ export default function VisaApplicationPage() {
             {/* ====================================================
                 STEP 2C: PASSPORT BACK / SECOND PAGE UPLOAD
                 ==================================================== */}
-            {currentStep === 'passport_back_upload' && (
+            {currentStep === 'passport_back_upload' && shouldShowBackUploadStep(passportFile, currentStep) && (
               <div className="max-w-xl mx-auto py-8 sm:py-10">
                 <div className="bg-white rounded-3xl p-8 sm:p-10 border border-slate-200/90 shadow-sm text-center space-y-6">
                   
@@ -2281,7 +2312,7 @@ export default function VisaApplicationPage() {
                       const file = e.target.files?.[0];
                       if (file) handlePassportBackUpload(file);
                     }}
-                    accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp"
+                    accept="image/jpeg,image/png,image/webp,application/pdf,.jpg,.jpeg,.png,.webp,.pdf"
                     className="hidden"
                   />
 
@@ -2304,11 +2335,11 @@ export default function VisaApplicationPage() {
                         Upload back / second page
                       </span>
                       <span className="text-xs text-slate-400 font-medium block">
-                        or drag & drop your image here
+                        or drag & drop your image or PDF here
                       </span>
                     </div>
                     <div className="mt-4 inline-block text-[11px] font-bold text-slate-500 bg-white border border-slate-200/80 px-3 py-1 rounded-full shadow-2xs">
-                      Accepted: JPG / JPEG / PNG / WEBP
+                      Accepted: PDF / JPG / JPEG / PNG / WEBP
                     </div>
                   </div>
 
@@ -2335,7 +2366,13 @@ export default function VisaApplicationPage() {
                   
                   {/* Passport Back Preview with Animated Scanning Line */}
                   <div className="relative w-full max-w-sm mx-auto aspect-[16/10] rounded-2xl overflow-hidden border border-slate-200 bg-slate-900 shadow-md">
-                    {passportBackPreviewUrl ? (
+                    {passportBackFile?.type === 'application/pdf' || passportBackFile?.name?.toLowerCase().endsWith('.pdf') ? (
+                      <div className="w-full h-full flex flex-col items-center justify-center bg-slate-900 text-white gap-2 p-4">
+                        <FileText size={42} className="text-[#3B82F6]" />
+                        <span className="text-sm font-bold tracking-tight">Passport PDF</span>
+                        <span className="text-[11px] text-slate-400 truncate max-w-[200px]">{passportBackFile.name}</span>
+                      </div>
+                    ) : passportBackPreviewUrl ? (
                       <img src={passportBackPreviewUrl} alt="Passport back preview" className="w-full h-full object-cover opacity-85" />
                     ) : (
                       <div className="w-full h-full flex items-center justify-center bg-slate-900 text-slate-400">

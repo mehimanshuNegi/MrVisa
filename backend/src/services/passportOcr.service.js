@@ -29,6 +29,7 @@ import {
 } from '../utils/dateValidator.js';
 import { storageService } from './storage.service.js';
 import { logger } from '../utils/logger.js';
+import { isPdfPayload, withPdfDocument } from '../utils/pdfConverter.js';
 
 class PassportOcrService {
   constructor() {
@@ -208,18 +209,15 @@ class PassportOcrService {
   }
 
   /**
-   * STEP 1 — FRONT / PHOTO PAGE PROCESSING
+   * Internal helper: Extracts front passport fields and MRZ from an image buffer
    */
-  async processPassportFront({
-    buffer,
-    originalFilename,
-    mimeType,
+  async _extractPassportFrontFromImageBuffer({
+    imageBuffer,
     userFullName = '',
-    previousStorageKey = null
+    originalFilename = '',
+    uploadedDocument = null,
+    startTime = Date.now()
   }) {
-    const startTime = Date.now();
-    logger.info(`[OCR FRONT Received] originalFilename=${originalFilename || 'unknown'}, mimeType=${mimeType || 'unknown'}, size=${buffer?.length || 0} bytes`);
-
     const stages = [
       { id: 'image_checked', label: 'Image checked', status: 'pending' },
       { id: 'passport_detected', label: 'Passport detected', status: 'pending' },
@@ -229,7 +227,7 @@ class PassportOcrService {
     ];
 
     // Stage 1: Quality Check
-    const quality = await this.checkImageQuality(buffer);
+    const quality = await this.checkImageQuality(imageBuffer);
     stages[0].status = quality.ok ? 'completed' : 'warning';
 
     // If quality is critically low, return early with clear non-blocking options
@@ -261,36 +259,9 @@ class PassportOcrService {
           gender: 'HIGH',
           issueDate: 'MISSING',
           expiryDate: 'MISSING'
-        }
+        },
+        uploadedDocument
       };
-    }
-
-    // Clean up previous front file if re-uploading (Requirement 8)
-    if (previousStorageKey) {
-      await this.cleanupOldFile(previousStorageKey);
-    }
-
-    // Store document safely using storageService
-    let uploadedDocument = null;
-    try {
-      logger.info(`[OCR FRONT R2] Uploading document to staging storage (size: ${buffer?.length} bytes)`);
-      const uploadResult = await storageService.uploadFile({
-        buffer,
-        originalFilename: originalFilename || 'passport_front.jpg',
-        mimeType: mimeType || 'image/jpeg',
-        folder: 'documents'
-      });
-      uploadedDocument = {
-        documentId: `doc_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
-        name: 'Passport Front Page',
-        originalFilename: uploadResult.originalFilename,
-        storageKey: uploadResult.storageKey,
-        fileSize: uploadResult.fileSize,
-        mimeType: uploadResult.mimeType
-      };
-      logger.info(`[OCR FRONT R2] Document staged successfully: storageKey=${uploadResult.storageKey}`);
-    } catch (uploadErr) {
-      logger.warn(`[OCR FRONT R2] Document staging notice: ${uploadErr?.message}`);
     }
 
     // Stage 2 & 3: Run OCR
@@ -300,7 +271,7 @@ class PassportOcrService {
 
     // ATTEMPT 1: Raw image OCR
     try {
-      const rawOcr = await this.recognizeText(buffer);
+      const rawOcr = await this.recognizeText(imageBuffer);
       ocrText = rawOcr.fullText;
       mrzLines = extractMrzLinesFromText(ocrText);
       if (mrzLines.length >= 2) {
@@ -314,7 +285,7 @@ class PassportOcrService {
     if (!parsedMrz || !parsedMrz.checks?.docNumber || !parsedMrz.checks?.expiry) {
       try {
         logger.info(`[OCR FRONT Preprocessing] Running image enhancements (EXIF, resize, grayscale, normalize)...`);
-        const preprocessedBuffer = await this.preprocessImage(buffer);
+        const preprocessedBuffer = await this.preprocessImage(imageBuffer);
         const prepOcr = await this.recognizeText(preprocessedBuffer);
         ocrText += '\n' + prepOcr.fullText;
         const newMrzLines = extractMrzLinesFromText(prepOcr.fullText);
@@ -329,7 +300,7 @@ class PassportOcrService {
 
         if (!parsedMrz) {
           logger.info(`[OCR FRONT MRZ Crop] Attempting dedicated bottom MRZ crop band...`);
-          const croppedMrz = await this.cropMrzBand(buffer);
+          const croppedMrz = await this.cropMrzBand(imageBuffer);
           if (croppedMrz) {
             const cropOcr = await this.recognizeText(croppedMrz);
             const cropLines = extractMrzLinesFromText(cropOcr.fullText);
@@ -346,7 +317,7 @@ class PassportOcrService {
 
     logger.info(`[OCR FRONT MRZ Parsing] linesExtracted=${mrzLines.length}, mrzParsed=${!!parsedMrz}, validDocCheck=${!!parsedMrz?.checks?.docNumber}`);
 
-    // Wrong page detection (Requirement 7)
+    // Wrong page detection
     const frontDetection = detectPassportFront(ocrText);
     if (!frontDetection.isFront && !parsedMrz) {
       const isEngineFailure = !!(this.lastOcrError || this.engineInitError);
@@ -434,7 +405,7 @@ class PassportOcrService {
       fieldStatus.placeOfIssue = 'HIGH';
     }
 
-    // Check visible passport number vs MRZ passport number (Requirement 5.C)
+    // Check visible passport number vs MRZ passport number
     let passportNumberMismatch = false;
     if (
       visibleDocNumber &&
@@ -477,20 +448,206 @@ class PassportOcrService {
   }
 
   /**
-   * STEP 2 — BACK / SECOND PAGE PROCESSING
+   * STEP 1 — FRONT / PHOTO PAGE PROCESSING
+   * Seamlessly handles both images (JPG, PNG, WEBP) and PDFs (converting relevant page to image)
    */
-  async processPassportBack({
+  async processPassportFront({
     buffer,
     originalFilename,
     mimeType,
-    frontExtractedData = {},
+    userFullName = '',
     previousStorageKey = null
   }) {
     const startTime = Date.now();
-    logger.info(`[OCR BACK Received] originalFilename=${originalFilename || 'unknown'}, mimeType=${mimeType || 'unknown'}, size=${buffer?.length || 0} bytes`);
+    logger.info(`[OCR FRONT Received] originalFilename=${originalFilename || 'unknown'}, mimeType=${mimeType || 'unknown'}, size=${buffer?.length || 0} bytes`);
 
+    // Clean up previous front file if re-uploading
+    if (previousStorageKey) {
+      await this.cleanupOldFile(previousStorageKey);
+    }
+
+    const isPdf = isPdfPayload(buffer, mimeType, originalFilename);
+
+    // Store original uploaded document safely using storageService
+    let uploadedDocument = null;
+    try {
+      logger.info(`[OCR FRONT Storage] Uploading original document to storage (size: ${buffer?.length} bytes, isPdf: ${isPdf})`);
+      const uploadResult = await storageService.uploadFile({
+        buffer,
+        originalFilename: originalFilename || (isPdf ? 'passport_front.pdf' : 'passport_front.jpg'),
+        mimeType: mimeType || (isPdf ? 'application/pdf' : 'image/jpeg'),
+        folder: 'documents'
+      });
+      uploadedDocument = {
+        documentId: `doc_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
+        name: isPdf ? 'Passport Front Page' : 'Passport Front Page',
+        originalFilename: uploadResult.originalFilename,
+        storageKey: uploadResult.storageKey,
+        fileSize: uploadResult.fileSize,
+        mimeType: uploadResult.mimeType
+      };
+      logger.info(`[OCR FRONT Storage] Document staged successfully: storageKey=${uploadResult.storageKey}`);
+    } catch (uploadErr) {
+      logger.warn(`[OCR FRONT Storage] Document staging notice: ${uploadErr?.message}`);
+    }
+
+    // Direct Image OCR flow
+    if (!isPdf) {
+      return await this._extractPassportFrontFromImageBuffer({
+        imageBuffer: buffer,
+        userFullName,
+        originalFilename,
+        uploadedDocument,
+        startTime
+      });
+    }
+
+    // PDF -> Image -> OCR Flow
+    try {
+      return await withPdfDocument(buffer, async (pdfDoc) => {
+        const totalPages = pdfDoc.length || 0;
+        logger.info(`[OCR FRONT PDF] Opened PDF successfully. totalPages=${totalPages}`);
+        if (totalPages === 0) {
+          throw new Error('PDF has 0 pages');
+        }
+
+        // Limit checking to relevant pages (up to 2 pages maximum) to avoid unnecessary processing
+        const maxPagesToCheck = Math.min(totalPages, 2);
+        let firstPageResult = null;
+
+        for (let pageNum = 1; pageNum <= maxPagesToCheck; pageNum++) {
+          logger.info(`[OCR FRONT PDF] Rendering page ${pageNum}/${totalPages} for OCR...`);
+          const pageImgBuffer = await pdfDoc.getPage(pageNum);
+
+          const pageResult = await this._extractPassportFrontFromImageBuffer({
+            imageBuffer: pageImgBuffer,
+            userFullName,
+            originalFilename,
+            uploadedDocument,
+            startTime
+          });
+
+          if (pageResult.isFrontDetected || pageResult.success) {
+            logger.info(`[OCR FRONT PDF] Passport front identified on PDF page ${pageNum}.`);
+
+            // If a multi-page PDF is uploaded, automatically inspect the other page for back details (parents, address)
+            if (totalPages >= 2) {
+              const otherPageNum = pageNum === 1 ? 2 : 1;
+              try {
+                logger.info(`[OCR FRONT PDF] Checking page ${otherPageNum} for back page details...`);
+                const otherImgBuffer = await pdfDoc.getPage(otherPageNum);
+                const backResult = await this._extractPassportBackFromImageBuffer({
+                  imageBuffer: otherImgBuffer,
+                  frontExtractedData: pageResult.extractedData,
+                  uploadedDocument,
+                  startTime
+                });
+
+                if (backResult?.isBackDetected || Object.values(backResult?.extractedData || {}).some(v => Boolean(v))) {
+                  logger.info(`[OCR FRONT PDF] Successfully merged back page details from page ${otherPageNum}.`);
+                  return {
+                    ...pageResult,
+                    extractedData: {
+                      ...pageResult.extractedData,
+                      ...(backResult.extractedData || {}),
+                      ...(backResult.mergedData || {})
+                    },
+                    fields: {
+                      ...(pageResult.fields || {}),
+                      ...(backResult.fields || {})
+                    },
+                    fieldStatus: {
+                      ...(pageResult.fieldStatus || {}),
+                      ...(backResult.fieldStatus || {})
+                    },
+                    consistency: backResult.consistency || null,
+                    isCompleteDocument: true,
+                    isBackDetected: true
+                  };
+                }
+              } catch (backErr) {
+                logger.warn(`[OCR FRONT PDF] Back page inspection notice: ${backErr?.message}`);
+              }
+            }
+
+            return {
+              ...pageResult,
+              isCompleteDocument: true
+            };
+          }
+
+          if (pageNum === 1) {
+            firstPageResult = pageResult;
+          }
+        }
+
+        logger.warn(`[OCR FRONT PDF] Passport front not identified across ${maxPagesToCheck} pages.`);
+        return {
+          ...(firstPageResult || {}),
+          success: false,
+          pageType: 'front',
+          wrongPage: true,
+          isFrontDetected: false,
+          message: "We couldn't read this PDF. Please upload a clearer passport scan.",
+          errors: ["We couldn't read this PDF. Please upload a clearer passport scan."],
+          canContinueManually: true,
+          uploadedDocument
+        };
+      });
+    } catch (pdfErr) {
+      logger.warn(`[OCR FRONT PDF Error] Failed to process PDF: ${pdfErr?.message}`);
+      return {
+        success: false,
+        pageType: 'front',
+        qualityFailed: true,
+        wrongPage: false,
+        isFrontDetected: false,
+        message: "We couldn't read this PDF. Please upload a clearer passport scan.",
+        errors: ["We couldn't read this PDF. Please upload a clearer passport scan."],
+        canContinueManually: true,
+        uploadedDocument,
+        stages: [
+          { id: 'image_checked', label: 'Image checked', status: 'warning' },
+          { id: 'passport_detected', label: 'Passport detected', status: 'pending' },
+          { id: 'mrz_detected', label: 'MRZ detected', status: 'pending' },
+          { id: 'extracting_details', label: 'Extracting details', status: 'pending' },
+          { id: 'verifying_details', label: 'Verifying information', status: 'pending' }
+        ],
+        extractedData: {
+          fullName: userFullName || '',
+          firstName: userFullName ? userFullName.split(' ')[0] : '',
+          lastName: userFullName ? userFullName.split(' ').slice(1).join(' ') : '',
+          passportNumber: '',
+          dateOfBirth: '',
+          nationality: 'Indian',
+          gender: 'Male',
+          issueDate: '',
+          expiryDate: ''
+        },
+        fieldStatus: {
+          fullName: userFullName ? 'HIGH' : 'MISSING',
+          passportNumber: 'MISSING',
+          dateOfBirth: 'MISSING',
+          nationality: 'HIGH',
+          gender: 'HIGH',
+          issueDate: 'MISSING',
+          expiryDate: 'MISSING'
+        }
+      };
+    }
+  }
+
+  /**
+   * Internal helper: Extracts back passport fields from an image buffer
+   */
+  async _extractPassportBackFromImageBuffer({
+    imageBuffer,
+    frontExtractedData = {},
+    uploadedDocument = null,
+    startTime = Date.now()
+  }) {
     // Stage 1: Quality Check
-    const quality = await this.checkImageQuality(buffer);
+    const quality = await this.checkImageQuality(imageBuffer);
     if (!quality.ok && quality.issues.includes('INSUFFICIENT_RESOLUTION')) {
       logger.warn(`[OCR BACK Quality] Insufficient resolution: ${quality.width}x${quality.height}`);
       return {
@@ -499,6 +656,7 @@ class PassportOcrService {
         qualityFailed: true,
         message: 'Image quality is too low to reliably read this passport.',
         canContinueManually: true,
+        uploadedDocument,
         extractedData: {
           fatherName: '',
           motherName: '',
@@ -509,39 +667,11 @@ class PassportOcrService {
       };
     }
 
-    // Clean up previous back file if re-uploading (Requirement 8)
-    if (previousStorageKey) {
-      await this.cleanupOldFile(previousStorageKey);
-    }
-
-    // Store document safely using storageService
-    let uploadedDocument = null;
-    try {
-      logger.info(`[OCR BACK R2] Uploading document to staging storage (size: ${buffer?.length} bytes)`);
-      const uploadResult = await storageService.uploadFile({
-        buffer,
-        originalFilename: originalFilename || 'passport_back.jpg',
-        mimeType: mimeType || 'image/jpeg',
-        folder: 'documents'
-      });
-      uploadedDocument = {
-        documentId: `doc_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
-        name: 'Passport Back Page',
-        originalFilename: uploadResult.originalFilename,
-        storageKey: uploadResult.storageKey,
-        fileSize: uploadResult.fileSize,
-        mimeType: uploadResult.mimeType
-      };
-      logger.info(`[OCR BACK R2] Document staged successfully: storageKey=${uploadResult.storageKey}`);
-    } catch (uploadErr) {
-      logger.warn(`[OCR BACK R2] Document staging notice: ${uploadErr?.message}`);
-    }
-
     // Run OCR on back page
     let ocrText = '';
     try {
       logger.info(`[OCR BACK OCR] Running text recognition...`);
-      const rawOcr = await this.recognizeText(buffer);
+      const rawOcr = await this.recognizeText(imageBuffer);
       ocrText = rawOcr.fullText;
     } catch (err) {
       logger.warn(`[OCR BACK OCR] Back page OCR notice: ${err?.message}`);
@@ -556,7 +686,7 @@ class PassportOcrService {
         pageType: 'back',
         wrongPage: false,
         isBackDetected: false,
-        message: "Back side processed. You can review and enter details manually.",
+        message: "We couldn't identify the required passport back/second page. You can review and enter details manually.",
         canContinueManually: true,
         uploadedDocument,
         extractedData: {
@@ -574,9 +704,7 @@ class PassportOcrService {
     // Extract back page details
     const backDetails = extractBackPageDetails(ocrText);
 
-    // Consistency check against front data (Requirements 1, 2, 5)
-    // ONLY compare passportNumber if a verified, valid passport number is present on the back.
-    // Never compare arbitrary OCR text or old passport numbers!
+    // Consistency check against front data
     const consistency = checkPassportConsistency(frontExtractedData, backDetails);
 
     // Merge front and back information with source and confidence tracking
@@ -606,6 +734,118 @@ class PassportOcrService {
       canContinueManually: true,
       message: 'Back side processed'
     };
+  }
+
+  /**
+   * STEP 2 — BACK / SECOND PAGE PROCESSING
+   * Seamlessly handles both images and PDFs
+   */
+  async processPassportBack({
+    buffer,
+    originalFilename,
+    mimeType,
+    frontExtractedData = {},
+    previousStorageKey = null
+  }) {
+    const startTime = Date.now();
+    logger.info(`[OCR BACK Received] originalFilename=${originalFilename || 'unknown'}, mimeType=${mimeType || 'unknown'}, size=${buffer?.length || 0} bytes`);
+
+    // Clean up previous back file if re-uploading
+    if (previousStorageKey) {
+      await this.cleanupOldFile(previousStorageKey);
+    }
+
+    const isPdf = isPdfPayload(buffer, mimeType, originalFilename);
+
+    // Store original document safely using storageService
+    let uploadedDocument = null;
+    try {
+      logger.info(`[OCR BACK Storage] Uploading original document to storage (size: ${buffer?.length} bytes, isPdf: ${isPdf})`);
+      const uploadResult = await storageService.uploadFile({
+        buffer,
+        originalFilename: originalFilename || (isPdf ? 'passport_back.pdf' : 'passport_back.jpg'),
+        mimeType: mimeType || (isPdf ? 'application/pdf' : 'image/jpeg'),
+        folder: 'documents'
+      });
+      uploadedDocument = {
+        documentId: `doc_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
+        name: 'Passport Back Page',
+        originalFilename: uploadResult.originalFilename,
+        storageKey: uploadResult.storageKey,
+        fileSize: uploadResult.fileSize,
+        mimeType: uploadResult.mimeType
+      };
+      logger.info(`[OCR BACK Storage] Document staged successfully: storageKey=${uploadResult.storageKey}`);
+    } catch (uploadErr) {
+      logger.warn(`[OCR BACK Storage] Document staging notice: ${uploadErr?.message}`);
+    }
+
+    // Direct Image OCR flow
+    if (!isPdf) {
+      return await this._extractPassportBackFromImageBuffer({
+        imageBuffer: buffer,
+        frontExtractedData,
+        uploadedDocument,
+        startTime
+      });
+    }
+
+    // PDF -> Image -> OCR Flow
+    try {
+      return await withPdfDocument(buffer, async (pdfDoc) => {
+        const totalPages = pdfDoc.length || 0;
+        logger.info(`[OCR BACK PDF] Opened PDF successfully. totalPages=${totalPages}`);
+        if (totalPages === 0) {
+          throw new Error('PDF has 0 pages');
+        }
+
+        // Check up to 2 pages
+        const maxPagesToCheck = Math.min(totalPages, 2);
+        let firstPageResult = null;
+
+        for (let pageNum = 1; pageNum <= maxPagesToCheck; pageNum++) {
+          logger.info(`[OCR BACK PDF] Rendering page ${pageNum}/${totalPages} for OCR...`);
+          const pageImgBuffer = await pdfDoc.getPage(pageNum);
+
+          const pageResult = await this._extractPassportBackFromImageBuffer({
+            imageBuffer: pageImgBuffer,
+            frontExtractedData,
+            uploadedDocument,
+            startTime
+          });
+
+          if (pageResult.isBackDetected) {
+            logger.info(`[OCR BACK PDF] Passport back identified on PDF page ${pageNum}.`);
+            return pageResult;
+          }
+
+          if (pageNum === 1) {
+            firstPageResult = pageResult;
+          }
+        }
+
+        // Return the first page result with soft fallback
+        return firstPageResult;
+      });
+    } catch (pdfErr) {
+      logger.warn(`[OCR BACK PDF Error] Failed to process PDF: ${pdfErr?.message}`);
+      return {
+        success: false,
+        pageType: 'back',
+        qualityFailed: true,
+        message: "We couldn't read this PDF. Please upload a clearer passport scan.",
+        errors: ["We couldn't read this PDF. Please upload a clearer passport scan."],
+        canContinueManually: true,
+        uploadedDocument,
+        extractedData: {
+          fatherName: '',
+          motherName: '',
+          spouseName: '',
+          address: '',
+          fileNumber: ''
+        }
+      };
+    }
   }
 
   /**

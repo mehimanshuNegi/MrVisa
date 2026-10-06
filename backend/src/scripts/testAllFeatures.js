@@ -126,6 +126,18 @@ async function runAllTests() {
   // =========================================================================
   console.log('\n--- TEST SUITE D: Admin CRUD & Persistence ---');
 
+  // Ensure test admin exists
+  let adminUser = await User.findOne({ email: 'admin@comprehensive-test.com' });
+  if (!adminUser) {
+    adminUser = await User.create({
+      name: 'Admin User',
+      email: 'admin@comprehensive-test.com',
+      passwordHash: 'Password123!',
+      role: 'ADMIN',
+      isActive: true
+    });
+  }
+
   // Login as Admin
   const adminLoginRes = await fetch(`${API_BASE}/auth/login`, {
     method: 'POST',

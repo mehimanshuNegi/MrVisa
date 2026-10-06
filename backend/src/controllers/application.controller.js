@@ -213,7 +213,15 @@ import logger from '../utils/logger.js';
 
 export const processPassportOcr = asyncHandler(async (req, res) => {
   if (!req.file || !req.file.buffer) {
-    throw ApiError.badRequest('Please upload a passport image file (JPG, PNG, or WEBP).');
+    throw ApiError.badRequest('Please upload a passport document or image (PDF, JPG, PNG, or WEBP).');
+  }
+
+  const allowedMimeTypes = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'];
+  const filename = (req.file.originalname || '').toLowerCase();
+  const hasAllowedExt = /\.(jpe?g|png|webp|pdf)$/i.test(filename);
+
+  if (!allowedMimeTypes.includes(req.file.mimetype) && !hasAllowedExt) {
+    throw ApiError.badRequest('Invalid file format. Please upload a passport in PDF, JPG, PNG, or WEBP format.');
   }
 
   let frontExtractedData = {};

@@ -365,8 +365,8 @@ class ApplicationService {
   }
 
   /**
-   * Process passport image via backend OCR and MRZ parser
-   * @param {File} file Passport image file (JPG/PNG/WEBP)
+   * Process passport image or PDF via backend OCR and MRZ parser
+   * @param {File} file Passport document or image file (PDF/JPG/PNG/WEBP)
    * @param {string|object} options Applicant full name or options object
    */
   async processPassportOcr(file, options = '') {
@@ -401,13 +401,14 @@ class ApplicationService {
       return response.data || response;
     } catch (err) {
       console.warn('Backend OCR call notice:', err);
+      const isPdfFile = file?.type === 'application/pdf' || /\.pdf$/i.test(file?.name || '');
       // Resilient non-blocking fallback with uploadedDocument metadata
       const fallbackDoc = {
         documentId: `doc_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
         name: pageType === 'back' ? 'Passport Back Page' : 'Passport Front Page',
-        originalFilename: file?.name || (pageType === 'back' ? 'passport_back.jpg' : 'passport_front.jpg'),
+        originalFilename: file?.name || (pageType === 'back' ? (isPdfFile ? 'passport_back.pdf' : 'passport_back.jpg') : (isPdfFile ? 'passport_front.pdf' : 'passport_front.jpg')),
         fileSize: file?.size || 0,
-        mimeType: file?.type || 'image/jpeg',
+        mimeType: file?.type || (isPdfFile ? 'application/pdf' : 'image/jpeg'),
         storageKey: ''
       };
 

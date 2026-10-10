@@ -7,6 +7,7 @@ import { auditService } from './audit.service.js';
 import { AUDIT_ACTIONS, AUDIT_ENTITIES, APPLICATION_STATUS } from '../constants/statuses.js';
 import { logger } from '../utils/logger.js';
 import { env } from '../config/environment.js';
+import { validateBufferMagicBytes } from '../middleware/upload.middleware.js';
 
 export function inferDocumentMetadataFromKey(storageKey, defaultBase = 'document') {
   const match = String(storageKey || '').match(/\.([a-zA-Z0-9]+)(?:\?.*)?$/);
@@ -91,159 +92,168 @@ class DocumentService {
     travellerId = '',
     documentType,
     file,
+    previousStorageKey = '',
+    visaId = '',
     verificationKey = '',
     currentUser = null,
     req = null
   }) {
-    if (!file) throw ApiError.badRequest('File payload is missing');
-    if (!applicationId) throw ApiError.badRequest('Application ID is required');
+    if (!file || !file.buffer) throw ApiError.badRequest('File payload is missing or empty');
+
+    // 1. Validate magic bytes to reject corrupted or renamed files
+    const magicCheck = validateBufferMagicBytes(file.buffer, file.mimetype, file.originalname);
+    if (!magicCheck.isValid) {
+      throw ApiError.badRequest(magicCheck.error || 'Corrupted or unsupported file format. Please upload a valid PDF, JPG, PNG, or WEBP document.');
+    }
+
+    // 2. Clean up old/replaced file in R2 to avoid storage leaks
+    if (previousStorageKey) {
+      try {
+        await storageService.deleteFile(previousStorageKey);
+      } catch (cleanupErr) {
+        logger.warn('Previous document cleanup notice:', cleanupErr?.message);
+      }
+    }
 
     let application = null;
-    if (mongoose.Types.ObjectId.isValid(applicationId)) {
-      application = await Application.findById(applicationId);
-    }
-    if (!application) {
-      application = await Application.findOne({ referenceNumber: String(applicationId).toUpperCase() });
-    }
-    if (!application) throw ApiError.notFound('Application not found');
-
-    if (application.isDeleted) {
-      throw ApiError.badRequest('Cannot upload documents to a deleted application');
+    if (applicationId) {
+      if (mongoose.Types.ObjectId.isValid(applicationId)) {
+        application = await Application.findById(applicationId);
+      }
+      if (!application) {
+        application = await Application.findOne({ referenceNumber: String(applicationId).toUpperCase() });
+      }
     }
 
-    // Customer upload authorization
-    if (currentUser && currentUser.role !== 'ADMIN') {
-      const ownerId = application.customer?._id
-        ? application.customer._id.toString()
-        : application.customer?.toString();
-
-      if (ownerId && ownerId !== currentUser._id.toString()) {
-        throw ApiError.forbidden("You cannot upload documents to another customer's application");
+    // If an existing saved application is matched, apply application-level authorization and linking
+    if (application) {
+      if (application.isDeleted) {
+        throw ApiError.badRequest('Cannot upload documents to a deleted application');
       }
 
-      // Check if application is in locked state
-      const lockedStatuses = [
-        APPLICATION_STATUS.PROCESSING,
-        APPLICATION_STATUS.APPROVED,
-        APPLICATION_STATUS.VISA_ISSUED,
-        APPLICATION_STATUS.COMPLETED
-      ];
-      if (lockedStatuses.includes(application.status)) {
-        throw ApiError.badRequest('Cannot upload additional documents while application is undergoing consulate processing.');
-      }
-    } else if (!currentUser) {
-      if (application.customer) {
-        // Unauthenticated request cannot upload to a registered customer's application
-        throw ApiError.unauthorized('Authentication required to upload documents to this application');
-      }
+      // Customer upload authorization
+      if (currentUser && currentUser.role !== 'ADMIN') {
+        const ownerId = application.customer?._id
+          ? application.customer._id.toString()
+          : application.customer?.toString();
 
-      // Guest application ownership verification: require phone or passport match
-      const rawKey = String(verificationKey || '').trim();
-      const phoneDigits = rawKey.replace(/\D/g, '');
-      const cleanPassport = rawKey.toUpperCase().replace(/[^A-Z0-9]/g, '');
+        if (ownerId && ownerId !== currentUser._id.toString()) {
+          throw ApiError.forbidden("You cannot upload documents to another customer's application");
+        }
 
-      let verified = false;
-      const appPhoneDigits = String(application.contactDetails?.phone || '').replace(/\D/g, '');
+        // Check if application is in locked state
+        const lockedStatuses = [
+          APPLICATION_STATUS.PROCESSING,
+          APPLICATION_STATUS.APPROVED,
+          APPLICATION_STATUS.VISA_ISSUED,
+          APPLICATION_STATUS.COMPLETED
+        ];
+        if (lockedStatuses.includes(application.status)) {
+          throw ApiError.badRequest('Cannot upload additional documents while application is undergoing consulate processing.');
+        }
+      } else if (!currentUser) {
+        if (application.customer) {
+          throw ApiError.unauthorized('Authentication required to upload documents to this application');
+        }
 
-      if (phoneDigits.length >= 10 && appPhoneDigits.length >= 10 && (phoneDigits === appPhoneDigits || appPhoneDigits.endsWith(phoneDigits) || phoneDigits.endsWith(appPhoneDigits))) {
-        verified = true;
-      }
+        // Guest application ownership verification
+        const rawKey = String(verificationKey || '').trim();
+        const phoneDigits = rawKey.replace(/\D/g, '');
+        const cleanPassport = rawKey.toUpperCase().replace(/[^A-Z0-9]/g, '');
 
-      if (!verified && phoneDigits.length >= 10) {
-        for (const t of application.travellers || []) {
-          const tPhone = String(t.phone || '').replace(/\D/g, '');
-          if (tPhone.length >= 10 && (tPhone === phoneDigits || tPhone.endsWith(phoneDigits) || phoneDigits.endsWith(tPhone))) {
-            verified = true;
-            break;
+        let verified = false;
+        const appPhoneDigits = String(application.contactDetails?.phone || '').replace(/\D/g, '');
+
+        if (phoneDigits.length >= 10 && appPhoneDigits.length >= 10 && (phoneDigits === appPhoneDigits || appPhoneDigits.endsWith(phoneDigits) || phoneDigits.endsWith(appPhoneDigits))) {
+          verified = true;
+        }
+
+        if (!verified && phoneDigits.length >= 10) {
+          for (const t of application.travellers || []) {
+            const tPhone = String(t.phone || '').replace(/\D/g, '');
+            if (tPhone.length >= 10 && (tPhone === phoneDigits || tPhone.endsWith(phoneDigits) || phoneDigits.endsWith(tPhone))) {
+              verified = true;
+              break;
+            }
           }
+        }
+
+        if (!verified && cleanPassport.length >= 6) {
+          for (const t of application.travellers || []) {
+            const tPassport = String(t.passportNumber || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+            if (tPassport && tPassport === cleanPassport) {
+              verified = true;
+              break;
+            }
+          }
+        }
+
+        if (!verified) {
+          throw ApiError.unauthorized('Valid verification key (phone number or passport) is required to upload documents to a guest application');
         }
       }
 
-      if (!verified && cleanPassport.length >= 6) {
-        for (const t of application.travellers || []) {
-          const tPassport = String(t.passportNumber || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
-          if (tPassport && tPassport === cleanPassport) {
-            verified = true;
-            break;
-          }
-        }
-      }
-
-      if (!verified) {
-        throw ApiError.unauthorized('Valid verification key (phone number or passport) is required to upload documents to a guest application');
-      }
-    }
-
-    // Validate format against configured visa requirement acceptedFormats
-    if (application.visa) {
-      if (!application.visa.title && mongoose.Types.ObjectId.isValid(application.visa)) {
-        await application.populate('visa');
-      }
-      const visaDocs = application.visa?.requiredDocuments || [];
-      const docTypeLower = String(documentType || '').trim().toLowerCase();
-      const matchedReq = visaDocs.find((r) => {
-        if (!r) return false;
-        const name = typeof r === 'string' ? r : (r.title || r.name || '');
-        return name.toLowerCase().includes(docTypeLower) || docTypeLower.includes(name.toLowerCase());
+      // Upload to Object Storage under applications folder
+      const { storageKey, originalFilename, mimeType, fileSize } = await storageService.uploadFile({
+        buffer: file.buffer,
+        originalFilename: file.originalname,
+        mimeType: file.mimetype,
+        folder: `applications/${application._id}`
       });
 
-      if (matchedReq && typeof matchedReq === 'object' && Array.isArray(matchedReq.acceptedFormats) && matchedReq.acceptedFormats.length > 0) {
-        const allowedFormats = matchedReq.acceptedFormats.map((f) => String(f).toUpperCase());
-        const extMatch = (file.originalname || '').match(/\.([a-zA-Z0-9]+)$/);
-        const fileExt = extMatch ? extMatch[1].toUpperCase() : '';
-        const isMatch = allowedFormats.some((fmt) => {
-          if (fmt === fileExt) return true;
-          if ((fmt === 'JPG' || fmt === 'JPEG') && (fileExt === 'JPG' || fileExt === 'JPEG')) return true;
-          return false;
-        });
+      // Create Document record in MongoDB
+      const document = await Document.create({
+        application: application._id,
+        travellerId: travellerId || (application.travellers?.[0]?.travellerId || 'trav_1'),
+        documentType: documentType || 'Supporting Document',
+        name: originalFilename || 'Document',
+        originalFilename,
+        storageKey,
+        mimeType,
+        fileSize,
+        status: 'PENDING'
+      });
 
-        if (!isMatch) {
-          const readable = allowedFormats.length === 1
-            ? allowedFormats[0]
-            : `${allowedFormats.slice(0, -1).join(', ')} or ${allowedFormats[allowedFormats.length - 1]}`;
-          throw ApiError.badRequest(`Invalid file format. Please upload a ${readable} file.`);
-        }
-      }
+      await auditService.log({
+        action: AUDIT_ACTIONS.CREATE,
+        entity: AUDIT_ENTITIES.DOCUMENT,
+        entityId: document._id,
+        newValues: { applicationId: application._id, documentType, storageKey, fileSize },
+        req
+      });
+
+      const signedUrl = await storageService.getSignedUrl(storageKey);
+      const docJson = document.toJSON();
+      docJson.signedUrl = signedUrl;
+      docJson.fileUrl = signedUrl;
+      docJson.storageKey = storageKey; // Retain storageKey so client can associate it
+
+      return docJson;
     }
 
-    // 1. Upload to Object Storage (Cloudflare R2 / S3)
+    // Pre-submission / draft upload flow (User is in application form before submission)
     const { storageKey, originalFilename, mimeType, fileSize } = await storageService.uploadFile({
       buffer: file.buffer,
       originalFilename: file.originalname,
       mimeType: file.mimetype,
-      folder: `applications/${application._id}`
-    });
-
-    // 2. Create Document record in MongoDB (Metadata only, NOT the file blob)
-    const document = await Document.create({
-      application: application._id,
-      travellerId: travellerId || (application.travellers?.[0]?.travellerId || 'trav_1'),
-      documentType: documentType || 'Passport',
-      name: originalFilename || 'Document',
-      originalFilename,
-      storageKey,
-      mimeType,
-      fileSize,
-      status: 'PENDING'
-    });
-
-    await auditService.log({
-      action: AUDIT_ACTIONS.CREATE,
-      entity: AUDIT_ENTITIES.DOCUMENT,
-      entityId: document._id,
-      newValues: { applicationId: application._id, documentType, storageKey, fileSize },
-      req
+      folder: 'documents'
     });
 
     const signedUrl = await storageService.getSignedUrl(storageKey);
-    const docJson = document.toJSON();
-    docJson.signedUrl = signedUrl;
-    docJson.fileUrl = signedUrl;
-    if (currentUser?.role !== 'ADMIN') {
-      delete docJson.storageKey;
-    }
 
-    return docJson;
+    return {
+      documentId: `doc_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`,
+      storageKey,
+      name: originalFilename,
+      originalFilename,
+      mimeType,
+      fileSize,
+      documentType: documentType || 'Supporting Document',
+      travellerId: travellerId || 'trav_1',
+      status: 'PENDING',
+      signedUrl,
+      fileUrl: signedUrl
+    };
   }
 
   /**

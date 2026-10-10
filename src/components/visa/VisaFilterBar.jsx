@@ -20,15 +20,12 @@ import TravelDatePicker from '../common/TravelDatePicker';
 
 const searchCountries = countryService.getSearchCountries();
 const visaTypeOptions = visaService.getVisaTypeOptions();
-const documentOptions = visaService.getDocumentOptions();
 
 export default function VisaFilterBar({
   selectedCountry,
   setSelectedCountry,
   selectedVisaType,
   setSelectedVisaType,
-  selectedDocument,
-  setSelectedDocument,
   selectedDate,
   setSelectedDate,
   searchQuery,
@@ -38,20 +35,17 @@ export default function VisaFilterBar({
 }) {
   const [countryOpen, setCountryOpen] = useState(false);
   const [typeOpen, setTypeOpen] = useState(false);
-  const [docOpen, setDocOpen] = useState(false);
   const [countrySearchInput, setCountrySearchInput] = useState('');
   const [allVisas, setAllVisas] = useState([]);
   const [countriesList, setCountriesList] = useState([]);
 
   const countryHoverTimerRef = useRef(null);
   const typeHoverTimerRef = useRef(null);
-  const docHoverTimerRef = useRef(null);
 
   const handleCountryMouseEnter = () => {
     if (countryHoverTimerRef.current) clearTimeout(countryHoverTimerRef.current);
     setCountryOpen(true);
     setTypeOpen(false);
-    setDocOpen(false);
   };
   const handleCountryMouseLeave = () => {
     countryHoverTimerRef.current = setTimeout(() => {
@@ -63,23 +57,10 @@ export default function VisaFilterBar({
     if (typeHoverTimerRef.current) clearTimeout(typeHoverTimerRef.current);
     setTypeOpen(true);
     setCountryOpen(false);
-    setDocOpen(false);
   };
   const handleTypeMouseLeave = () => {
     typeHoverTimerRef.current = setTimeout(() => {
       setTypeOpen(false);
-    }, 220);
-  };
-
-  const handleDocMouseEnter = () => {
-    if (docHoverTimerRef.current) clearTimeout(docHoverTimerRef.current);
-    setDocOpen(true);
-    setCountryOpen(false);
-    setTypeOpen(false);
-  };
-  const handleDocMouseLeave = () => {
-    docHoverTimerRef.current = setTimeout(() => {
-      setDocOpen(false);
     }, 220);
   };
 
@@ -98,13 +79,11 @@ export default function VisaFilterBar({
       isMounted = false;
       if (countryHoverTimerRef.current) clearTimeout(countryHoverTimerRef.current);
       if (typeHoverTimerRef.current) clearTimeout(typeHoverTimerRef.current);
-      if (docHoverTimerRef.current) clearTimeout(docHoverTimerRef.current);
     };
   }, []);
 
   const countryRef = useRef(null);
   const typeRef = useRef(null);
-  const docRef = useRef(null);
   const dateInputRef = useRef(null);
 
   // Close dropdowns on outside click
@@ -116,18 +95,14 @@ export default function VisaFilterBar({
       if (typeRef.current && !typeRef.current.contains(e.target)) {
         setTypeOpen(false);
       }
-      if (docRef.current && !docRef.current.contains(e.target)) {
-        setDocOpen(false);
-      }
     };
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
   const hasActiveFilters = 
-    selectedCountry !== 'Any Country' || 
-    selectedVisaType !== 'All Visa Types' || 
-    selectedDocument !== 'Any Documents' || 
+    (selectedCountry !== 'Any Country' && selectedCountry !== 'All Countries') || 
+    (selectedVisaType && selectedVisaType !== 'All Visa Types' && selectedVisaType !== 'E-Visa') || 
     selectedDate !== '' || 
     searchQuery !== '';
 
@@ -316,79 +291,7 @@ export default function VisaFilterBar({
             )}
           </div>
 
-          {/* 3. Documents */}
-          <div 
-            className="relative px-3.5 py-1.5 lg:border-r border-slate-200/80 flex-1 min-w-0" 
-            ref={docRef}
-            onMouseEnter={handleDocMouseEnter}
-            onMouseLeave={handleDocMouseLeave}
-          >
-            <button
-              type="button"
-              onClick={() => {
-                setDocOpen(!docOpen);
-                setCountryOpen(false);
-                setTypeOpen(false);
-              }}
-              className="w-full flex items-center justify-between text-left focus:outline-none cursor-pointer group"
-            >
-              <div className="flex items-center gap-2.5 sm:gap-3 min-w-0 flex-1">
-                <div className="w-8 h-8 rounded-full bg-amber-50 text-amber-600 flex items-center justify-center flex-shrink-0">
-                  <FileText size={16} strokeWidth={2.4} />
-                </div>
-                <div className="flex flex-col min-w-0">
-                  <span className="text-[9.5px] sm:text-[10px] font-bold text-slate-400 uppercase tracking-wider leading-none">
-                    Documents:
-                  </span>
-                  <span className="text-xs sm:text-[13.5px] font-extrabold text-[#123B7A] mt-0.5 truncate max-w-[130px]">
-                    {selectedDocument}
-                  </span>
-                </div>
-              </div>
-              <ChevronDown 
-                size={14} 
-                className={`text-slate-400 group-hover:text-[#2563EB] transition-transform duration-200 flex-shrink-0 ${docOpen ? 'rotate-180' : ''}`} 
-              />
-            </button>
-
-            {/* Documents Floating Dropdown Panel */}
-            {docOpen && (
-              <div 
-                className="absolute left-0 top-full mt-2 w-80 bg-white rounded-2xl shadow-[0_20px_50px_rgba(8,43,97,0.22)] border border-slate-200/90 p-2.5 z-50 animate-in fade-in zoom-in-95 duration-150"
-                onMouseEnter={handleDocMouseEnter}
-                onMouseLeave={handleDocMouseLeave}
-              >
-                <div className="space-y-1">
-                  {documentOptions.map((doc) => {
-                    const isSelected = selectedDocument === doc.value;
-                    return (
-                      <button
-                        key={doc.value}
-                        type="button"
-                        onClick={() => {
-                          setSelectedDocument(doc.value);
-                          setDocOpen(false);
-                        }}
-                        className={`w-full text-left px-3 py-2.5 rounded-xl text-xs font-semibold flex items-center justify-between transition-colors cursor-pointer ${
-                          isSelected
-                            ? 'bg-[#F4F8FF] text-[#2563EB]'
-                            : 'text-[#123B7A] hover:bg-slate-50'
-                        }`}
-                      >
-                        <div className="flex items-center gap-1.5 pr-2">
-                          <span className="leading-snug">{doc.label}</span>
-                          <span className="text-[11px] text-slate-400 font-normal whitespace-nowrap">• {doc.count}</span>
-                        </div>
-                        {isSelected && <Check size={14} strokeWidth={2.5} className="flex-shrink-0" />}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* 4. Travel Dates (Hover-Activated Popover) */}
+          {/* 3. Travel Dates (Hover-Activated Popover) */}
           <div className="relative px-3.5 py-1.5 flex-1 min-w-0">
             <TravelDatePicker
               selectedDate={selectedDate}
@@ -397,7 +300,7 @@ export default function VisaFilterBar({
             />
           </div>
 
-          {/* 5. Solid Blue Search CTA Button */}
+          {/* 4. Solid Blue Search CTA Button */}
           <div className="px-2 py-1 flex-shrink-0">
             <button
               type="button"
@@ -445,7 +348,7 @@ export default function VisaFilterBar({
               Active:
             </span>
 
-            {selectedCountry !== 'Any Country' && (
+            {selectedCountry !== 'Any Country' && selectedCountry !== 'All Countries' && (
               <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white border border-[#2563EB]/30 text-[#123B7A] text-xs font-bold shadow-sm">
                 <span>{selectedCountry}</span>
                 <button type="button" onClick={() => setSelectedCountry('Any Country')} className="hover:text-red-500 cursor-pointer">
@@ -454,19 +357,10 @@ export default function VisaFilterBar({
               </span>
             )}
 
-            {selectedVisaType !== 'All Visa Types' && (
+            {selectedVisaType && selectedVisaType !== 'All Visa Types' && selectedVisaType !== 'E-Visa' && (
               <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white border border-[#2563EB]/30 text-[#123B7A] text-xs font-bold shadow-sm">
                 <span>{selectedVisaType}</span>
                 <button type="button" onClick={() => setSelectedVisaType('All Visa Types')} className="hover:text-red-500 cursor-pointer">
-                  <X size={12} />
-                </button>
-              </span>
-            )}
-
-            {selectedDocument !== 'Any Documents' && (
-              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white border border-[#2563EB]/30 text-[#123B7A] text-xs font-bold shadow-sm">
-                <span className="truncate max-w-[150px]">{selectedDocument}</span>
-                <button type="button" onClick={() => setSelectedDocument('Any Documents')} className="hover:text-red-500 cursor-pointer">
                   <X size={12} />
                 </button>
               </span>

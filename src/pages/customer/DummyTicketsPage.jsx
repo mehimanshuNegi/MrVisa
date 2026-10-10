@@ -15,6 +15,9 @@ import {
   FileCheck
 } from 'lucide-react';
 import { dummyTicketService, authService } from '../../services';
+import AirportAutocomplete from '../../components/common/AirportAutocomplete';
+import VerifiedFieldBadge from '../../components/common/VerifiedFieldBadge';
+import { validateName } from '../../utils/nameValidator';
 
 const DIAL_CODES = [
   { code: '+91', country: 'India' },
@@ -62,11 +65,15 @@ export default function DummyTicketsPage() {
     phone: '',
     email: ''
   });
+  const [isPhoneVerified, setIsPhoneVerified] = useState(false);
+  const [isEmailVerified, setIsEmailVerified] = useState(false);
 
-  // Ticket / Flight Details
+  // Ticket / Flight Details with IATA codes
   const [flight, setFlight] = useState({
     from: '',
+    fromIata: '',
     to: '',
+    toIata: '',
     departureDate: '',
     returnDate: ''
   });
@@ -139,8 +146,30 @@ export default function DummyTicketsPage() {
     setTravellers((prev) =>
       prev.map((t) => (t.id === id ? { ...t, [field]: value } : t))
     );
-    // Clear validation error if field edited
-    if (formErrors[`traveller_${id}_${field}`]) {
+
+    if (field === 'firstName' || field === 'lastName') {
+      if (value.trim()) {
+        const check = validateName(value);
+        if (!check.isValid) {
+          setFormErrors((prev) => ({
+            ...prev,
+            [`traveller_${id}_${field}`]: check.error
+          }));
+        } else {
+          setFormErrors((prev) => {
+            const next = { ...prev };
+            delete next[`traveller_${id}_${field}`];
+            return next;
+          });
+        }
+      } else {
+        setFormErrors((prev) => {
+          const next = { ...prev };
+          delete next[`traveller_${id}_${field}`];
+          return next;
+        });
+      }
+    } else if (formErrors[`traveller_${id}_${field}`]) {
       setFormErrors((prev) => {
         const next = { ...prev };
         delete next[`traveller_${id}_${field}`];
@@ -155,11 +184,13 @@ export default function DummyTicketsPage() {
 
     // 1. Travellers validation
     travellers.forEach((t, idx) => {
-      if (!t.firstName?.trim()) {
-        errors[`traveller_${t.id}_firstName`] = `First name is required for Person ${idx + 1}`;
+      const firstCheck = validateName(t.firstName);
+      if (!firstCheck.isValid) {
+        errors[`traveller_${t.id}_firstName`] = `${firstCheck.error} (Person ${idx + 1})`;
       }
-      if (!t.lastName?.trim()) {
-        errors[`traveller_${t.id}_lastName`] = `Last name is required for Person ${idx + 1}`;
+      const lastCheck = validateName(t.lastName);
+      if (!lastCheck.isValid) {
+        errors[`traveller_${t.id}_lastName`] = `${lastCheck.error} (Person ${idx + 1})`;
       }
     });
 
@@ -176,13 +207,20 @@ export default function DummyTicketsPage() {
       errors.email = 'Please enter a valid email address';
     }
 
-    // 3. Flight validation
-    if (!flight.from?.trim()) {
-      errors.from = 'Origin city or airport is required';
+    // 3. Flight validation with strict airport selection & conflict prevention
+    if (!flight.from?.trim() || !flight.fromIata) {
+      errors.from = 'Please select a recognized origin airport from the suggestions';
     }
-    if (!flight.to?.trim()) {
-      errors.to = 'Destination city or airport is required';
+    if (!flight.to?.trim() || !flight.toIata) {
+      errors.to = 'Please select a recognized destination airport from the suggestions';
+    } else if (
+      flight.fromIata &&
+      flight.toIata &&
+      flight.fromIata.toUpperCase() === flight.toIata.toUpperCase()
+    ) {
+      errors.to = 'Origin and destination airports cannot be the same';
     }
+
     if (!flight.departureDate) {
       errors.departureDate = 'Departure date is required';
     }
@@ -495,14 +533,24 @@ export default function DummyTicketsPage() {
                 </div>
 
                 <div className="sm:col-span-8">
-                  <label className="block text-xs font-bold text-[#082B61] mb-1.5">
-                    Contact Number
-                  </label>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="block text-xs font-bold text-[#082B61]">
+                      Contact Number
+                    </label>
+                    <VerifiedFieldBadge
+                      target={`${contact.dialCode}${contact.phone}`}
+                      type="PHONE"
+                      isVerified={isPhoneVerified}
+                      onVerified={() => setIsPhoneVerified(true)}
+                      onInvalidate={() => setIsPhoneVerified(false)}
+                    />
+                  </div>
                   <input
                     type="tel"
                     value={contact.phone}
                     onChange={(e) => {
                       setContact((prev) => ({ ...prev, phone: e.target.value }));
+                      setIsPhoneVerified(false); // Invalidate upon editing
                       if (formErrors.phone) {
                         setFormErrors((prev) => {
                           const next = { ...prev };
@@ -515,6 +563,8 @@ export default function DummyTicketsPage() {
                     className={`w-full bg-[#E2E8F0]/50 hover:bg-[#E2E8F0]/70 focus:bg-white border ${
                       formErrors.phone
                         ? 'border-red-500 focus:border-red-500'
+                        : isPhoneVerified
+                        ? 'border-emerald-400 focus:border-emerald-600'
                         : 'border-slate-300 focus:border-[#082B61]'
                     } rounded-xl px-3.5 py-3 text-sm font-semibold text-[#082B61] placeholder:text-slate-400 outline-none focus:ring-2 focus:ring-blue-100 transition`}
                   />
@@ -526,14 +576,24 @@ export default function DummyTicketsPage() {
 
               {/* Row 2: E-Mail */}
               <div>
-                <label className="block text-xs font-bold text-[#082B61] mb-1.5">
-                  E-Mail
-                </label>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="block text-xs font-bold text-[#082B61]">
+                    E-Mail
+                  </label>
+                  <VerifiedFieldBadge
+                    target={contact.email}
+                    type="EMAIL"
+                    isVerified={isEmailVerified}
+                    onVerified={() => setIsEmailVerified(true)}
+                    onInvalidate={() => setIsEmailVerified(false)}
+                  />
+                </div>
                 <input
                   type="email"
                   value={contact.email}
                   onChange={(e) => {
                     setContact((prev) => ({ ...prev, email: e.target.value }));
+                    setIsEmailVerified(false); // Invalidate upon editing
                     if (formErrors.email) {
                       setFormErrors((prev) => {
                         const next = { ...prev };
@@ -546,6 +606,8 @@ export default function DummyTicketsPage() {
                   className={`w-full bg-[#E2E8F0]/50 hover:bg-[#E2E8F0]/70 focus:bg-white border ${
                     formErrors.email
                       ? 'border-red-500 focus:border-red-500'
+                      : isEmailVerified
+                      ? 'border-emerald-400 focus:border-emerald-600'
                       : 'border-slate-300 focus:border-[#082B61]'
                   } rounded-xl px-3.5 py-3 text-sm font-semibold text-[#082B61] placeholder:text-slate-400 outline-none focus:ring-2 focus:ring-blue-100 transition`}
                 />
@@ -595,65 +657,61 @@ export default function DummyTicketsPage() {
                 Flight 1
               </h3>
 
-              {/* Row 1: Origin, Destination */}
+              {/* Row 1: Origin, Destination Airport Autocomplete */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
-                <div>
-                  <label className="block text-xs font-bold text-[#082B61] mb-1.5">
-                    Origin
-                  </label>
-                  <input
-                    type="text"
-                    value={flight.from}
-                    onChange={(e) => {
-                      setFlight((prev) => ({ ...prev, from: e.target.value }));
-                      if (formErrors.from) {
-                        setFormErrors((prev) => {
-                          const next = { ...prev };
-                          delete next.from;
-                          return next;
-                        });
-                      }
-                    }}
-                    placeholder="e.g. New Delhi (DEL)"
-                    className={`w-full bg-[#E2E8F0]/50 hover:bg-[#E2E8F0]/70 focus:bg-white border ${
-                      formErrors.from
-                        ? 'border-red-500 focus:border-red-500'
-                        : 'border-slate-300 focus:border-[#082B61]'
-                    } rounded-xl px-3.5 py-3 text-sm font-semibold text-[#082B61] placeholder:text-slate-400 outline-none focus:ring-2 focus:ring-blue-100 transition`}
-                  />
-                  {formErrors.from && (
-                    <p className="text-[11px] text-red-600 mt-1 font-medium">{formErrors.from}</p>
-                  )}
-                </div>
+                <AirportAutocomplete
+                  id="flight-origin"
+                  label="Origin Airport"
+                  value={flight.from}
+                  selectedIata={flight.fromIata}
+                  disabledIata={flight.toIata}
+                  error={formErrors.from}
+                  placeholder="e.g. New Delhi (DEL), Mumbai..."
+                  onChange={(selected) => {
+                    setFlight((prev) => ({
+                      ...prev,
+                      from: selected.label,
+                      fromIata: selected.iata
+                    }));
+                    if (formErrors.from) {
+                      setFormErrors((prev) => {
+                        const next = { ...prev };
+                        delete next.from;
+                        return next;
+                      });
+                    }
+                  }}
+                  onClear={() => {
+                    setFlight((prev) => ({ ...prev, from: '', fromIata: '' }));
+                  }}
+                />
 
-                <div>
-                  <label className="block text-xs font-bold text-[#082B61] mb-1.5">
-                    Destination
-                  </label>
-                  <input
-                    type="text"
-                    value={flight.to}
-                    onChange={(e) => {
-                      setFlight((prev) => ({ ...prev, to: e.target.value }));
-                      if (formErrors.to) {
-                        setFormErrors((prev) => {
-                          const next = { ...prev };
-                          delete next.to;
-                          return next;
-                        });
-                      }
-                    }}
-                    placeholder="e.g. Paris (CDG)"
-                    className={`w-full bg-[#E2E8F0]/50 hover:bg-[#E2E8F0]/70 focus:bg-white border ${
-                      formErrors.to
-                        ? 'border-red-500 focus:border-red-500'
-                        : 'border-slate-300 focus:border-[#082B61]'
-                    } rounded-xl px-3.5 py-3 text-sm font-semibold text-[#082B61] placeholder:text-slate-400 outline-none focus:ring-2 focus:ring-blue-100 transition`}
-                  />
-                  {formErrors.to && (
-                    <p className="text-[11px] text-red-600 mt-1 font-medium">{formErrors.to}</p>
-                  )}
-                </div>
+                <AirportAutocomplete
+                  id="flight-destination"
+                  label="Destination Airport"
+                  value={flight.to}
+                  selectedIata={flight.toIata}
+                  disabledIata={flight.fromIata}
+                  error={formErrors.to}
+                  placeholder="e.g. Paris (CDG), Dubai..."
+                  onChange={(selected) => {
+                    setFlight((prev) => ({
+                      ...prev,
+                      to: selected.label,
+                      toIata: selected.iata
+                    }));
+                    if (formErrors.to) {
+                      setFormErrors((prev) => {
+                        const next = { ...prev };
+                        delete next.to;
+                        return next;
+                      });
+                    }
+                  }}
+                  onClear={() => {
+                    setFlight((prev) => ({ ...prev, to: '', toIata: '' }));
+                  }}
+                />
               </div>
 
               {/* Row 2: Departure Date and Return Date */}
@@ -845,30 +903,46 @@ export default function DummyTicketsPage() {
           {/* ==================================================== */}
           {/* SUBMIT BUTTON & PRICE */}
           {/* ==================================================== */}
-          <div className="pt-6 border-t border-slate-200">
-            <div className="flex items-center justify-between text-sm sm:text-base font-bold text-[#082B61] mb-4 px-1">
-              <span>Total Price ({travellers.length} Traveller{travellers.length > 1 ? 's' : ''})</span>
-              <span className="text-xl font-black text-[#2563EB]">₹{totalPrice}</span>
-            </div>
+          {(() => {
+            const isFormComplete =
+              travellers.length > 0 &&
+              travellers.every((t) => t.firstName?.trim() && t.lastName?.trim()) &&
+              contact.phone?.trim() &&
+              contact.email?.trim() &&
+              flight.from?.trim() &&
+              flight.fromIata &&
+              flight.to?.trim() &&
+              flight.toIata &&
+              flight.departureDate &&
+              Object.keys(formErrors).length === 0;
 
-            <button
-              type="submit"
-              disabled={isSubmitting}
-              className="w-full py-4 px-6 rounded-xl bg-[#082B61] hover:bg-[#061e44] text-white font-extrabold text-base tracking-wide transition shadow-md disabled:opacity-60 flex items-center justify-center gap-2"
-            >
-              {isSubmitting ? (
-                <>
-                  <Loader2 size={20} className="animate-spin" />
-                  <span>Submitting Request...</span>
-                </>
-              ) : (
-                <>
-                  <span>Submit Flight Reservation Request</span>
-                  <ArrowRight size={18} />
-                </>
-              )}
-            </button>
-          </div>
+            return (
+              <div className="pt-6 border-t border-slate-200">
+                <div className="flex items-center justify-between text-sm sm:text-base font-bold text-[#082B61] mb-4 px-1">
+                  <span>Total Price ({travellers.length} Traveller{travellers.length > 1 ? 's' : ''})</span>
+                  <span className="text-xl font-black text-[#2563EB]">₹{totalPrice}</span>
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={isSubmitting || !isFormComplete}
+                  className="w-full py-4 px-6 rounded-xl bg-[#082B61] hover:bg-[#061e44] text-white font-extrabold text-base tracking-wide transition shadow-md disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                >
+                  {isSubmitting ? (
+                    <>
+                      <Loader2 size={20} className="animate-spin" />
+                      <span>Submitting Request...</span>
+                    </>
+                  ) : (
+                    <>
+                      <span>Submit Flight Reservation Request</span>
+                      <ArrowRight size={18} />
+                    </>
+                  )}
+                </button>
+              </div>
+            );
+          })()}
 
         </form>
       </div>

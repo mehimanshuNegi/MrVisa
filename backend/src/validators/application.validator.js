@@ -1,9 +1,19 @@
 import Joi from 'joi';
 import { APPLICATION_STATUS, REQUIRED_ACTION } from '../constants/statuses.js';
+import { validateName } from '../utils/nameValidator.js';
+
+const nameValidatorCustom = (value, helpers) => {
+  if (!value) return value;
+  const result = validateName(value);
+  if (!result.isValid) {
+    return helpers.message(result.error);
+  }
+  return result.normalized;
+};
 
 const travellerInputSchema = Joi.object({
   travellerId: Joi.string().allow('').optional(),
-  name: Joi.string().trim().required().messages({
+  name: Joi.string().trim().custom(nameValidatorCustom).required().messages({
     'any.required': 'Traveller name is required'
   }),
   firstName: Joi.string().trim().allow('').optional(),

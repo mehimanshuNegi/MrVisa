@@ -417,27 +417,7 @@ class VisaService {
    * Get supported visa types for filters
    */
   getVisaTypes() {
-    return [
-      'All Visa Types',
-      'E-Visa',
-      'Tourist Visa',
-      'Sticker Visa',
-      'Business Visa',
-      'Transit Visa'
-    ];
-  }
-
-  /**
-   * Get document category filter options
-   */
-  getDocumentFilters() {
-    return [
-      'Any Documents',
-      'Only Passport',
-      'Passport & Bank Statements',
-      'Passport, Bank Statements & Income Tax Return',
-      'With US/UK/Schengen visa'
-    ];
+    return ['E-Visa'];
   }
 
   /**
@@ -445,12 +425,7 @@ class VisaService {
    */
   getVisaTypeOptions() {
     return [
-      { label: 'All Visa Types', count: 12, value: 'All Visa Types' },
-      { label: 'E-Visa', count: 8, value: 'E-Visa' },
-      { label: 'Tourist Visa', count: 3, value: 'Tourist Visa' },
-      { label: 'Sticker Visa', count: 1, value: 'Sticker Visa' },
-      { label: 'Business Visa', count: 1, value: 'Business Visa' },
-      { label: 'Transit Visa', count: 1, value: 'Transit Visa' }
+      { label: 'E-Visa', count: 'Online', value: 'E-Visa' }
     ];
   }
 

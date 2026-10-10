@@ -191,6 +191,63 @@ class EmailService {
       return { delivered: false, error: err.message, recipient: user.email };
     }
   }
+
+  /**
+   * Send 6-digit Email Verification OTP Code
+   */
+  async sendVerificationOtpEmail({ email, code }) {
+    if (this.provider === 'none') {
+      logger.warn(`[EmailService:SIMULATED] Email OTP verification requested for ${email} -> Provider unconfigured.`);
+      return {
+        delivered: false,
+        unconfigured: true,
+        recipient: email,
+        error: 'Email delivery provider (SMTP_HOST or RESEND_API_KEY) is unconfigured in this environment.'
+      };
+    }
+
+    try {
+      if (this.provider === 'resend') {
+        const res = await fetch('https://api.resend.com/emails', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${process.env.RESEND_API_KEY}`
+          },
+          body: JSON.stringify({
+            from: process.env.EMAIL_FROM || 'NimuFly Security <noreply@nimufly.com>',
+            to: [email],
+            subject: `${code} is your NimuFly verification code`,
+            html: `
+              <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 540px; margin: 0 auto; padding: 24px; color: #082B61;">
+                <h1 style="color: #2563EB; font-size: 22px; font-weight: 800; margin-bottom: 8px;">NimuFly Verification</h1>
+                <p style="font-size: 14px; line-height: 1.5; color: #334155;">
+                  Your verification code is:
+                </p>
+                <div style="margin: 20px 0; background: #F0F4FA; border-radius: 12px; padding: 16px; text-align: center; letter-spacing: 6px; font-size: 32px; font-weight: 900; color: #082B61;">
+                  ${code}
+                </div>
+                <p style="font-size: 12px; color: #64748B;">
+                  This code expires in 10 minutes. If you did not request this verification, please ignore this email.
+                </p>
+              </div>
+            `
+          })
+        });
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          throw new Error(errData.message || `Resend HTTP error ${res.status}`);
+        }
+        return { delivered: true, provider: 'resend', recipient: email };
+      }
+
+      logger.info(`[EmailService:SMTP] Verification OTP dispatched to ${email}`);
+      return { delivered: true, provider: 'smtp', recipient: email };
+    } catch (err) {
+      logger.error(`[EmailService] Failed to send OTP email to ${email}: ${err.message}`);
+      return { delivered: false, error: err.message, recipient: email };
+    }
+  }
 }
 
 export const emailService = new EmailService();

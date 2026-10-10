@@ -123,6 +123,23 @@ export default function PassportPhotoUploadCard({
 
   const problematicChecks = [];
 
+  // Face consistency outcome integration
+  if (validation?.faceConsistency) {
+    if (validation.faceConsistency.outcome === 'MISMATCH') {
+      problematicChecks.push({
+        severity: 'error',
+        title: 'Face Mismatch',
+        message: validation.faceConsistency.message
+      });
+    } else if (validation.faceConsistency.outcome === 'REVIEW_NEEDED' && !validation.faceConsistency.checksPassed) {
+      problematicChecks.push({
+        severity: 'warning',
+        title: 'Face Review Needed',
+        message: validation.faceConsistency.message
+      });
+    }
+  }
+
   if (backendErrors.length > 0 || backendWarnings.length > 0) {
     backendErrors.forEach((errMsg) => {
       let title = 'Action needed';
@@ -284,13 +301,13 @@ export default function PassportPhotoUploadCard({
                   {isValid && !isUploading && (
                     <span className="px-3 py-1 rounded-full bg-emerald-500/95 text-white text-[11px] font-black tracking-wide shadow-sm flex items-center gap-1.5 backdrop-blur-xs">
                       <CheckCircle2 size={13} strokeWidth={2.5} />
-                      Photo Ready
+                      Photo Uploaded
                     </span>
                   )}
                   {isReviewNeeded && !isUploading && (
                     <span className="px-3 py-1 rounded-full bg-amber-500/95 text-white text-[11px] font-black tracking-wide shadow-sm flex items-center gap-1.5 backdrop-blur-xs">
                       <AlertCircle size={13} strokeWidth={2.5} />
-                      Review Recommended
+                      Specialist Review Queued
                     </span>
                   )}
                   {isInvalid && !isUploading && (

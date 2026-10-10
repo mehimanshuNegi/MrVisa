@@ -85,6 +85,14 @@ const userSchema = new mongoose.Schema(
     emailVerifiedAt: {
       type: Date
     },
+    isPhoneVerified: {
+      type: Boolean,
+      default: false,
+      index: true
+    },
+    phoneVerifiedAt: {
+      type: Date
+    },
     emailVerificationTokenHash: {
       type: String,
       select: false

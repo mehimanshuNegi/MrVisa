@@ -1,6 +1,7 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
-import { Headphones, HelpCircle, MessageSquare, ArrowRight } from 'lucide-react';
+import { Headphones, HelpCircle, Mail, ArrowRight } from 'lucide-react';
+import { SUPPORT_CONFIG } from '../../constants/contactConfig';
 
 export default function TravelSupportSection() {
   return (
@@ -23,20 +24,22 @@ export default function TravelSupportSection() {
           </div>
 
           <div className="flex flex-col sm:flex-row items-center gap-3 w-full md:w-auto flex-shrink-0">
-            <Link
-              to="/contact?ask=true"
+            <a
+              href={`mailto:${SUPPORT_CONFIG.email}`}
               className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-3 rounded-full bg-white hover:bg-slate-50 border border-slate-200 text-xs sm:text-sm font-bold text-[#082B61] transition-all cursor-pointer shadow-2xs hover:border-[#2563EB]/40"
+              aria-label={`Email Travel Support at ${SUPPORT_CONFIG.email}`}
             >
-              <HelpCircle size={15} className="text-[#2563EB]" />
-              <span>Ask a Question</span>
-            </Link>
+              <Mail size={15} className="text-[#2563EB]" />
+              <span>Email Support</span>
+            </a>
 
             <Link
-              to="/contact?support=true"
+              to="/travel-support"
               className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-3 rounded-full bg-[#2563EB] hover:bg-[#1D4ED8] text-white text-xs sm:text-sm font-bold transition-all cursor-pointer shadow-sm hover:shadow-md"
+              aria-label="Open Travel Support Page"
             >
-              <MessageSquare size={15} />
-              <span>Contact Support</span>
+              <HelpCircle size={15} />
+              <span>Travel Support Center</span>
               <ArrowRight size={14} />
             </Link>
           </div>

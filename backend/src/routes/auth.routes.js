@@ -11,7 +11,10 @@ import {
   verifyEmail,
   resendVerification,
   forgotPassword,
-  resetPassword
+  resetPassword,
+  sendVerificationOtp,
+  verifyOtp,
+  checkVerificationStatus
 } from '../controllers/auth.controller.js';
 import { authenticate, optionalAuthenticate } from '../middleware/auth.middleware.js';
 import { authLimiter, refreshLimiter } from '../middleware/rateLimiter.middleware.js';
@@ -50,6 +53,11 @@ router.post('/resend-verification', authLimiter, validate(resendVerificationSche
 // 4. Password Recovery & Reset
 router.post('/forgot-password', authLimiter, validate(forgotPasswordSchema), forgotPassword);
 router.post('/reset-password', authLimiter, validate(resetPasswordSchema), resetPassword);
+
+// 5. Real-Time Email and Phone Verification (Protected OTP Pipeline)
+router.post('/verification/send-otp', authLimiter, optionalAuthenticate, sendVerificationOtp);
+router.post('/verification/verify-otp', authLimiter, optionalAuthenticate, verifyOtp);
+router.post('/verification/status', authLimiter, checkVerificationStatus);
 
 // Aliases for profile routes
 router.get('/profile', authenticate, getMe);

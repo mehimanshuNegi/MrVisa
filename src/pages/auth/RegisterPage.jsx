@@ -16,6 +16,8 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import GoogleSignInButton from '../../components/auth/GoogleSignInButton';
+import VerifiedFieldBadge from '../../components/common/VerifiedFieldBadge';
+import { validateName } from '../../utils/nameValidator';
 
 export default function RegisterPage() {
   const navigate = useNavigate();
@@ -32,6 +34,10 @@ export default function RegisterPage() {
     confirmPassword: '',
     nationality: 'Indian'
   });
+  const [isEmailVerified, setIsEmailVerified] = useState(false);
+  const [emailToken, setEmailToken] = useState('');
+  const [isPhoneVerified, setIsPhoneVerified] = useState(false);
+  const [phoneToken, setPhoneToken] = useState('');
 
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
@@ -78,8 +84,36 @@ export default function RegisterPage() {
 
   const handleChange = (field, value) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
+    if (field === 'name') {
+      if (value.trim()) {
+        const nameCheck = validateName(value);
+        if (!nameCheck.isValid) {
+          setFieldErrors((prev) => ({ ...prev, name: nameCheck.error }));
+        } else {
+          setFieldErrors((prev) => {
+            const next = { ...prev };
+            delete next.name;
+            return next;
+          });
+        }
+      } else {
+        setFieldErrors((prev) => {
+          const next = { ...prev };
+          delete next.name;
+          return next;
+        });
+      }
+    }
+    if (field === 'email') {
+      setIsEmailVerified(false);
+      setEmailToken('');
+    }
+    if (field === 'phone') {
+      setIsPhoneVerified(false);
+      setPhoneToken('');
+    }
     if (error) setError('');
-    if (fieldErrors[field]) {
+    if (fieldErrors[field] && field !== 'name') {
       setFieldErrors((prev) => {
         const next = { ...prev };
         delete next[field];
@@ -90,8 +124,9 @@ export default function RegisterPage() {
 
   const validateForm = () => {
     const errors = {};
-    if (!formData.name.trim() || formData.name.trim().length < 2) {
-      errors.name = 'Please provide your full legal name';
+    const nameCheck = validateName(formData.name);
+    if (!nameCheck.isValid) {
+      errors.name = nameCheck.error;
     }
     if (!formData.email.trim() || !formData.email.includes('@')) {
       errors.email = 'Please provide a valid email address';
@@ -118,8 +153,9 @@ export default function RegisterPage() {
     setSubmitting(true);
 
     try {
+      const nameCheck = validateName(formData.name);
       await register({
-        name: formData.name.trim(),
+        name: nameCheck.isValid ? nameCheck.normalized : formData.name.trim(),
         email: formData.email.trim(),
         phone: formData.phone.trim(),
         password: formData.password,
@@ -199,9 +235,24 @@ export default function RegisterPage() {
           </div>
 
           <div>
-            <label className="block text-xs font-bold text-[#082B61] mb-1.5">
-              Email Address
-            </label>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="block text-xs font-bold text-[#082B61]">
+                Email Address
+              </label>
+              <VerifiedFieldBadge
+                target={formData.email}
+                type="EMAIL"
+                isVerified={isEmailVerified}
+                onVerified={({ verificationToken }) => {
+                  setIsEmailVerified(true);
+                  setEmailToken(verificationToken);
+                }}
+                onInvalidate={() => {
+                  setIsEmailVerified(false);
+                  setEmailToken('');
+                }}
+              />
+            </div>
             <div className="relative">
               <input
                 type="email"
@@ -213,6 +264,8 @@ export default function RegisterPage() {
                 className={`w-full pl-10 pr-3.5 py-2.5 rounded-xl border text-xs sm:text-sm font-medium transition-all outline-none ${
                   fieldErrors.email
                     ? 'border-red-400 bg-red-50/15 focus:ring-2 focus:ring-red-100'
+                    : isEmailVerified
+                    ? 'border-emerald-400 focus:border-emerald-600'
                     : 'border-slate-200 hover:border-slate-300 focus:border-[#2563EB] focus:ring-2 focus:ring-[#2563EB]/15'
                 }`}
               />
@@ -224,9 +277,26 @@ export default function RegisterPage() {
           </div>
 
           <div>
-            <label className="block text-xs font-bold text-[#082B61] mb-1.5">
-              Phone Number <span className="text-slate-400 font-normal">(Optional)</span>
-            </label>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="block text-xs font-bold text-[#082B61]">
+                Phone Number <span className="text-slate-400 font-normal">(Optional)</span>
+              </label>
+              {formData.phone && (
+                <VerifiedFieldBadge
+                  target={formData.phone}
+                  type="PHONE"
+                  isVerified={isPhoneVerified}
+                  onVerified={({ verificationToken }) => {
+                    setIsPhoneVerified(true);
+                    setPhoneToken(verificationToken);
+                  }}
+                  onInvalidate={() => {
+                    setIsPhoneVerified(false);
+                    setPhoneToken('');
+                  }}
+                />
+              )}
+            </div>
             <div className="relative">
               <input
                 type="tel"
@@ -234,7 +304,11 @@ export default function RegisterPage() {
                 value={formData.phone}
                 onChange={(e) => handleChange('phone', e.target.value)}
                 placeholder="+91 98765 43210"
-                className="w-full pl-10 pr-3.5 py-2.5 rounded-xl border border-slate-200 hover:border-slate-300 focus:border-[#2563EB] focus:ring-2 focus:ring-[#2563EB]/15 outline-none text-xs sm:text-sm font-medium transition-all"
+                className={`w-full pl-10 pr-3.5 py-2.5 rounded-xl border outline-none text-xs sm:text-sm font-medium transition-all ${
+                  isPhoneVerified
+                    ? 'border-emerald-400 focus:border-emerald-600'
+                    : 'border-slate-200 hover:border-slate-300 focus:border-[#2563EB] focus:ring-2 focus:ring-[#2563EB]/15'
+                }`}
               />
               <Phone size={16} className="text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
             </div>

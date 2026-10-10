@@ -28,7 +28,6 @@ export default function VisaPage() {
     resetFilters: resetContextFilters
   } = useFilter();
 
-  const [selectedDocument, setSelectedDocument] = useState('Any Documents');
   const [searchQuery, setSearchQuery] = useState(initialSearch);
 
   // Load visas from service layer
@@ -86,19 +85,12 @@ export default function VisaPage() {
       const itemType = normalizeVisaType(v.visaType);
       const matchesVisaType = filterType === 'all' || itemType === filterType;
 
-      // 4. Document requirement filter
-      const matchesDoc =
-        selectedDocument === 'Any Documents' ||
-        (v.documentCategory &&
-          v.documentCategory.toLowerCase() === selectedDocument.toLowerCase());
-
-      return matchesSearch && matchesCountry && matchesVisaType && matchesDoc;
+      return matchesSearch && matchesCountry && matchesVisaType;
     });
-  }, [visasList, searchQuery, selectedCountry, selectedVisaType, selectedDocument]);
+  }, [visasList, searchQuery, selectedCountry, selectedVisaType]);
 
   const handleResetFilters = () => {
     resetContextFilters();
-    setSelectedDocument('Any Documents');
     setSearchQuery('');
     setSearchParams({});
   };
@@ -172,8 +164,6 @@ export default function VisaPage() {
           setSelectedCountry={setSelectedCountry}
           selectedVisaType={selectedVisaType}
           setSelectedVisaType={setSelectedVisaType}
-          selectedDocument={selectedDocument}
-          setSelectedDocument={setSelectedDocument}
           selectedDate={selectedDate}
           setSelectedDate={setSelectedDate}
           searchQuery={searchQuery}

@@ -207,6 +207,7 @@ export const getApplicationFeedback = asyncHandler(async (req, res) => {
 
 import { passportOcrService } from '../services/passportOcr.service.js';
 import { photoValidationService } from '../services/photoValidation.service.js';
+import { faceConsistencyService } from '../services/faceConsistency.service.js';
 import { storageService } from '../services/storage.service.js';
 import { Visa } from '../models/Visa.js';
 import logger from '../utils/logger.js';
@@ -309,15 +310,43 @@ export const processPassportPhoto = asyncHandler(async (req, res) => {
     logger.warn('Passport photo storage staging notice:', uploadErr?.message);
   }
 
+  // 3. Privacy-conscious face consistency check against passport front image
+  let faceConsistency = null;
+  if (req.body?.frontStorageKey) {
+    try {
+      faceConsistency = await faceConsistencyService.comparePassportWithPhoto({
+        photoBuffer: req.file.buffer,
+        frontStorageKey: req.body.frontStorageKey
+      });
+    } catch (faceErr) {
+      logger.warn('Face consistency comparison notice:', faceErr?.message);
+    }
+  }
+
+  // Determine overall status, messages, and summary
+  let overallStatus = validation.status;
+  let overallCanContinue = validation.canContinue;
+  let overallMessages = [...validation.messages];
+
+  if (faceConsistency) {
+    if (faceConsistency.outcome === 'MISMATCH') {
+      overallStatus = 'REVIEW_NEEDED';
+      overallMessages.unshift(faceConsistency.message);
+    } else if (faceConsistency.message) {
+      overallMessages.push(faceConsistency.message);
+    }
+  }
+
   return ApiResponse.success(
     res,
     {
       uploadedDocument,
       validation,
-      canContinue: validation.canContinue,
-      status: validation.status,
-      summary: validation.summary,
-      messages: validation.messages
+      faceConsistency,
+      canContinue: overallCanContinue,
+      status: overallStatus,
+      summary: faceConsistency?.summary || validation.summary || 'Photograph processed',
+      messages: overallMessages
     },
     validation.summary || 'Passport photograph processed'
   );

@@ -18,7 +18,7 @@ export const uploadDocument = asyncHandler(async (req, res) => {
   }
 
   const applicationId = req.body.applicationId || req.params.applicationId || req.params.idOrRef;
-  const { travellerId, documentType } = req.body;
+  const { travellerId, documentType, previousStorageKey, visaId } = req.body;
   const verificationKey = req.body.verificationKey || req.headers['x-verification-key'] || '';
 
   const result = await documentService.uploadDocument({
@@ -26,6 +26,8 @@ export const uploadDocument = asyncHandler(async (req, res) => {
     travellerId,
     documentType,
     file: req.file,
+    previousStorageKey,
+    visaId,
     verificationKey,
     currentUser: req.user || null,
     req

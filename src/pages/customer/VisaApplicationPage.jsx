@@ -22,8 +22,10 @@ import {
   Loader2,
   Star
 } from 'lucide-react';
-import { visaService, countryService, applicationService } from '../../services';
+import { visaService, countryService, applicationService, documentService } from '../../services';
 import PassportPhotoUploadCard from '../../components/visa/PassportPhotoUploadCard';
+import VerifiedFieldBadge from '../../components/common/VerifiedFieldBadge';
+import { validateName } from '../../utils/nameValidator';
 import { APPLICATION_STATUS, REQUIRED_ACTION } from '../../constants/status';
 import {
   validatePassportDates,
@@ -631,10 +633,12 @@ export default function VisaApplicationPage() {
   // PASSPORT-FIRST OCR INTERACTION HANDLERS (Two-Stage Flow)
   // ------------------------------------------------------------------
   const handleNameContinue = () => {
-    if (!applicantFullName || applicantFullName.trim().length < 2) {
-      setNameStepError('Please enter your full name as shown on your passport');
+    const check = validateName(applicantFullName);
+    if (!check.isValid) {
+      setNameStepError(check.error);
       return;
     }
+    setApplicantFullName(check.normalized);
     setNameStepError('');
     setCurrentStep('passport_upload');
   };
@@ -880,8 +884,9 @@ export default function VisaApplicationPage() {
 
   const handleConfirmPassportReview = () => {
     const errors = {};
-    if (!ocrExtractedData.fullName || ocrExtractedData.fullName.trim().length < 2) {
-      errors.fullName = 'Full name is required';
+    const nameCheck = validateName(ocrExtractedData.fullName);
+    if (!nameCheck.isValid) {
+      errors.fullName = nameCheck.error;
     }
     if (!ocrExtractedData.passportNumber || ocrExtractedData.passportNumber.trim().length < 6) {
       errors.passportNumber = 'Valid passport number is required';
@@ -1014,12 +1019,19 @@ export default function VisaApplicationPage() {
     try {
       const result = await applicationService.processPassportPhoto(file, {
         visaId: destination?._id || destination?.id || '',
-        previousStorageKey: passportPhotoDoc?.storageKey || ''
+        previousStorageKey: passportPhotoDoc?.storageKey || '',
+        frontStorageKey: ocrUploadedDoc?.storageKey || ''
       });
 
       if (result) {
         setPassportPhotoDoc(result.uploadedDocument || null);
-        setPassportPhotoValidation(result.validation || result);
+        const mergedVal = {
+          ...(result.validation || result),
+          faceConsistency: result.faceConsistency || null,
+          status: result.status || (result.validation?.status || 'VALID'),
+          summary: result.summary || (result.validation?.summary || 'Photo processed')
+        };
+        setPassportPhotoValidation(mergedVal);
       }
     } catch (err) {
       console.warn('Passport photo upload notice:', err);
@@ -1136,7 +1148,21 @@ export default function VisaApplicationPage() {
 
   const handleFieldChange = (field, value) => {
     setTravellers((prev) =>
-      prev.map((t) => (t.id === effectiveActiveId ? { ...t, [field]: value } : t))
+      prev.map((t) => {
+        if (t.id === effectiveActiveId) {
+          const updated = { ...t, [field]: value };
+          if (field === 'email') {
+            updated.isEmailVerified = false;
+            updated.emailVerificationToken = '';
+          }
+          if (field === 'phone') {
+            updated.isPhoneVerified = false;
+            updated.phoneVerificationToken = '';
+          }
+          return updated;
+        }
+        return t;
+      })
     );
   };
 
@@ -1160,15 +1186,32 @@ export default function VisaApplicationPage() {
     return `${Math.round(kb)} KB`;
   };
 
-  // Handle real file upload with file type & size validation (> 5MB)
-  const handleProcessSelectedFile = (travellerId, docId, file) => {
-    const isTooLarge = file.size > 5 * 1024 * 1024;
+  // Handle real document upload with strict format, size validation, and backend R2 persistence
+  const handleProcessSelectedFile = async (travellerId, docId, file) => {
+    if (!file) return;
+
+    if (file.size === 0) {
+      setTravellers((all) =>
+        all.map((t) => (t.id === travellerId ? {
+          ...t,
+          docs: {
+            ...t.docs,
+            [docId]: { name: file.name, error: 'The selected file is empty (0 bytes). Please upload a valid document.' }
+          }
+        } : t))
+      );
+      return;
+    }
+
+    const docDef = requiredDocs.find((d) => d.id === docId);
+    const maxMb = docDef?.maxSize || docDef?.maxFileSize || 15;
+    const maxSizeBytes = maxMb * 1024 * 1024;
+    const isTooLarge = file.size > maxSizeBytes;
 
     // Get accepted formats for this specific doc, or fall back to defaults
-    const docDef = requiredDocs.find((d) => d.id === docId);
     const acceptedFormats = (docDef?.acceptedFormats && docDef.acceptedFormats.length > 0)
       ? docDef.acceptedFormats.map((f) => f.toUpperCase())
-      : ['PDF', 'JPG', 'PNG'];
+      : ['PDF', 'JPG', 'PNG', 'WEBP'];
     const extMatch = file.name.match(/\.([a-zA-Z0-9]+)$/);
     const fileExt = extMatch ? extMatch[1].toUpperCase() : '';
     const isAllowedExt = acceptedFormats.some((fmt) => {
@@ -1193,7 +1236,7 @@ export default function VisaApplicationPage() {
                 [docId]: {
                   name: file.name,
                   error: isTooLarge
-                    ? 'File too large. Maximum size is 5 MB.'
+                    ? `File too large. Maximum allowed size is ${maxMb} MB.`
                     : `Please upload a ${readableFormats} file.`
                 }
               }
@@ -1206,50 +1249,105 @@ export default function VisaApplicationPage() {
     }
 
     const key = `${travellerId}_${docId}`;
-    setUploadingProgress((prev) => ({ ...prev, [key]: 25 }));
+    setUploadingProgress((prev) => ({ ...prev, [key]: 20 }));
 
-    let progress = 25;
-    const interval = setInterval(() => {
-      progress += 35;
-      if (progress >= 100) {
-        clearInterval(interval);
+    try {
+      // Find any previously uploaded document for this traveller/doc to clean up old files in R2
+      const currentTraveller = travellers.find((t) => t.id === travellerId);
+      const existingDoc = currentTraveller?.docs?.[docId];
+
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('documentType', docDef?.title || docDef?.name || docId);
+      formData.append('travellerId', travellerId);
+      if (existingDoc?.storageKey) {
+        formData.append('previousStorageKey', existingDoc.storageKey);
+      }
+      if (destination?._id || destination?.id) {
+        formData.append('visaId', destination._id || destination.id);
+      }
+
+      setUploadingProgress((prev) => ({ ...prev, [key]: 55 }));
+
+      const uploadResult = await documentService.uploadDocumentDirect(formData);
+
+      setUploadingProgress((prev) => ({ ...prev, [key]: 100 }));
+
+      setTimeout(() => {
         setUploadingProgress((prev) => {
           const copy = { ...prev };
           delete copy[key];
           return copy;
         });
-        setTravellers((all) =>
-          all.map((t) => {
-            if (t.id === travellerId) {
-              const newDocEntry = {
-                name: file.name,
-                size: formatFileSize(file.size),
-                uploadedAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-                error: null
-              };
-              const updatedDocs = {
-                ...t.docs,
-                [docId]: newDocEntry
-              };
-              if (docDef?.isPhoto || docId === 'photo' || docId === 'passport_photo') {
-                updatedDocs.passport_photo = newDocEntry;
-                updatedDocs.photo = newDocEntry;
-              }
-              if (docDef?.isPassport || docId === 'passport') {
-                updatedDocs.passport = newDocEntry;
-              }
-              return {
-                ...t,
-                docs: updatedDocs
-              };
+      }, 300);
+
+      const newDocEntry = {
+        name: file.name,
+        originalFilename: file.name,
+        size: formatFileSize(file.size),
+        fileSize: file.size,
+        mimeType: uploadResult?.mimeType || file.type || 'application/pdf',
+        storageKey: uploadResult?.storageKey || '',
+        documentId: uploadResult?.documentId || uploadResult?.id || `doc_${Date.now()}`,
+        signedUrl: uploadResult?.signedUrl || uploadResult?.fileUrl || '',
+        uploadedAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        error: null
+      };
+
+      setTravellers((all) =>
+        all.map((t) => {
+          if (t.id === travellerId) {
+            const updatedDocs = {
+              ...t.docs,
+              [docId]: newDocEntry
+            };
+            if (docDef?.isPhoto || docId === 'photo' || docId === 'passport_photo') {
+              updatedDocs.passport_photo = newDocEntry;
+              updatedDocs.photo = newDocEntry;
             }
-            return t;
-          })
-        );
-      } else {
-        setUploadingProgress((prev) => ({ ...prev, [key]: progress }));
-      }
-    }, 100);
+            if (docDef?.isPassport || docId === 'passport') {
+              updatedDocs.passport = newDocEntry;
+            }
+            return {
+              ...t,
+              docs: updatedDocs
+            };
+          }
+          return t;
+        })
+      );
+    } catch (err) {
+      console.error(`Document upload failed for ${docId}:`, err);
+      setUploadingProgress((prev) => {
+        const copy = { ...prev };
+        delete copy[key];
+        return copy;
+      });
+
+      const errorMessage =
+        err?.response?.data?.message ||
+        err?.data?.message ||
+        err?.message ||
+        'Upload failed. Please check file format and try again.';
+
+      setTravellers((all) =>
+        all.map((t) => {
+          if (t.id === travellerId) {
+            return {
+              ...t,
+              docs: {
+                ...t.docs,
+                [docId]: {
+                  name: file.name,
+                  error: errorMessage
+                }
+              }
+            };
+          }
+          return t;
+        })
+      );
+    }
   };
 
   // Quick simulation / sample document helper
@@ -2035,15 +2133,40 @@ export default function VisaApplicationPage() {
                       type="text"
                       value={applicantFullName}
                       onChange={(e) => {
-                        setApplicantFullName(e.target.value);
-                        if (nameStepError) setNameStepError('');
+                        const val = e.target.value;
+                        setApplicantFullName(val);
+                        if (val.trim()) {
+                          const check = validateName(val);
+                          if (!check.isValid) {
+                            setNameStepError(check.error);
+                          } else {
+                            setNameStepError('');
+                          }
+                        } else {
+                          setNameStepError('');
+                        }
+                      }}
+                      onBlur={() => {
+                        if (applicantFullName) {
+                          const check = validateName(applicantFullName);
+                          if (!check.isValid) {
+                            setNameStepError(check.error);
+                          } else {
+                            setApplicantFullName(check.normalized);
+                            setNameStepError('');
+                          }
+                        }
                       }}
                       onKeyDown={(e) => {
                         if (e.key === 'Enter') handleNameContinue();
                       }}
                       placeholder="e.g. Rahul Sharma"
                       autoFocus
-                      className="w-full px-4 py-3.5 rounded-2xl border border-slate-200 text-base font-semibold text-[#082B61] placeholder:text-slate-400 focus:border-[#2563EB] focus:ring-2 focus:ring-[#2563EB]/20 focus:outline-none transition-all shadow-2xs"
+                      className={`w-full px-4 py-3.5 rounded-2xl border text-base font-semibold text-[#082B61] placeholder:text-slate-400 focus:outline-none transition-all shadow-2xs ${
+                        nameStepError
+                          ? 'border-rose-400 bg-rose-50/20 focus:border-rose-500 focus:ring-2 focus:ring-rose-200'
+                          : 'border-slate-200 focus:border-[#2563EB] focus:ring-2 focus:ring-[#2563EB]/20'
+                      }`}
                     />
                     <p className="text-xs text-slate-400 font-medium pl-1">
                       This should match your passport.
@@ -3155,9 +3278,34 @@ export default function VisaApplicationPage() {
                       {activeIndex === 0 && (
                         <>
                           <div>
-                            <label className="text-xs font-bold text-[#082B61] block leading-none mb-1.5">
-                              Email Address *
-                            </label>
+                            <div className="flex items-center justify-between mb-1.5">
+                              <label className="text-xs font-bold text-[#082B61] block leading-none">
+                                Email Address *
+                              </label>
+                              <VerifiedFieldBadge
+                                target={activeTraveller.email}
+                                type="EMAIL"
+                                isVerified={Boolean(activeTraveller.isEmailVerified)}
+                                onVerified={({ verificationToken }) => {
+                                  setTravellers((prev) =>
+                                    prev.map((t) =>
+                                      t.id === effectiveActiveId
+                                        ? { ...t, isEmailVerified: true, emailVerificationToken: verificationToken }
+                                        : t
+                                    )
+                                  );
+                                }}
+                                onInvalidate={() => {
+                                  setTravellers((prev) =>
+                                    prev.map((t) =>
+                                      t.id === effectiveActiveId
+                                        ? { ...t, isEmailVerified: false, emailVerificationToken: '' }
+                                        : t
+                                    )
+                                  );
+                                }}
+                              />
+                            </div>
                             <div className="relative">
                               <input
                                 ref={(el) => (fieldRefs.current[`${effectiveActiveId}_email`] = el)}
@@ -3171,7 +3319,7 @@ export default function VisaApplicationPage() {
                                   true
                                 )}`}
                               />
-                              {isFieldValid(activeTraveller, 'email', true) ? (
+                              {activeTraveller.isEmailVerified ? (
                                 <Check size={14} className="text-emerald-600 stroke-[3] absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
                               ) : submittedAttempted && getFieldError(activeTraveller, 'email', true) ? (
                                 <AlertCircle size={15} className="text-red-500 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
@@ -3185,9 +3333,34 @@ export default function VisaApplicationPage() {
                           </div>
 
                           <div>
-                            <label className="text-xs font-bold text-[#082B61] block leading-none mb-1.5">
-                              Phone Number *
-                            </label>
+                            <div className="flex items-center justify-between mb-1.5">
+                              <label className="text-xs font-bold text-[#082B61] block leading-none">
+                                Phone Number *
+                              </label>
+                              <VerifiedFieldBadge
+                                target={activeTraveller.phone}
+                                type="PHONE"
+                                isVerified={Boolean(activeTraveller.isPhoneVerified)}
+                                onVerified={({ verificationToken }) => {
+                                  setTravellers((prev) =>
+                                    prev.map((t) =>
+                                      t.id === effectiveActiveId
+                                        ? { ...t, isPhoneVerified: true, phoneVerificationToken: verificationToken }
+                                        : t
+                                    )
+                                  );
+                                }}
+                                onInvalidate={() => {
+                                  setTravellers((prev) =>
+                                    prev.map((t) =>
+                                      t.id === effectiveActiveId
+                                        ? { ...t, isPhoneVerified: false, phoneVerificationToken: '' }
+                                        : t
+                                    )
+                                  );
+                                }}
+                              />
+                            </div>
                             <div className="relative">
                               <input
                                 ref={(el) => (fieldRefs.current[`${effectiveActiveId}_phone`] = el)}
@@ -3201,7 +3374,7 @@ export default function VisaApplicationPage() {
                                   true
                                 )}`}
                               />
-                              {isFieldValid(activeTraveller, 'phone', true) ? (
+                              {activeTraveller.isPhoneVerified ? (
                                 <Check size={14} className="text-emerald-600 stroke-[3] absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
                               ) : submittedAttempted && getFieldError(activeTraveller, 'phone', true) ? (
                                 <AlertCircle size={15} className="text-red-500 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />

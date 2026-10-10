@@ -1,4 +1,5 @@
 import { authService } from '../services/auth.service.js';
+import { verificationService } from '../services/verification.service.js';
 import { ApiResponse } from '../utils/apiResponse.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 import { env } from '../config/environment.js';
@@ -157,6 +158,37 @@ export const resetPassword = asyncHandler(async (req, res) => {
   return ApiResponse.success(res, result, 'Password reset successfully');
 });
 
+export const sendVerificationOtp = asyncHandler(async (req, res) => {
+  const { target, type } = req.body;
+  const result = await verificationService.sendOtp({
+    target,
+    type,
+    ip: req.ip || req.connection?.remoteAddress
+  });
+  return ApiResponse.success(res, result, result.message);
+});
+
+export const verifyOtp = asyncHandler(async (req, res) => {
+  const { target, type, code } = req.body;
+  const result = await verificationService.verifyOtp({
+    target,
+    type,
+    code,
+    currentUser: req.user || null
+  });
+  return ApiResponse.success(res, result, result.message);
+});
+
+export const checkVerificationStatus = asyncHandler(async (req, res) => {
+  const { target, type, verificationToken } = req.body;
+  const result = await verificationService.checkVerificationStatus({
+    target,
+    type,
+    verificationToken
+  });
+  return ApiResponse.success(res, result, 'Verification status retrieved');
+});
+
 export default {
   register,
   login,
@@ -169,5 +201,8 @@ export default {
   verifyEmail,
   resendVerification,
   forgotPassword,
-  resetPassword
+  resetPassword,
+  sendVerificationOtp,
+  verifyOtp,
+  checkVerificationStatus
 };

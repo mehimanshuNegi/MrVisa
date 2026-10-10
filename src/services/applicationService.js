@@ -470,6 +470,7 @@ class ApplicationService {
     formData.append('file', file);
     if (options.visaId) formData.append('visaId', options.visaId);
     if (options.previousStorageKey) formData.append('previousStorageKey', options.previousStorageKey);
+    if (options.frontStorageKey) formData.append('frontStorageKey', options.frontStorageKey);
 
     try {
       const response = await apiClient('/applications/passport-photo', {

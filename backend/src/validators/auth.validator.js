@@ -1,9 +1,17 @@
 import Joi from 'joi';
+import { validateName } from '../utils/nameValidator.js';
+
+const nameValidatorCustom = (value, helpers) => {
+  const result = validateName(value);
+  if (!result.isValid) {
+    return helpers.message(result.error);
+  }
+  return result.normalized;
+};
 
 export const registerSchema = Joi.object({
-  name: Joi.string().trim().min(2).max(100).required().messages({
+  name: Joi.string().trim().custom(nameValidatorCustom).required().messages({
     'string.empty': 'Full name cannot be empty',
-    'string.min': 'Name must be at least 2 characters',
     'any.required': 'Name is required'
   }),
   email: Joi.string().email().lowercase().trim().required().messages({
@@ -45,9 +53,9 @@ export const refreshTokenSchema = Joi.object({
 });
 
 export const updateProfileSchema = Joi.object({
-  name: Joi.string().trim().min(2).max(100).optional(),
-  firstName: Joi.string().trim().allow('').max(50).optional(),
-  lastName: Joi.string().trim().allow('').max(50).optional(),
+  name: Joi.string().trim().custom(nameValidatorCustom).optional(),
+  firstName: Joi.string().trim().custom(nameValidatorCustom).allow('').optional(),
+  lastName: Joi.string().trim().custom(nameValidatorCustom).allow('').optional(),
   email: Joi.string().email().lowercase().trim().optional(),
   phone: Joi.string().trim().allow('').optional(),
   nationality: Joi.string().trim().allow('').optional(),

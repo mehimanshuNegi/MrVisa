@@ -16,6 +16,7 @@ import {
   X
 } from 'lucide-react';
 import { countryService } from '../../services';
+import { SUPPORT_CONFIG } from '../../constants/contactConfig';
 
 export default function ContactPage() {
   const [searchParams] = useSearchParams();
@@ -148,33 +149,56 @@ export default function ContactPage() {
 
             <div className="space-y-3.5">
               {/* Phone Row */}
-              <a
-                href="tel:+18005558472"
-                className="flex items-center justify-between p-4.5 rounded-2xl bg-white border border-slate-200/90 hover:border-[#1479F5]/40 hover:shadow-sm transition-all duration-200 group"
-              >
-                <div className="flex items-center gap-4">
-                  <div className="w-11 h-11 rounded-xl bg-blue-50 text-[#1479F5] flex items-center justify-center flex-shrink-0 group-hover:scale-105 transition-transform shadow-2xs">
-                    <Phone size={20} strokeWidth={2.2} />
+              {SUPPORT_CONFIG.phone ? (
+                <a
+                  href={`tel:${SUPPORT_CONFIG.phone.replace(/[^+\d]/g, '')}`}
+                  className="flex items-center justify-between p-4.5 rounded-2xl bg-white border border-slate-200/90 hover:border-[#1479F5]/40 hover:shadow-sm transition-all duration-200 group cursor-pointer"
+                  aria-label={`Call NimuFly support at ${SUPPORT_CONFIG.displayPhone}`}
+                >
+                  <div className="flex items-center gap-4">
+                    <div className="w-11 h-11 rounded-xl bg-blue-50 text-[#1479F5] flex items-center justify-center flex-shrink-0 group-hover:scale-105 transition-transform shadow-2xs">
+                      <Phone size={20} strokeWidth={2.2} />
+                    </div>
+                    <div>
+                      <span className="block text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+                        PHONE SUPPORT
+                      </span>
+                      <span className="block text-base font-extrabold text-[#0B2A63] group-hover:text-[#1479F5] transition-colors">
+                        {SUPPORT_CONFIG.displayPhone}
+                      </span>
+                      <span className="block text-xs text-slate-500 font-medium">
+                        {SUPPORT_CONFIG.workingHours}
+                      </span>
+                    </div>
                   </div>
-                  <div>
-                    <span className="block text-[11px] font-bold text-slate-400 uppercase tracking-wider">
-                      PHONE SUPPORT
-                    </span>
-                    <span className="block text-base font-extrabold text-[#0B2A63] group-hover:text-[#1479F5] transition-colors">
-                      +1 (800) 555-VISA
-                    </span>
-                    <span className="block text-xs text-slate-500 font-medium">
-                      Available for travel support during our working hours.
-                    </span>
+                  <ChevronRight size={18} className="text-[#1479F5] group-hover:translate-x-0.5 transition-transform flex-shrink-0 ml-2" />
+                </a>
+              ) : (
+                <div className="flex items-center justify-between p-4.5 rounded-2xl bg-slate-50/70 border border-slate-200/80">
+                  <div className="flex items-center gap-4">
+                    <div className="w-11 h-11 rounded-xl bg-slate-100 text-slate-400 flex items-center justify-center flex-shrink-0">
+                      <Phone size={20} strokeWidth={2.2} />
+                    </div>
+                    <div>
+                      <span className="block text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+                        PHONE SUPPORT
+                      </span>
+                      <span className="block text-sm font-bold text-slate-600">
+                        Available via Email Support
+                      </span>
+                      <span className="block text-xs text-slate-400 font-medium">
+                        Direct telephone line is currently pending carrier allocation.
+                      </span>
+                    </div>
                   </div>
                 </div>
-                <ChevronRight size={18} className="text-[#1479F5] group-hover:translate-x-0.5 transition-transform flex-shrink-0 ml-2" />
-              </a>
+              )}
 
-              {/* Email Row */}
+              {/* Email Row (Confirmed Business Channel) */}
               <a
-                href="mailto:support@nimufly.com"
-                className="flex items-center justify-between p-4.5 rounded-2xl bg-white border border-slate-200/90 hover:border-[#1479F5]/40 hover:shadow-sm transition-all duration-200 group"
+                href={`mailto:${SUPPORT_CONFIG.email}`}
+                className="flex items-center justify-between p-4.5 rounded-2xl bg-white border border-slate-200/90 hover:border-[#1479F5]/40 hover:shadow-sm transition-all duration-200 group cursor-pointer"
+                aria-label={`Email NimuFly support at ${SUPPORT_CONFIG.email}`}
               >
                 <div className="flex items-center gap-4">
                   <div className="w-11 h-11 rounded-xl bg-blue-50 text-[#1479F5] flex items-center justify-center flex-shrink-0 group-hover:scale-105 transition-transform shadow-2xs">
@@ -185,10 +209,10 @@ export default function ContactPage() {
                       EMAIL INQUIRIES
                     </span>
                     <span className="block text-base font-extrabold text-[#0B2A63] group-hover:text-[#1479F5] transition-colors">
-                      support@nimufly.com
+                      {SUPPORT_CONFIG.email}
                     </span>
                     <span className="block text-xs text-slate-500 font-medium">
-                      We'll get back to you as soon as possible.
+                      {SUPPORT_CONFIG.workingHours} • Guaranteed response
                     </span>
                   </div>
                 </div>
@@ -196,25 +220,52 @@ export default function ContactPage() {
               </a>
 
               {/* Office Row */}
-              <div className="flex items-center justify-between p-4.5 rounded-2xl bg-white border border-slate-200/90 group">
-                <div className="flex items-center gap-4">
-                  <div className="w-11 h-11 rounded-xl bg-blue-50 text-[#1479F5] flex items-center justify-center flex-shrink-0 shadow-2xs">
-                    <MapPin size={20} strokeWidth={2.2} />
+              {SUPPORT_CONFIG.mapsUrl && SUPPORT_CONFIG.officeAddress ? (
+                <a
+                  href={SUPPORT_CONFIG.mapsUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center justify-between p-4.5 rounded-2xl bg-white border border-slate-200/90 hover:border-[#1479F5]/40 hover:shadow-sm transition-all duration-200 group cursor-pointer"
+                  aria-label={`Open ${SUPPORT_CONFIG.officeName} in Google Maps`}
+                >
+                  <div className="flex items-center gap-4">
+                    <div className="w-11 h-11 rounded-xl bg-blue-50 text-[#1479F5] flex items-center justify-center flex-shrink-0 group-hover:scale-105 transition-transform shadow-2xs">
+                      <MapPin size={20} strokeWidth={2.2} />
+                    </div>
+                    <div>
+                      <span className="block text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+                        OFFICE LOCATION
+                      </span>
+                      <span className="block text-base font-extrabold text-[#0B2A63] group-hover:text-[#1479F5] transition-colors">
+                        {SUPPORT_CONFIG.officeName}
+                      </span>
+                      <span className="block text-xs text-slate-500 font-medium">
+                        {SUPPORT_CONFIG.officeAddress} (Open in Maps)
+                      </span>
+                    </div>
                   </div>
-                  <div>
-                    <span className="block text-[11px] font-bold text-slate-400 uppercase tracking-wider">
-                      OFFICE
-                    </span>
-                    <span className="block text-base font-extrabold text-[#0B2A63]">
-                      NimuFly Global Hub
-                    </span>
-                    <span className="block text-xs text-slate-500 font-medium">
-                      Mohali, Punjab, India
-                    </span>
+                  <ChevronRight size={18} className="text-[#1479F5] group-hover:translate-x-0.5 transition-transform flex-shrink-0 ml-2" />
+                </a>
+              ) : (
+                <div className="flex items-center justify-between p-4.5 rounded-2xl bg-white border border-slate-200/90">
+                  <div className="flex items-center gap-4">
+                    <div className="w-11 h-11 rounded-xl bg-blue-50 text-[#1479F5] flex items-center justify-center flex-shrink-0 shadow-2xs">
+                      <MapPin size={20} strokeWidth={2.2} />
+                    </div>
+                    <div>
+                      <span className="block text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+                        GLOBAL ASSISTANCE
+                      </span>
+                      <span className="block text-base font-extrabold text-[#0B2A63]">
+                        Online Visa Facilitation
+                      </span>
+                      <span className="block text-xs text-slate-500 font-medium">
+                        In-person office visits by prior scheduling via email.
+                      </span>
+                    </div>
                   </div>
                 </div>
-                <ChevronRight size={18} className="text-[#1479F5] flex-shrink-0 ml-2" />
-              </div>
+              )}
             </div>
           </div>
 

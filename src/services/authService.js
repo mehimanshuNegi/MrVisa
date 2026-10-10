@@ -307,6 +307,43 @@ class AuthService {
   }
 
   /**
+   * Send Email or Phone Verification OTP Code
+   */
+  async sendVerificationOtp({ target, type }) {
+    const res = await apiClient('/auth/verification/send-otp', {
+      method: 'POST',
+      body: { target, type }
+    });
+    return res.data || res;
+  }
+
+  /**
+   * Verify Email or Phone OTP Code
+   */
+  async verifyOtp({ target, type, code }) {
+    const res = await apiClient('/auth/verification/verify-otp', {
+      method: 'POST',
+      body: { target, type, code }
+    });
+    return res.data || res;
+  }
+
+  /**
+   * Check verification status of an email or phone number
+   */
+  async checkVerificationStatus({ target, type, verificationToken = '' }) {
+    try {
+      const res = await apiClient('/auth/verification/status', {
+        method: 'POST',
+        body: { target, type, verificationToken }
+      });
+      return (res.data || res).isVerified === true;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
    * Claim an unclaimed guest application to the authenticated customer account
    */
   async claimApplication({ referenceNumber, verificationKey }) {

@@ -162,6 +162,26 @@ class StorageService {
       contentLength: (await fs.promises.stat(safePath)).size
     };
   }
+
+  /**
+   * Retrieves file as an in-memory buffer (ephemeral, not persisted)
+   */
+  async getFileBuffer(storageKey) {
+    if (!storageKey) return null;
+    try {
+      const obj = await this.getObjectStream(storageKey);
+      if (!obj || !obj.stream) return null;
+
+      const chunks = [];
+      for await (const chunk of obj.stream) {
+        chunks.push(chunk);
+      }
+      return Buffer.concat(chunks);
+    } catch (err) {
+      logger.warn(`Failed to read buffer for storage key ${storageKey}:`, err?.message);
+      return null;
+    }
+  }
 }
 
 export const storageService = new StorageService();

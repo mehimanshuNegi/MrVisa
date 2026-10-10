@@ -1,5 +1,6 @@
 import express from 'express';
 import morgan from 'morgan';
+import cookieParser from 'cookie-parser';
 import { configureSecurity } from './middleware/security.middleware.js';
 import { standardLimiter } from './middleware/rateLimiter.middleware.js';
 import { errorHandler, notFoundHandler } from './middleware/error.middleware.js';
@@ -21,6 +22,9 @@ export function createApp() {
 
   // 2. Security Middleware (Helmet + CORS)
   configureSecurity(app);
+
+  // 2.1 Cookie Parser (HttpOnly refresh token parsing)
+  app.use(cookieParser());
 
   // 3. Body Parsers with Raw Body Capture for Payment Webhooks
   app.use(

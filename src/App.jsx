@@ -18,6 +18,9 @@ import DummyTicketsPage from './pages/customer/DummyTicketsPage';
 import DummyTicketApplyPlaceholderPage from './pages/customer/DummyTicketApplyPlaceholderPage';
 import LoginPage from './pages/auth/LoginPage';
 import RegisterPage from './pages/auth/RegisterPage';
+import ForgotPasswordPage from './pages/auth/ForgotPasswordPage';
+import ResetPasswordPage from './pages/auth/ResetPasswordPage';
+import VerifyEmailPage from './pages/auth/VerifyEmailPage';
 import AdminLayout from './pages/admin/AdminLayout';
 import AdminApplicationsPage from './pages/admin/AdminApplicationsPage';
 import AdminVisasPage from './pages/admin/AdminVisasPage';
@@ -25,6 +28,7 @@ import AdminCountriesPage from './pages/admin/AdminCountriesPage';
 import AdminDocumentationPage from './pages/admin/AdminDocumentationPage';
 import AdminDummyTicketsPage from './pages/admin/AdminDummyTicketsPage';
 import { FilterProvider } from './context/FilterContext';
+import { AuthProvider } from './context/AuthContext';
 
 function ScrollToTop() {
   const { pathname } = useLocation();
@@ -72,8 +76,13 @@ function AppContent() {
           />
           <Route path="/login" element={<LoginPage />} />
           <Route path="/register" element={<RegisterPage />} />
-          <Route path="/account" element={<AccountPage />} />
-          <Route path="/my-account" element={<AccountPage />} />
+          <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+          <Route path="/reset-password" element={<ResetPasswordPage />} />
+          <Route path="/verify-email" element={<VerifyEmailPage />} />
+          <Route path="/account" element={<AccountPage defaultTab="overview" />} />
+          <Route path="/account/profile" element={<AccountPage defaultTab="profile" />} />
+          <Route path="/account/applications" element={<AccountPage defaultTab="visas" />} />
+          <Route path="/my-account" element={<Navigate to="/account" replace />} />
           <Route path="/about" element={<AboutPage />} />
           <Route path="/contact" element={<ContactPage />} />
           <Route path="/travel-support" element={<ContactPage />} />
@@ -119,10 +128,12 @@ export default function App() {
   return (
     <BrowserRouter>
       <ErrorBoundary>
-        <FilterProvider>
-          <ScrollToTop />
-          <AppContent />
-        </FilterProvider>
+        <AuthProvider>
+          <FilterProvider>
+            <ScrollToTop />
+            <AppContent />
+          </FilterProvider>
+        </AuthProvider>
       </ErrorBoundary>
     </BrowserRouter>
   );

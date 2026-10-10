@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { countryService, visaService, documentationService, searchCountryDestinations } from '../../services';
 import { useFilter } from '../../context/FilterContext';
+import { useAuth } from '../../context/AuthContext';
 
 const DOC_ICON_MAP = {
   FileText,
@@ -30,6 +31,7 @@ const DOC_ICON_MAP = {
 
 export default function Header() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const { isAuthenticated, user } = useAuth();
 
   // Filter context
   const {
@@ -490,15 +492,17 @@ export default function Header() {
                 </div>
               </Link>
 
-              {/* My Account */}
+              {/* My Account / Sign In */}
               <Link
-                to="/account"
+                to={isAuthenticated ? '/account' : '/login'}
                 className="flex items-center h-[36px] rounded-full border border-slate-200/90 hover:border-[#1479F5]/40 hover:bg-[#F4F8FF] text-[#082B61] transition-all px-3.5 gap-2"
-                aria-label="My Account"
-                title="My Account"
+                aria-label={isAuthenticated ? 'My Account' : 'Sign In'}
+                title={isAuthenticated ? 'My Account' : 'Sign In'}
               >
                 <User size={13} className="text-[#1479F5]" strokeWidth={2.5} />
-                <span className="text-xs font-bold text-[#082B61]">My Account</span>
+                <span className="text-xs font-bold text-[#082B61]">
+                  {isAuthenticated ? (user?.name?.split(' ')[0] || user?.firstName || 'My Account') : 'Sign In'}
+                </span>
               </Link>
             </div>
 
@@ -651,12 +655,12 @@ export default function Header() {
                 </Link>
 
                 <Link
-                  to="/account"
+                  to={isAuthenticated ? '/account' : '/login'}
                   onClick={() => setMobileMenuOpen(false)}
                   className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-semibold text-[#082B61] hover:bg-slate-50 transition-colors"
                 >
-                  <User size={16} />
-                  <span>My Account</span>
+                  <User size={16} className="text-[#2563EB]" />
+                  <span>{isAuthenticated ? (user?.name?.split(' ')[0] || user?.firstName || 'My Account') : 'Sign In / Register'}</span>
                 </Link>
               </div>
             </div>

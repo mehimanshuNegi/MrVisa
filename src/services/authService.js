@@ -1,11 +1,11 @@
-import { apiClient, tokenStore } from './apiClient';
+import { apiClient, customerTokenStore, adminTokenStore } from './apiClient';
 import { isMockMode } from './apiConfig';
 
 class AuthService {
   /**
-   * Register a new customer
+   * Register a new customer account
    */
-  async register({ name, email, phone, password, nationality = 'Indian' }) {
+  async register({ name, email, phone, password, confirmPassword, nationality = 'Indian' }) {
     if (isMockMode()) {
       const mockUser = {
         id: `usr_${Date.now()}`,
@@ -13,11 +13,11 @@ class AuthService {
         email,
         phone,
         nationality,
+        isEmailVerified: false,
         role: 'CUSTOMER'
       };
-      tokenStore.setAuth({
+      customerTokenStore.setAuth({
         accessToken: `mock_jwt_${Date.now()}`,
-        refreshToken: `mock_refresh_${Date.now()}`,
         user: mockUser
       });
       return { user: mockUser };
@@ -25,14 +25,13 @@ class AuthService {
 
     const res = await apiClient('/auth/register', {
       method: 'POST',
-      body: { name, email, phone, password, nationality }
+      body: { name, email, phone, password, confirmPassword, nationality }
     });
 
     const data = res.data || res;
-    if (data.tokens) {
-      tokenStore.setAuth({
+    if (data.tokens?.accessToken) {
+      customerTokenStore.setAuth({
         accessToken: data.tokens.accessToken,
-        refreshToken: data.tokens.refreshToken,
         user: data.user
       });
     }
@@ -40,7 +39,7 @@ class AuthService {
   }
 
   /**
-   * Log in an existing user
+   * Log in customer or admin
    */
   async login({ email, password }) {
     if (isMockMode()) {
@@ -50,11 +49,11 @@ class AuthService {
         email,
         phone: '9876543210',
         nationality: 'Indian',
+        isEmailVerified: true,
         role: 'CUSTOMER'
       };
-      tokenStore.setAuth({
+      customerTokenStore.setAuth({
         accessToken: `mock_jwt_${Date.now()}`,
-        refreshToken: `mock_refresh_${Date.now()}`,
         user: mockUser
       });
       return { user: mockUser };
@@ -66,12 +65,90 @@ class AuthService {
     });
 
     const data = res.data || res;
-    if (data.tokens) {
-      tokenStore.setAuth({
-        accessToken: data.tokens.accessToken,
-        refreshToken: data.tokens.refreshToken,
-        user: data.user
+    const receivedToken = data.tokens?.accessToken;
+    const loggedUser = data.user;
+
+    if (receivedToken) {
+      // Store in customer in-memory store
+      customerTokenStore.setAuth({
+        accessToken: receivedToken,
+        user: loggedUser
       });
+
+      // If user possesses ADMIN role, sync to isolated admin store for console operations
+      if (loggedUser?.role === 'ADMIN' || loggedUser?.role === 'SUPER_ADMIN') {
+        adminTokenStore.setAuth({
+          accessToken: receivedToken,
+          user: loggedUser
+        });
+      }
+    }
+
+    return data;
+  }
+
+  /**
+   * Log in or register customer via verified Google ID Token
+   */
+  async loginWithGoogle({ idToken, credential }) {
+    const token = credential || idToken;
+    if (isMockMode()) {
+      const mockUser = {
+        id: `usr_google_${Date.now()}`,
+        name: 'Google Customer',
+        email: 'google.customer@example.com',
+        phone: '',
+        nationality: 'Indian',
+        isEmailVerified: true,
+        role: 'CUSTOMER',
+        authProvider: 'google'
+      };
+      customerTokenStore.setAuth({
+        accessToken: `mock_jwt_google_${Date.now()}`,
+        user: mockUser
+      });
+      return { user: mockUser };
+    }
+
+    const res = await apiClient('/auth/google', {
+      method: 'POST',
+      body: { idToken: token, credential: token }
+    });
+
+    const data = res.data || res;
+    const receivedToken = data.tokens?.accessToken;
+    const loggedUser = data.user;
+
+    if (receivedToken) {
+      customerTokenStore.setAuth({
+        accessToken: receivedToken,
+        user: loggedUser
+      });
+    }
+
+    return data;
+  }
+
+  /**
+   * Explicitly link Google account to authenticated user
+   */
+  async linkGoogleAccount({ idToken, credential }) {
+    const token = credential || idToken;
+    if (isMockMode()) {
+      const current = customerTokenStore.getUser() || {};
+      const updated = { ...current, googleId: 'mock_google_id' };
+      customerTokenStore.setUser(updated);
+      return { linked: true, user: updated };
+    }
+
+    const res = await apiClient('/auth/google/link', {
+      method: 'POST',
+      body: { idToken: token, credential: token }
+    });
+
+    const data = res.data || res;
+    if (data.user) {
+      customerTokenStore.setUser(data.user);
     }
     return data;
   }
@@ -81,12 +158,13 @@ class AuthService {
    */
   async getMe() {
     if (isMockMode()) {
-      return tokenStore.getUser() || {
+      return customerTokenStore.getUser() || {
         id: 'usr_guest_01',
         name: 'Rahul Sharma',
         email: 'rahul.sharma@example.com',
         phone: '9876543210',
         nationality: 'Indian',
+        isEmailVerified: true,
         role: 'CUSTOMER'
       };
     }
@@ -94,9 +172,7 @@ class AuthService {
     const res = await apiClient('/auth/me');
     const user = res.data || res;
     if (user) {
-      try {
-        localStorage.setItem('mrvisa_user', JSON.stringify(user));
-      } catch {}
+      customerTokenStore.setUser(user);
     }
     return user;
   }
@@ -106,66 +182,128 @@ class AuthService {
    */
   async updateProfile(updates) {
     if (isMockMode()) {
-      const current = tokenStore.getUser() || {};
+      const current = customerTokenStore.getUser() || {};
       const updated = { ...current, ...updates };
-      localStorage.setItem('mrvisa_user', JSON.stringify(updated));
+      customerTokenStore.setUser(updated);
       return updated;
     }
 
     const res = await apiClient('/auth/me', {
-      method: 'PUT',
+      method: 'PATCH',
       body: updates
     });
     const user = res.data || res;
     if (user) {
-      try {
-        localStorage.setItem('mrvisa_user', JSON.stringify(user));
-      } catch {}
+      customerTokenStore.setUser(user);
     }
     return user;
   }
 
   /**
-   * Refresh session tokens
+   * Refresh session tokens via secure HttpOnly cookie
    */
   async refreshSession() {
-    const refreshToken = tokenStore.getRefreshToken();
-    if (!refreshToken) return null;
+    if (isMockMode()) return true;
 
     try {
       const res = await apiClient('/auth/refresh', {
         method: 'POST',
-        body: { refreshToken }
+        body: {}
       });
       const data = res.data || res;
-      if (data.tokens) {
-        tokenStore.setToken(data.tokens.accessToken);
-        tokenStore.setRefreshToken(data.tokens.refreshToken);
+      const newToken = data.tokens?.accessToken || data.accessToken;
+      const user = data.user;
+
+      if (newToken) {
+        customerTokenStore.setAuth({
+          accessToken: newToken,
+          user: user || customerTokenStore.getUser()
+        });
+        return true;
       }
-      return data.tokens;
-    } catch (err) {
-      this.logout();
-      return null;
+      return false;
+    } catch {
+      customerTokenStore.clearAuth();
+      return false;
     }
   }
 
   /**
-   * Log out and invalidate refresh token
+   * Log out customer session
    */
   async logout() {
-    const refreshToken = tokenStore.getRefreshToken();
     try {
-      if (refreshToken && !isMockMode()) {
+      if (!isMockMode()) {
         await apiClient('/auth/logout', {
           method: 'POST',
-          body: { refreshToken }
+          body: {}
         });
       }
     } catch (err) {
-      console.warn('Logout API notification failed:', err);
+      console.warn('Logout notification error:', err);
     } finally {
-      tokenStore.clearToken();
+      customerTokenStore.clearAuth();
     }
+  }
+
+  /**
+   * Request password reset instructions email
+   */
+  async forgotPassword({ email }) {
+    if (isMockMode()) {
+      return { message: 'Password reset link simulated.' };
+    }
+
+    const res = await apiClient('/auth/forgot-password', {
+      method: 'POST',
+      body: { email }
+    });
+    return res.data || res;
+  }
+
+  /**
+   * Reset password with single-use token
+   */
+  async resetPassword({ token, newPassword, confirmPassword }) {
+    if (isMockMode()) {
+      return { message: 'Password reset simulated.' };
+    }
+
+    const res = await apiClient('/auth/reset-password', {
+      method: 'POST',
+      body: { token, newPassword, confirmPassword }
+    });
+    return res.data || res;
+  }
+
+  /**
+   * Verify customer email address with single-use token
+   */
+  async verifyEmail({ token }) {
+    if (isMockMode()) {
+      return { emailVerified: true };
+    }
+
+    const res = await apiClient('/auth/verify-email', {
+      method: 'POST',
+      body: { token }
+    });
+    return res.data || res;
+  }
+
+  /**
+   * Resend verification email
+   */
+  async resendVerification({ email }) {
+    if (isMockMode()) {
+      return { message: 'Verification email simulated.' };
+    }
+
+    const res = await apiClient('/auth/resend-verification', {
+      method: 'POST',
+      body: { email }
+    });
+    return res.data || res;
   }
 
   /**
@@ -183,14 +321,14 @@ class AuthService {
    * Check if user is currently authenticated
    */
   isAuthenticated() {
-    return Boolean(tokenStore.getToken());
+    return Boolean(customerTokenStore.getToken());
   }
 
   /**
-   * Get cached user or null
+   * Get cached in-memory user
    */
   getCurrentUser() {
-    return tokenStore.getUser();
+    return customerTokenStore.getUser();
   }
 
   /**

@@ -7,6 +7,7 @@ export function configureSecurity(app) {
   app.use(
     helmet({
       crossOriginResourcePolicy: { policy: 'cross-origin' },
+      crossOriginOpenerPolicy: { policy: 'same-origin-allow-popups' },
       contentSecurityPolicy: env.NODE_ENV === 'production' ? undefined : false
     })
   );

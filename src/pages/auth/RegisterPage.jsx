@@ -1,11 +1,27 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
-import { UserPlus, ArrowRight, AlertCircle, Loader2, ShieldCheck, Mail, Lock, User, Phone } from 'lucide-react';
-import { authService } from '../../services';
+import {
+  UserPlus,
+  ArrowRight,
+  AlertCircle,
+  Loader2,
+  ShieldCheck,
+  Mail,
+  Lock,
+  User,
+  Phone,
+  Eye,
+  EyeOff,
+  CheckCircle2
+} from 'lucide-react';
+import { useAuth } from '../../context/AuthContext';
+import GoogleSignInButton from '../../components/auth/GoogleSignInButton';
 
 export default function RegisterPage() {
   const navigate = useNavigate();
   const location = useLocation();
+  const { register, loginWithGoogle, isAuthenticated, isLoading } = useAuth();
+
   const from = location.state?.from || '/account';
 
   const [formData, setFormData] = useState({
@@ -13,42 +29,109 @@ export default function RegisterPage() {
     email: '',
     phone: '',
     password: '',
+    confirmPassword: '',
     nationality: 'Indian'
   });
 
-  const [loading, setLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [googleSubmitting, setGoogleSubmitting] = useState(false);
   const [error, setError] = useState('');
+  const [fieldErrors, setFieldErrors] = useState({});
+
+  // Redirect already authenticated users away
+  useEffect(() => {
+    if (!isLoading && isAuthenticated) {
+      navigate(from, { replace: true });
+    }
+  }, [isAuthenticated, isLoading, navigate, from]);
+
+  const handleGoogleSuccess = async (credential) => {
+    setError('');
+    setGoogleSubmitting(true);
+
+    try {
+      await loginWithGoogle({ credential });
+      navigate(from, { replace: true });
+    } catch (err) {
+      console.error('Google Sign-Up error:', err);
+      if (err.data?.requiresLinking || err.code === 'ACCOUNT_EXISTS_LINK_REQUIRED') {
+        navigate('/login', {
+          state: { from },
+          search: `?notice=${encodeURIComponent(
+            'An account with this email already exists. Please sign in to link your Google account.'
+          )}`
+        });
+      } else {
+        setError(err.message || 'Google account creation failed. Please try again.');
+      }
+    } finally {
+      setGoogleSubmitting(false);
+    }
+  };
+
+  const handleGoogleError = (err) => {
+    console.warn('Google Sign-Up interaction error:', err);
+    setError(err?.message || 'Google sign-up was interrupted. Please try again.');
+  };
 
   const handleChange = (field, value) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
     if (error) setError('');
+    if (fieldErrors[field]) {
+      setFieldErrors((prev) => {
+        const next = { ...prev };
+        delete next[field];
+        return next;
+      });
+    }
+  };
+
+  const validateForm = () => {
+    const errors = {};
+    if (!formData.name.trim() || formData.name.trim().length < 2) {
+      errors.name = 'Please provide your full legal name';
+    }
+    if (!formData.email.trim() || !formData.email.includes('@')) {
+      errors.email = 'Please provide a valid email address';
+    }
+    if (!formData.password || formData.password.length < 8) {
+      errors.password = 'Password must be at least 8 characters long';
+    }
+    if (formData.password !== formData.confirmPassword) {
+      errors.confirmPassword = 'Passwords do not match';
+    }
+    return errors;
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
 
-    if (formData.password.length < 8) {
-      setError('Password must be at least 8 characters long');
+    const validationErrors = validateForm();
+    if (Object.keys(validationErrors).length > 0) {
+      setFieldErrors(validationErrors);
       return;
     }
 
-    setLoading(true);
+    setSubmitting(true);
 
     try {
-      await authService.register({
+      await register({
         name: formData.name.trim(),
         email: formData.email.trim(),
         phone: formData.phone.trim(),
         password: formData.password,
+        confirmPassword: formData.confirmPassword,
         nationality: formData.nationality
       });
-      navigate(from, { replace: true });
+      navigate('/account', { replace: true });
     } catch (err) {
       console.error('Registration error:', err);
       setError(err.message || 'Unable to complete registration. Please try again.');
     } finally {
-      setLoading(false);
+      setSubmitting(false);
     }
   };
 
@@ -71,29 +154,48 @@ export default function RegisterPage() {
 
         {/* Error Alert */}
         {error && (
-          <div className="p-3.5 rounded-2xl bg-red-50 border border-red-200 text-red-700 text-xs font-semibold flex items-center gap-2.5">
+          <div className="p-3.5 rounded-2xl bg-red-50 border border-red-200 text-red-700 text-xs font-semibold flex items-center gap-2.5 animate-in fade-in">
             <AlertCircle size={16} className="flex-shrink-0" />
             <span>{error}</span>
           </div>
         )}
 
+        {/* Google Sign-In with Divider */}
+        <GoogleSignInButton
+          onSuccess={handleGoogleSuccess}
+          onError={handleGoogleError}
+          isLoading={googleSubmitting}
+          disabled={submitting}
+          text="continue_with"
+          showDivider={true}
+          dividerText="or continue with email"
+        />
+
         {/* Form */}
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label className="block text-xs font-bold text-[#082B61] mb-1.5">
-              Full Name
+              Full Legal Name
             </label>
             <div className="relative">
               <input
                 type="text"
                 required
+                autoComplete="name"
                 value={formData.name}
                 onChange={(e) => handleChange('name', e.target.value)}
-                placeholder="First & Last Name"
-                className="w-full pl-10 pr-3.5 py-2.5 rounded-xl border border-slate-200 hover:border-slate-300 focus:border-[#2563EB] focus:ring-2 focus:ring-[#2563EB]/15 outline-none text-xs sm:text-sm font-medium transition-all"
+                placeholder="First & Last Name (as per Passport)"
+                className={`w-full pl-10 pr-3.5 py-2.5 rounded-xl border text-xs sm:text-sm font-medium transition-all outline-none ${
+                  fieldErrors.name
+                    ? 'border-red-400 bg-red-50/15 focus:ring-2 focus:ring-red-100'
+                    : 'border-slate-200 hover:border-slate-300 focus:border-[#2563EB] focus:ring-2 focus:ring-[#2563EB]/15'
+                }`}
               />
               <User size={16} className="text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
             </div>
+            {fieldErrors.name && (
+              <span className="text-[11px] font-bold text-red-600 mt-1 block">{fieldErrors.name}</span>
+            )}
           </div>
 
           <div>
@@ -104,22 +206,31 @@ export default function RegisterPage() {
               <input
                 type="email"
                 required
+                autoComplete="email"
                 value={formData.email}
                 onChange={(e) => handleChange('email', e.target.value)}
                 placeholder="name@example.com"
-                className="w-full pl-10 pr-3.5 py-2.5 rounded-xl border border-slate-200 hover:border-slate-300 focus:border-[#2563EB] focus:ring-2 focus:ring-[#2563EB]/15 outline-none text-xs sm:text-sm font-medium transition-all"
+                className={`w-full pl-10 pr-3.5 py-2.5 rounded-xl border text-xs sm:text-sm font-medium transition-all outline-none ${
+                  fieldErrors.email
+                    ? 'border-red-400 bg-red-50/15 focus:ring-2 focus:ring-red-100'
+                    : 'border-slate-200 hover:border-slate-300 focus:border-[#2563EB] focus:ring-2 focus:ring-[#2563EB]/15'
+                }`}
               />
               <Mail size={16} className="text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
             </div>
+            {fieldErrors.email && (
+              <span className="text-[11px] font-bold text-red-600 mt-1 block">{fieldErrors.email}</span>
+            )}
           </div>
 
           <div>
             <label className="block text-xs font-bold text-[#082B61] mb-1.5">
-              Phone Number
+              Phone Number <span className="text-slate-400 font-normal">(Optional)</span>
             </label>
             <div className="relative">
               <input
                 type="tel"
+                autoComplete="tel"
                 value={formData.phone}
                 onChange={(e) => handleChange('phone', e.target.value)}
                 placeholder="+91 98765 43210"
@@ -135,15 +246,64 @@ export default function RegisterPage() {
             </label>
             <div className="relative">
               <input
-                type="password"
+                type={showPassword ? 'text' : 'password'}
                 required
+                autoComplete="new-password"
                 value={formData.password}
                 onChange={(e) => handleChange('password', e.target.value)}
                 placeholder="••••••••"
-                className="w-full pl-10 pr-3.5 py-2.5 rounded-xl border border-slate-200 hover:border-slate-300 focus:border-[#2563EB] focus:ring-2 focus:ring-[#2563EB]/15 outline-none text-xs sm:text-sm font-medium transition-all"
+                className={`w-full pl-10 pr-10 py-2.5 rounded-xl border text-xs sm:text-sm font-medium transition-all outline-none ${
+                  fieldErrors.password
+                    ? 'border-red-400 bg-red-50/15 focus:ring-2 focus:ring-red-100'
+                    : 'border-slate-200 hover:border-slate-300 focus:border-[#2563EB] focus:ring-2 focus:ring-[#2563EB]/15'
+                }`}
               />
               <Lock size={16} className="text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
+                aria-label={showPassword ? 'Hide password' : 'Show password'}
+              >
+                {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+              </button>
             </div>
+            {fieldErrors.password && (
+              <span className="text-[11px] font-bold text-red-600 mt-1 block">{fieldErrors.password}</span>
+            )}
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold text-[#082B61] mb-1.5">
+              Confirm Password
+            </label>
+            <div className="relative">
+              <input
+                type={showConfirmPassword ? 'text' : 'password'}
+                required
+                autoComplete="new-password"
+                value={formData.confirmPassword}
+                onChange={(e) => handleChange('confirmPassword', e.target.value)}
+                placeholder="••••••••"
+                className={`w-full pl-10 pr-10 py-2.5 rounded-xl border text-xs sm:text-sm font-medium transition-all outline-none ${
+                  fieldErrors.confirmPassword
+                    ? 'border-red-400 bg-red-50/15 focus:ring-2 focus:ring-red-100'
+                    : 'border-slate-200 hover:border-slate-300 focus:border-[#2563EB] focus:ring-2 focus:ring-[#2563EB]/15'
+                }`}
+              />
+              <Lock size={16} className="text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+              <button
+                type="button"
+                onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
+                aria-label={showConfirmPassword ? 'Hide confirm password' : 'Show confirm password'}
+              >
+                {showConfirmPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+              </button>
+            </div>
+            {fieldErrors.confirmPassword && (
+              <span className="text-[11px] font-bold text-red-600 mt-1 block">{fieldErrors.confirmPassword}</span>
+            )}
           </div>
 
           <div>
@@ -169,10 +329,10 @@ export default function RegisterPage() {
           <div className="pt-2">
             <button
               type="submit"
-              disabled={loading}
+              disabled={submitting}
               className="w-full flex items-center justify-center gap-2 py-3 px-4 rounded-xl bg-[#2563EB] hover:bg-[#1d4ed8] text-white text-xs sm:text-sm font-extrabold shadow-sm hover:shadow transition-all disabled:opacity-50 cursor-pointer"
             >
-              {loading ? (
+              {submitting ? (
                 <>
                   <Loader2 size={16} className="animate-spin" />
                   <span>Creating Account...</span>

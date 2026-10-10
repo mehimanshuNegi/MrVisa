@@ -56,10 +56,50 @@ const userSchema = new mongoose.Schema(
       type: String,
       trim: true
     },
+    googleId: {
+      type: String,
+      unique: true,
+      sparse: true,
+      trim: true,
+      index: true
+    },
+    authProvider: {
+      type: String,
+      enum: ['local', 'google'],
+      default: 'local'
+    },
+    avatar: {
+      type: String,
+      trim: true
+    },
     isActive: {
       type: Boolean,
       default: true,
       index: true
+    },
+    isEmailVerified: {
+      type: Boolean,
+      default: false,
+      index: true
+    },
+    emailVerifiedAt: {
+      type: Date
+    },
+    emailVerificationTokenHash: {
+      type: String,
+      select: false
+    },
+    emailVerificationExpiresAt: {
+      type: Date,
+      select: false
+    },
+    passwordResetTokenHash: {
+      type: String,
+      select: false
+    },
+    passwordResetExpiresAt: {
+      type: Date,
+      select: false
     },
     lastLoginAt: {
       type: Date
@@ -71,6 +111,10 @@ const userSchema = new mongoose.Schema(
       virtuals: true,
       transform: (_, ret) => {
         delete ret.passwordHash;
+        delete ret.emailVerificationTokenHash;
+        delete ret.emailVerificationExpiresAt;
+        delete ret.passwordResetTokenHash;
+        delete ret.passwordResetExpiresAt;
         delete ret.__v;
         ret.id = ret._id.toString();
         return ret;

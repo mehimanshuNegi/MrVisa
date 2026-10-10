@@ -24,7 +24,9 @@ export function normalizeUserProfile(raw) {
     phone: raw.phone ? raw.phone.replace(/[^0-9]/g, '').slice(-10) : '',
     nationality: raw.nationality || 'Indian',
     countryOfResidence: raw.countryOfResidence || 'India',
-    passportNumber: raw.passportNumber || ''
+    passportNumber: raw.passportNumber || '',
+    isEmailVerified: Boolean(raw.isEmailVerified),
+    role: raw.role || 'CUSTOMER'
   };
 }
 
@@ -68,7 +70,7 @@ class UserService {
     }
 
     const raw = await apiClient('/auth/me', {
-      method: 'PUT',
+      method: 'PATCH',
       body: profileData
     });
     return normalizeUserProfile(raw.data || raw);

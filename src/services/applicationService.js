@@ -497,6 +497,21 @@ class ApplicationService {
       };
     }
   }
+
+  /**
+   * Securely link an unclaimed guest application to the authenticated customer account
+   * @param {Object} params
+   * @param {string} params.referenceNumber
+   * @param {string} params.verificationKey
+   */
+  async claimGuestApplication({ referenceNumber, verificationKey }) {
+    const response = await apiClient('/applications/claim', {
+      method: 'POST',
+      body: JSON.stringify({ referenceNumber, verificationKey })
+    });
+    const app = response?.data || response;
+    return normalizeApplication(app);
+  }
 }
 
 export const applicationService = new ApplicationService();

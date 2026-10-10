@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
   ArrowRight,
   ArrowLeft,
@@ -18,13 +18,19 @@ import {
   User,
   LogOut,
   Link2,
-  Plane
+  Plane,
+  LayoutDashboard,
+  MailCheck,
+  ShieldAlert
 } from 'lucide-react';
 import { applicationService, userService, authService, tokenStore, dummyTicketService } from '../../services';
 import { APPLICATION_STATUS, REQUIRED_ACTION, getStatusConfig } from '../../constants/status';
+import { useAuth } from '../../context/AuthContext';
 
-export default function AccountPage() {
+export default function AccountPage({ defaultTab = 'overview' }) {
   const location = useLocation();
+  const navigate = useNavigate();
+  const { user: authUser, isAuthenticated, logout: authLogout, refreshProfile: authRefreshProfile } = useAuth();
 
   // Data Loading and Error States
   const [isLoading, setIsLoading] = useState(true);
@@ -36,7 +42,10 @@ export default function AccountPage() {
     lastName: '',
     email: '',
     phone: '',
-    nationality: 'Indian'
+    nationality: 'Indian',
+    countryOfResidence: 'India',
+    passportNumber: '',
+    isEmailVerified: false
   });
 
   // Editing state for Profile section
@@ -46,10 +55,13 @@ export default function AccountPage() {
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [isSavingProfile, setIsSavingProfile] = useState(false);
 
+  // Email verification resend state
+  const [resendStatus, setResendStatus] = useState('');
+  const [isResending, setIsResending] = useState(false);
+
   // Applications and Dummy Tickets list
   const [applications, setApplications] = useState([]);
   const [myDummyTickets, setMyDummyTickets] = useState([]);
-  const [accountTab, setAccountTab] = useState('visas'); // 'visas' | 'tickets'
 
   // Modal / details states
   const [selectedApp, setSelectedApp] = useState(null);
@@ -57,9 +69,6 @@ export default function AccountPage() {
   const [updateInfoModalApp, setUpdateInfoModalApp] = useState(null);
   const [infoUploaded, setInfoUploaded] = useState(false);
   const [isSubmittingDoc, setIsSubmittingDoc] = useState(false);
-
-  // Authentication State
-  const [isAuthenticated, setIsAuthenticated] = useState(() => authService.isAuthenticated());
 
   // Link/Claim Guest Application State
   const [showClaimModal, setShowClaimModal] = useState(false);
@@ -69,14 +78,41 @@ export default function AccountPage() {
   const [claimSuccess, setClaimSuccess] = useState('');
   const [isClaiming, setIsClaiming] = useState(false);
 
+  // Active view tab resolution
+  const activeTab = (() => {
+    if (location.pathname === '/account/profile') return 'profile';
+    if (location.pathname === '/account/applications') return 'visas';
+    const queryTab = new URLSearchParams(location.search).get('tab');
+    if (queryTab === 'tickets') return 'tickets';
+    if (queryTab === 'profile') return 'profile';
+    if (queryTab === 'visas' || queryTab === 'applications') return 'visas';
+    if (defaultTab === 'profile') return 'profile';
+    if (defaultTab === 'applications') return 'visas';
+    return 'overview';
+  })();
+
+  // Resend verification link
+  const handleResendVerification = async () => {
+    if (!profile.email) return;
+    setIsResending(true);
+    setResendStatus('');
+    try {
+      const res = await authService.resendVerification({ email: profile.email });
+      setResendStatus(res.message || 'Verification link sent to your email.');
+      setTimeout(() => setResendStatus(''), 5000);
+    } catch (err) {
+      setResendStatus(err.message || 'Failed to send verification email.');
+    } finally {
+      setIsResending(false);
+    }
+  };
+
   // Load account data from service layer
   const loadAccountData = async () => {
     if (!authService.isAuthenticated()) {
-      setIsAuthenticated(false);
       setIsLoading(false);
       return;
     }
-    setIsAuthenticated(true);
     setIsLoading(true);
     setLoadError(null);
     try {
@@ -92,8 +128,7 @@ export default function AccountPage() {
     } catch (err) {
       console.error('Failed to load account data:', err);
       if (err.status === 401) {
-        await authService.logout();
-        setIsAuthenticated(false);
+        await authLogout();
       } else {
         setLoadError('Unable to load applications. Please try again.');
       }
@@ -103,8 +138,7 @@ export default function AccountPage() {
   };
 
   const handleLogout = async () => {
-    await authService.logout();
-    setIsAuthenticated(false);
+    await authLogout();
     setApplications([]);
     setMyDummyTickets([]);
     setProfile({
@@ -112,8 +146,12 @@ export default function AccountPage() {
       lastName: '',
       email: '',
       phone: '',
-      nationality: 'Indian'
+      nationality: 'Indian',
+      countryOfResidence: 'India',
+      passportNumber: '',
+      isEmailVerified: false
     });
+    navigate('/login');
   };
 
   const handleClaimSubmit = async (e) => {
@@ -126,8 +164,8 @@ export default function AccountPage() {
     }
     setIsClaiming(true);
     try {
-      const linked = await authService.claimApplication({
-        referenceNumber: claimRef.trim(),
+      const linked = await applicationService.claimGuestApplication({
+        referenceNumber: claimRef.trim().toUpperCase(),
         verificationKey: claimKey.trim()
       });
       setClaimSuccess(`Application ${linked.referenceNumber || claimRef} successfully linked to your account!`);
@@ -366,13 +404,273 @@ export default function AccountPage() {
         ) : (
           <>
             {/* ========================================================
-                PROFILE SECTION
-                Follows the strict structure:
-                [Label]
-                [Instruction directly below label and above input]
-                [Clean input with empty placeholder]
+                TOP NAVIGATION TABS
                 ======================================================== */}
-            <section aria-labelledby="profile-heading" className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200/80 shadow-xs space-y-6">
+            <div className="flex items-center gap-1.5 p-1 bg-slate-100 rounded-2xl w-full sm:w-auto overflow-x-auto">
+              <button
+                type="button"
+                onClick={() => navigate('/account')}
+                className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap cursor-pointer ${
+                  activeTab === 'overview'
+                    ? 'bg-white text-[#2563EB] shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <LayoutDashboard size={14} />
+                <span>Overview</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => navigate('/account/applications')}
+                className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap cursor-pointer ${
+                  activeTab === 'visas'
+                    ? 'bg-white text-[#2563EB] shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <FileText size={14} />
+                <span>Visa Applications ({applications.length})</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => navigate('/account/profile')}
+                className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap cursor-pointer ${
+                  activeTab === 'profile'
+                    ? 'bg-white text-[#2563EB] shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <User size={14} />
+                <span>Profile Details</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => navigate('/account?tab=tickets')}
+                className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap cursor-pointer ${
+                  activeTab === 'tickets'
+                    ? 'bg-white text-[#2563EB] shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <Plane size={14} />
+                <span>Dummy Tickets ({myDummyTickets.length})</span>
+              </button>
+            </div>
+
+            {/* ========================================================
+                OVERVIEW DASHBOARD VIEW
+                ======================================================== */}
+            {activeTab === 'overview' && (
+              <div className="space-y-6">
+                {/* Email Verification Banner if unverified */}
+                {!profile.isEmailVerified && (
+                  <div className="p-4 rounded-3xl bg-amber-50 border border-amber-200/90 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs shadow-2xs">
+                    <div className="flex items-start sm:items-center gap-2.5">
+                      <ShieldAlert size={20} className="text-amber-600 flex-shrink-0 mt-0.5 sm:mt-0" />
+                      <div>
+                        <span className="font-extrabold text-amber-900 block text-xs sm:text-sm">
+                          Email verification pending
+                        </span>
+                        <span className="text-amber-700 font-medium">
+                          Verify your email address (<strong className="font-bold">{profile.email || 'your email'}</strong>) to receive embassy updates and e-visas.
+                        </span>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      disabled={isResending}
+                      onClick={handleResendVerification}
+                      className="px-4 py-2 rounded-full bg-amber-600 hover:bg-amber-700 text-white font-extrabold text-xs transition-colors cursor-pointer self-start sm:self-auto whitespace-nowrap shadow-xs disabled:opacity-50"
+                    >
+                      {isResending ? 'Sending...' : 'Resend Verification Email'}
+                    </button>
+                  </div>
+                )}
+
+                {/* Summary Metrics */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <div className="bg-white rounded-3xl p-5 border border-slate-200/80 shadow-xs flex items-center justify-between">
+                    <div>
+                      <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">Total Bookings</span>
+                      <span className="text-2xl font-black text-[#082B61] mt-1 block">{applications.length}</span>
+                      <span className="text-[11px] text-slate-500 font-medium mt-0.5 block">Visa applications</span>
+                    </div>
+                    <div className="w-12 h-12 rounded-2xl bg-blue-50 text-[#2563EB] flex items-center justify-center">
+                      <FileText size={22} />
+                    </div>
+                  </div>
+
+                  <div className="bg-white rounded-3xl p-5 border border-slate-200/80 shadow-xs flex items-center justify-between">
+                    <div>
+                      <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">Visas Issued</span>
+                      <span className="text-2xl font-black text-emerald-600 mt-1 block">
+                        {applications.filter((a) => a.status === APPLICATION_STATUS.VISA_ISSUED).length}
+                      </span>
+                      <span className="text-[11px] text-slate-500 font-medium mt-0.5 block">Ready for travel</span>
+                    </div>
+                    <div className="w-12 h-12 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center">
+                      <CheckCircle2 size={22} />
+                    </div>
+                  </div>
+
+                  <div className="bg-white rounded-3xl p-5 border border-slate-200/80 shadow-xs flex items-center justify-between">
+                    <div>
+                      <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">Action Needed</span>
+                      <span className="text-2xl font-black text-rose-600 mt-1 block">
+                        {applications.filter((a) => a.requiredAction === REQUIRED_ACTION.UPDATE_PHOTO || getStatusConfig(a.status).isActionRequired).length}
+                      </span>
+                      <span className="text-[11px] text-slate-500 font-medium mt-0.5 block">Pending response</span>
+                    </div>
+                    <div className="w-12 h-12 rounded-2xl bg-rose-50 text-rose-600 flex items-center justify-center">
+                      <AlertCircle size={22} />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Profile Glance & Quick Actions */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
+                  <div className="sm:col-span-2 bg-white rounded-3xl p-6 border border-slate-200/80 shadow-xs space-y-4">
+                    <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                      <div>
+                        <h3 className="text-sm font-extrabold text-[#082B61]">Profile Summary</h3>
+                        <span className="text-[11px] text-slate-400 font-medium">Personal passport and travel credentials</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => navigate('/account/profile')}
+                        className="text-xs font-bold text-[#2563EB] hover:underline cursor-pointer"
+                      >
+                        Manage Profile →
+                      </button>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3 text-xs">
+                      <div>
+                        <span className="text-slate-400 text-[10px] uppercase font-bold block">Name</span>
+                        <span className="font-bold text-[#082B61] mt-0.5 block">{profile.name || `${profile.firstName} ${profile.lastName}`.trim() || '—'}</span>
+                      </div>
+                      <div>
+                        <span className="text-slate-400 text-[10px] uppercase font-bold block">Email</span>
+                        <span className="font-bold text-[#082B61] mt-0.5 block truncate">{profile.email || '—'}</span>
+                      </div>
+                      <div>
+                        <span className="text-slate-400 text-[10px] uppercase font-bold block">Phone</span>
+                        <span className="font-bold text-[#082B61] mt-0.5 block">{profile.phone || '—'}</span>
+                      </div>
+                      <div>
+                        <span className="text-slate-400 text-[10px] uppercase font-bold block">Nationality</span>
+                        <span className="font-bold text-[#082B61] mt-0.5 block">{profile.nationality || 'Indian'}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="bg-white rounded-3xl p-6 border border-slate-200/80 shadow-xs space-y-3">
+                    <h3 className="text-sm font-extrabold text-[#082B61] pb-2 border-b border-slate-100">Quick Actions</h3>
+                    <button
+                      type="button"
+                      onClick={() => setShowClaimModal(true)}
+                      className="w-full flex items-center justify-between p-3 rounded-2xl bg-slate-50 hover:bg-blue-50/70 border border-slate-200/70 text-left transition-colors cursor-pointer group"
+                    >
+                      <div className="flex items-center gap-2">
+                        <Link2 size={15} className="text-[#2563EB]" />
+                        <span className="text-xs font-bold text-[#082B61]">Link Guest Application</span>
+                      </div>
+                      <span className="text-xs text-slate-400 group-hover:text-[#2563EB]">→</span>
+                    </button>
+
+                    <Link
+                      to="/visa"
+                      className="w-full flex items-center justify-between p-3 rounded-2xl bg-slate-50 hover:bg-blue-50/70 border border-slate-200/70 text-left transition-colors cursor-pointer group"
+                    >
+                      <div className="flex items-center gap-2">
+                        <Compass size={15} className="text-[#2563EB]" />
+                        <span className="text-xs font-bold text-[#082B61]">Apply for New Visa</span>
+                      </div>
+                      <span className="text-xs text-slate-400 group-hover:text-[#2563EB]">→</span>
+                    </Link>
+
+                    <Link
+                      to="/dummy-tickets"
+                      className="w-full flex items-center justify-between p-3 rounded-2xl bg-slate-50 hover:bg-blue-50/70 border border-slate-200/70 text-left transition-colors cursor-pointer group"
+                    >
+                      <div className="flex items-center gap-2">
+                        <Plane size={15} className="text-[#2563EB]" />
+                        <span className="text-xs font-bold text-[#082B61]">Dummy Flight Itinerary</span>
+                      </div>
+                      <span className="text-xs text-slate-400 group-hover:text-[#2563EB]">→</span>
+                    </Link>
+                  </div>
+                </div>
+
+                {/* Recent Applications Preview */}
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-base font-black text-[#082B61]">Recent Applications</h3>
+                    {applications.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => navigate('/account/applications')}
+                        className="text-xs font-bold text-[#2563EB] hover:underline cursor-pointer"
+                      >
+                        View All ({applications.length}) →
+                      </button>
+                    )}
+                  </div>
+
+                  {applications.length === 0 ? (
+                    <div className="bg-white rounded-3xl p-8 text-center border border-slate-200/80 shadow-xs space-y-3">
+                      <FileText size={24} className="text-slate-400 mx-auto" />
+                      <p className="text-xs font-bold text-[#082B61]">No visa applications yet</p>
+                      <Link
+                        to="/visa"
+                        className="inline-flex items-center gap-1.5 px-4 py-2 rounded-full bg-[#2563EB] text-white text-xs font-bold shadow-xs"
+                      >
+                        <span>Explore Visas</span>
+                        <span>→</span>
+                      </Link>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      {applications.slice(0, 2).map((app) => {
+                        const statusCfg = getStatusConfig(app.status);
+                        return (
+                          <div
+                            key={app.id}
+                            className="bg-white rounded-2xl p-4 sm:p-5 border border-slate-200/80 shadow-2xs hover:border-blue-200 transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+                          >
+                            <div className="flex items-center gap-3">
+                              <span className="text-2xl select-none">{app.flagEmoji}</span>
+                              <div>
+                                <h4 className="text-sm font-extrabold text-[#082B61]">{app.destination || app.countryName} {app.visaType}</h4>
+                                <span className="text-xs text-slate-400 font-mono font-bold block">{app.id}</span>
+                              </div>
+                            </div>
+
+                            <div className="flex items-center gap-3">
+                              <span className={`text-xs font-bold ${statusCfg.badgeText} px-2.5 py-1 rounded-full bg-slate-50 border border-slate-100`}>
+                                {statusCfg.label}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => setSelectedApp(app)}
+                                className="px-3.5 py-1.5 rounded-full bg-slate-100 hover:bg-[#2563EB] hover:text-white text-[#082B61] text-xs font-bold transition-all cursor-pointer"
+                              >
+                                View Details
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* ========================================================
+                PROFILE SECTION
+                ======================================================== */}
+            {activeTab === 'profile' && (
+              <section aria-labelledby="profile-heading" className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200/80 shadow-xs space-y-6">
           <div className="flex items-center justify-between pb-4 border-b border-slate-100">
             <div>
               <h2 id="profile-heading" className="text-base sm:text-lg font-black text-[#082B61]">
@@ -492,9 +790,39 @@ export default function AccountPage() {
 
               {/* Field 3: Email Address */}
               <div>
-                <label className="text-xs font-bold text-[#082B61] block leading-none">
-                  Email Address
-                </label>
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-bold text-[#082B61] block leading-none">
+                    Email Address
+                  </label>
+                  <div className="flex items-center gap-1.5">
+                    {profile.isEmailVerified ? (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 text-[10px] font-extrabold border border-emerald-200">
+                        <Check size={10} strokeWidth={3} />
+                        <span>Verified</span>
+                      </span>
+                    ) : (
+                      <div className="flex items-center gap-1.5">
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 text-[10px] font-extrabold border border-amber-200">
+                          <AlertCircle size={10} />
+                          <span>Unverified</span>
+                        </span>
+                        <button
+                          type="button"
+                          disabled={isResending}
+                          onClick={handleResendVerification}
+                          className="text-[10px] font-bold text-[#2563EB] hover:underline cursor-pointer disabled:opacity-50"
+                        >
+                          {isResending ? 'Sending...' : 'Resend Link'}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+                {resendStatus && (
+                  <span className="text-[10px] font-semibold text-emerald-700 mt-1 block">
+                    {resendStatus}
+                  </span>
+                )}
                 <span className="text-[11px] text-slate-400 font-medium block mt-1 mb-1.5">
                   Enter your email address
                 </span>
@@ -551,7 +879,7 @@ export default function AccountPage() {
               </div>
 
               {/* Field 5: Nationality */}
-              <div className="sm:col-span-2">
+              <div>
                 <label className="text-xs font-bold text-[#082B61] block leading-none">
                   Nationality
                 </label>
@@ -584,14 +912,55 @@ export default function AccountPage() {
                 )}
               </div>
 
+              {/* Field 6: Country of Residence */}
+              <div>
+                <label className="text-xs font-bold text-[#082B61] block leading-none">
+                  Country of Residence
+                </label>
+                <span className="text-[11px] text-slate-400 font-medium block mt-1 mb-1.5">
+                  Your current country of residency
+                </span>
+                <input
+                  type="text"
+                  disabled={!isEditing}
+                  placeholder="e.g. India"
+                  value={isEditing ? (formData.countryOfResidence || '') : (profile.countryOfResidence || '')}
+                  onChange={(e) => handleProfileFieldChange('countryOfResidence', e.target.value)}
+                  className={`w-full px-3.5 py-2.5 rounded-xl border text-xs sm:text-sm font-medium text-[#082B61] transition-all focus:outline-none ${
+                    !isEditing ? 'bg-slate-50/70 border-slate-200 text-slate-700 cursor-default' : getInputClass('countryOfResidence', formData.countryOfResidence)
+                  }`}
+                />
+              </div>
+
+              {/* Field 7: Passport Number */}
+              <div className="sm:col-span-2">
+                <label className="text-xs font-bold text-[#082B61] block leading-none">
+                  Passport Number
+                </label>
+                <span className="text-[11px] text-slate-400 font-medium block mt-1 mb-1.5">
+                  Primary applicant passport booklet number
+                </span>
+                <input
+                  type="text"
+                  disabled={!isEditing}
+                  placeholder="e.g. Z1234567"
+                  value={isEditing ? (formData.passportNumber || '') : (profile.passportNumber || '')}
+                  onChange={(e) => handleProfileFieldChange('passportNumber', e.target.value.toUpperCase())}
+                  className={`w-full px-3.5 py-2.5 rounded-xl border text-xs sm:text-sm font-semibold uppercase text-[#082B61] transition-all focus:outline-none ${
+                    !isEditing ? 'bg-slate-50/70 border-slate-200 text-slate-700 cursor-default' : getInputClass('passportNumber', formData.passportNumber)
+                  }`}
+                />
+              </div>
+
             </div>
           </form>
         </section>
+      )}
 
-        {/* ========================================================
-            MY APPLICATIONS SECTION
-            Data-Driven application cards
-            ======================================================== */}
+      {/* ========================================================
+          MY APPLICATIONS & REQUESTS SECTION
+          ======================================================== */}
+      {(activeTab === 'visas' || activeTab === 'tickets') && (
         <section aria-labelledby="applications-heading" className="space-y-4">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-2 gap-3">
             <div>
@@ -606,9 +975,9 @@ export default function AccountPage() {
             <div className="flex items-center gap-2 bg-slate-100 p-1 rounded-xl self-start sm:self-auto">
               <button
                 type="button"
-                onClick={() => setAccountTab('visas')}
+                onClick={() => navigate('/account/applications')}
                 className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                  accountTab === 'visas'
+                  activeTab === 'visas'
                     ? 'bg-white text-[#2563EB] shadow-xs'
                     : 'text-slate-600 hover:text-slate-900'
                 }`}
@@ -617,9 +986,9 @@ export default function AccountPage() {
               </button>
               <button
                 type="button"
-                onClick={() => setAccountTab('tickets')}
+                onClick={() => navigate('/account?tab=tickets')}
                 className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                  accountTab === 'tickets'
+                  activeTab === 'tickets'
                     ? 'bg-white text-[#2563EB] shadow-xs'
                     : 'text-slate-600 hover:text-slate-900'
                 }`}
@@ -630,7 +999,7 @@ export default function AccountPage() {
           </div>
 
           {/* DUMMY TICKETS TAB CONTENT */}
-          {accountTab === 'tickets' && (
+          {activeTab === 'tickets' && (
             <div>
               {isLoading ? (
                 <div className="bg-white rounded-3xl p-12 border border-slate-200/80 text-center space-y-3">
@@ -721,7 +1090,7 @@ export default function AccountPage() {
           )}
 
           {/* VISA APPLICATIONS TAB CONTENT */}
-          {accountTab === 'visas' && (
+          {activeTab === 'visas' && (
             <div>
               {/* Loading State */}
               {isLoading ? (
@@ -968,6 +1337,7 @@ export default function AccountPage() {
             </div>
           )}
         </section>
+      )}
           </>
         )}
 

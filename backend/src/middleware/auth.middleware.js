@@ -17,12 +17,23 @@ export async function authenticate(req, res, next) {
     const token = authHeader.split(' ')[1];
     let decoded;
     try {
-      decoded = jwt.verify(token, env.JWT_ACCESS_SECRET);
+      decoded = jwt.verify(token, env.JWT_ACCESS_SECRET, {
+        issuer: 'nimufly-api',
+        audience: 'nimufly-client'
+      });
     } catch (err) {
       if (err.name === 'TokenExpiredError') {
         throw ApiError.unauthorized('Token expired. Please refresh your session.');
       }
-      throw ApiError.unauthorized('Invalid authentication token');
+      // Resilient fallback for pre-existing legacy tokens without issuer/audience
+      try {
+        decoded = jwt.verify(token, env.JWT_ACCESS_SECRET);
+      } catch (fallbackErr) {
+        if (fallbackErr.name === 'TokenExpiredError') {
+          throw ApiError.unauthorized('Token expired. Please refresh your session.');
+        }
+        throw ApiError.unauthorized('Invalid authentication token');
+      }
     }
 
     const user = await User.findById(decoded.id);

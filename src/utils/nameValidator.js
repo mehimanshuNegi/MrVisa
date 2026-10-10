@@ -42,7 +42,7 @@ export function validateName(rawName) {
   }
 
   // Reject trailing punctuation / dots / hyphens / apostrophes
-  if (/[^\p{L}]$/u.test(trimmed)) {
+  if (/[^\p{L}\p{M}]$/u.test(trimmed)) {
     return { isValid: false, error: 'Name cannot end with a dot or punctuation.', normalized: trimmed };
   }
 

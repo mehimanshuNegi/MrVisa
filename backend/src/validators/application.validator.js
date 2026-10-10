@@ -1,6 +1,7 @@
 import Joi from 'joi';
 import { APPLICATION_STATUS, REQUIRED_ACTION } from '../constants/statuses.js';
 import { validateName } from '../utils/nameValidator.js';
+import { validateEmail } from '../utils/emailValidator.js';
 
 const nameValidatorCustom = (value, helpers) => {
   if (!value) return value;
@@ -11,6 +12,24 @@ const nameValidatorCustom = (value, helpers) => {
   return result.normalized;
 };
 
+const emailValidatorCustom = (value, helpers) => {
+  if (!value) return value;
+  const result = validateEmail(value);
+  if (!result.isValid) {
+    return helpers.message(result.error);
+  }
+  return result.normalized;
+};
+
+const passportNumberCustom = (value, helpers) => {
+  if (!value) return value;
+  const clean = String(value).replace(/[\s-]/g, '').toUpperCase();
+  if (clean.length < 6 || clean.length > 12 || !/^[A-Z0-9]+$/.test(clean) || !/\d/.test(clean)) {
+    return helpers.message('Valid passport number (6–12 alphanumeric characters) is required');
+  }
+  return clean;
+};
+
 const travellerInputSchema = Joi.object({
   travellerId: Joi.string().allow('').optional(),
   name: Joi.string().trim().custom(nameValidatorCustom).required().messages({
@@ -18,9 +37,9 @@ const travellerInputSchema = Joi.object({
   }),
   firstName: Joi.string().trim().allow('').optional(),
   lastName: Joi.string().trim().allow('').optional(),
-  email: Joi.string().email().allow('').optional(),
+  email: Joi.string().trim().allow('').custom(emailValidatorCustom).optional(),
   phone: Joi.string().allow('').optional(),
-  passportNumber: Joi.string().allow('').optional(),
+  passportNumber: Joi.string().trim().allow('').custom(passportNumberCustom).optional(),
   placeOfIssue: Joi.string().allow('').optional(),
   issueDate: Joi.string().allow('').optional(),
   expiryDate: Joi.string().allow('').optional(),
@@ -41,7 +60,7 @@ export const createApplicationSchema = Joi.object({
   travellers: Joi.array().items(travellerInputSchema).min(1).optional(),
   documents: Joi.array().items(Joi.object()).optional(),
   applicantName: Joi.string().trim().optional(),
-  applicantEmail: Joi.string().email().optional(),
+  applicantEmail: Joi.string().trim().custom(emailValidatorCustom).optional(),
   applicantPhone: Joi.string().optional(),
   additionalInformation: Joi.string().allow('').optional(),
   previousVisaRefusal: Joi.boolean().optional(),
@@ -58,7 +77,7 @@ export const updateApplicationSchema = Joi.object({
   paymentStatus: Joi.string().valid('PENDING', 'SUCCESS', 'FAILED').optional(),
   travellers: Joi.array().items(travellerInputSchema).min(1).optional(),
   applicantName: Joi.string().trim().optional(),
-  applicantEmail: Joi.string().email().optional(),
+  applicantEmail: Joi.string().trim().custom(emailValidatorCustom).optional(),
   applicantPhone: Joi.string().optional(),
   additionalInformation: Joi.string().allow('').optional(),
   previousVisaRefusal: Joi.boolean().optional(),

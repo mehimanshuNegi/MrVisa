@@ -18,6 +18,7 @@ import { useAuth } from '../../context/AuthContext';
 import GoogleSignInButton from '../../components/auth/GoogleSignInButton';
 import VerifiedFieldBadge from '../../components/common/VerifiedFieldBadge';
 import { validateName } from '../../utils/nameValidator';
+import { validateEmail } from '../../utils/emailValidator';
 
 export default function RegisterPage() {
   const navigate = useNavigate();
@@ -34,8 +35,7 @@ export default function RegisterPage() {
     confirmPassword: '',
     nationality: 'Indian'
   });
-  const [isEmailVerified, setIsEmailVerified] = useState(false);
-  const [emailToken, setEmailToken] = useState('');
+  const [emailValid, setEmailValid] = useState(false);
   const [isPhoneVerified, setIsPhoneVerified] = useState(false);
   const [phoneToken, setPhoneToken] = useState('');
 
@@ -105,8 +105,7 @@ export default function RegisterPage() {
       }
     }
     if (field === 'email') {
-      setIsEmailVerified(false);
-      setEmailToken('');
+      setEmailValid(false);
     }
     if (field === 'phone') {
       setIsPhoneVerified(false);
@@ -122,14 +121,38 @@ export default function RegisterPage() {
     }
   };
 
+  const handleEmailBlur = () => {
+    if (!formData.email.trim()) {
+      setEmailValid(false);
+      setFieldErrors((prev) => ({ ...prev, email: 'Email address is required' }));
+      return;
+    }
+    const check = validateEmail(formData.email);
+    if (!check.isValid) {
+      setEmailValid(false);
+      setFieldErrors((prev) => ({ ...prev, email: check.error }));
+    } else {
+      setEmailValid(true);
+      setFieldErrors((prev) => {
+        const next = { ...prev };
+        delete next.email;
+        return next;
+      });
+    }
+  };
+
   const validateForm = () => {
     const errors = {};
     const nameCheck = validateName(formData.name);
     if (!nameCheck.isValid) {
       errors.name = nameCheck.error;
     }
-    if (!formData.email.trim() || !formData.email.includes('@')) {
-      errors.email = 'Please provide a valid email address';
+    const emailCheck = validateEmail(formData.email);
+    if (!emailCheck.isValid) {
+      errors.email = emailCheck.error;
+      setEmailValid(false);
+    } else {
+      setEmailValid(true);
     }
     if (!formData.password || formData.password.length < 8) {
       errors.password = 'Password must be at least 8 characters long';
@@ -239,19 +262,6 @@ export default function RegisterPage() {
               <label className="block text-xs font-bold text-[#082B61]">
                 Email Address
               </label>
-              <VerifiedFieldBadge
-                target={formData.email}
-                type="EMAIL"
-                isVerified={isEmailVerified}
-                onVerified={({ verificationToken }) => {
-                  setIsEmailVerified(true);
-                  setEmailToken(verificationToken);
-                }}
-                onInvalidate={() => {
-                  setIsEmailVerified(false);
-                  setEmailToken('');
-                }}
-              />
             </div>
             <div className="relative">
               <input
@@ -260,16 +270,22 @@ export default function RegisterPage() {
                 autoComplete="email"
                 value={formData.email}
                 onChange={(e) => handleChange('email', e.target.value)}
+                onBlur={handleEmailBlur}
                 placeholder="name@example.com"
-                className={`w-full pl-10 pr-3.5 py-2.5 rounded-xl border text-xs sm:text-sm font-medium transition-all outline-none ${
+                className={`w-full pl-10 pr-9 py-2.5 rounded-xl border text-xs sm:text-sm font-medium transition-all outline-none ${
                   fieldErrors.email
                     ? 'border-red-400 bg-red-50/15 focus:ring-2 focus:ring-red-100'
-                    : isEmailVerified
-                    ? 'border-emerald-400 focus:border-emerald-600'
+                    : emailValid
+                    ? 'border-emerald-400 focus:border-emerald-600 focus:ring-2 focus:ring-emerald-100'
                     : 'border-slate-200 hover:border-slate-300 focus:border-[#2563EB] focus:ring-2 focus:ring-[#2563EB]/15'
                 }`}
               />
               <Mail size={16} className="text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+              {emailValid && !fieldErrors.email ? (
+                <CheckCircle2 size={16} className="text-emerald-500 absolute right-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+              ) : fieldErrors.email ? (
+                <AlertCircle size={16} className="text-red-500 absolute right-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+              ) : null}
             </div>
             {fieldErrors.email && (
               <span className="text-[11px] font-bold text-red-600 mt-1 block">{fieldErrors.email}</span>

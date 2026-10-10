@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { KeyRound, ArrowRight, ArrowLeft, Mail, AlertCircle, Loader2, CheckCircle2, ShieldCheck } from 'lucide-react';
 import { authService } from '../../services';
+import { validateEmail } from '../../utils/emailValidator';
 
 export default function ForgotPasswordPage() {
   const [email, setEmail] = useState('');
@@ -13,8 +14,9 @@ export default function ForgotPasswordPage() {
     e.preventDefault();
     setError('');
 
-    if (!email.trim() || !email.includes('@')) {
-      setError('Please provide a valid email address.');
+    const emailCheck = validateEmail(email);
+    if (!emailCheck.isValid) {
+      setError(emailCheck.error);
       return;
     }
 

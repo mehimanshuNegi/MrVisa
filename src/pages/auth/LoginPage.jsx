@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import GoogleSignInButton from '../../components/auth/GoogleSignInButton';
+import { validateEmail } from '../../utils/emailValidator';
 
 export default function LoginPage() {
   const navigate = useNavigate();
@@ -90,8 +91,9 @@ export default function LoginPage() {
     setError('');
     setSuccessNotice('');
 
-    if (!email.trim() || !email.includes('@')) {
-      setError('Please enter a valid email address.');
+    const emailCheck = validateEmail(email);
+    if (!emailCheck.isValid) {
+      setError(emailCheck.error);
       return;
     }
     if (!password) {

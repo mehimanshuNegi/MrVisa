@@ -345,19 +345,18 @@ export const PASSPORT_NUMBER_WORD_BLACKLIST = new Set([
 export function isValidPassportNumberFormat(str = '') {
   if (!str || typeof str !== 'string') return false;
   const clean = str.trim().toUpperCase().replace(/[\s-]/g, '');
+  // ICAO Doc 9303 standard: 6 to 12 alphanumeric characters
   if (clean.length < 6 || clean.length > 12) return false;
   if (PASSPORT_NUMBER_WORD_BLACKLIST.has(clean)) return false;
 
+  // Passport numbers must contain only uppercase alphanumeric characters (A-Z, 0-9)
+  if (!/^[A-Z0-9]{6,12}$/.test(clean)) return false;
+
+  // Genuine passport numbers must contain at least one digit (cannot be a pure alphabetic word)
   const hasDigit = /\d/.test(clean);
-  const digitCount = (clean.match(/\d/g) || []).length;
-  // Passport numbers cannot be pure words; must contain digits (e.g. 4+ digits)
-  if (!hasDigit || digitCount < 4) return false;
+  if (!hasDigit) return false;
 
-  // Standard formats: letter + 7-8 digits (e.g. P2206002), or alphanumeric with at least 5 digits
-  if (/^[A-Z]{1,2}[0-9]{6,9}[A-Z0-9]?$/.test(clean)) return true;
-  if (/^[A-Z0-9]{6,12}$/.test(clean) && digitCount >= 5) return true;
-
-  return false;
+  return true;
 }
 
 const MONTH_MAP = {

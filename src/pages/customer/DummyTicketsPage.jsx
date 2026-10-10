@@ -18,6 +18,7 @@ import { dummyTicketService, authService } from '../../services';
 import AirportAutocomplete from '../../components/common/AirportAutocomplete';
 import VerifiedFieldBadge from '../../components/common/VerifiedFieldBadge';
 import { validateName } from '../../utils/nameValidator';
+import { validateEmail } from '../../utils/emailValidator';
 
 const DIAL_CODES = [
   { code: '+91', country: 'India' },
@@ -66,7 +67,7 @@ export default function DummyTicketsPage() {
     email: ''
   });
   const [isPhoneVerified, setIsPhoneVerified] = useState(false);
-  const [isEmailVerified, setIsEmailVerified] = useState(false);
+  const [emailValid, setEmailValid] = useState(false);
 
   // Ticket / Flight Details with IATA codes
   const [flight, setFlight] = useState({
@@ -201,10 +202,12 @@ export default function DummyTicketsPage() {
       errors.phone = 'Please enter a valid phone number (6–15 digits)';
     }
 
-    if (!contact.email?.trim()) {
-      errors.email = 'Email address is required';
-    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contact.email.trim())) {
-      errors.email = 'Please enter a valid email address';
+    const emailCheck = validateEmail(contact.email);
+    if (!emailCheck.isValid) {
+      errors.email = emailCheck.error;
+      setEmailValid(false);
+    } else {
+      setEmailValid(true);
     }
 
     // 3. Flight validation with strict airport selection & conflict prevention
@@ -580,37 +583,56 @@ export default function DummyTicketsPage() {
                   <label className="block text-xs font-bold text-[#082B61]">
                     E-Mail
                   </label>
-                  <VerifiedFieldBadge
-                    target={contact.email}
-                    type="EMAIL"
-                    isVerified={isEmailVerified}
-                    onVerified={() => setIsEmailVerified(true)}
-                    onInvalidate={() => setIsEmailVerified(false)}
-                  />
                 </div>
-                <input
-                  type="email"
-                  value={contact.email}
-                  onChange={(e) => {
-                    setContact((prev) => ({ ...prev, email: e.target.value }));
-                    setIsEmailVerified(false); // Invalidate upon editing
-                    if (formErrors.email) {
-                      setFormErrors((prev) => {
-                        const next = { ...prev };
-                        delete next.email;
-                        return next;
-                      });
-                    }
-                  }}
-                  placeholder="Enter email address"
-                  className={`w-full bg-[#E2E8F0]/50 hover:bg-[#E2E8F0]/70 focus:bg-white border ${
-                    formErrors.email
-                      ? 'border-red-500 focus:border-red-500'
-                      : isEmailVerified
-                      ? 'border-emerald-400 focus:border-emerald-600'
-                      : 'border-slate-300 focus:border-[#082B61]'
-                  } rounded-xl px-3.5 py-3 text-sm font-semibold text-[#082B61] placeholder:text-slate-400 outline-none focus:ring-2 focus:ring-blue-100 transition`}
-                />
+                <div className="relative">
+                  <input
+                    type="email"
+                    value={contact.email}
+                    onChange={(e) => {
+                      setContact((prev) => ({ ...prev, email: e.target.value }));
+                      setEmailValid(false);
+                      if (formErrors.email) {
+                        setFormErrors((prev) => {
+                          const next = { ...prev };
+                          delete next.email;
+                          return next;
+                        });
+                      }
+                    }}
+                    onBlur={() => {
+                      if (!contact.email?.trim()) {
+                        setEmailValid(false);
+                        setFormErrors((prev) => ({ ...prev, email: 'Email address is required' }));
+                        return;
+                      }
+                      const check = validateEmail(contact.email);
+                      if (!check.isValid) {
+                        setEmailValid(false);
+                        setFormErrors((prev) => ({ ...prev, email: check.error }));
+                      } else {
+                        setEmailValid(true);
+                        setFormErrors((prev) => {
+                          const next = { ...prev };
+                          delete next.email;
+                          return next;
+                        });
+                      }
+                    }}
+                    placeholder="Enter email address"
+                    className={`w-full bg-[#E2E8F0]/50 hover:bg-[#E2E8F0]/70 focus:bg-white border ${
+                      formErrors.email
+                        ? 'border-red-500 focus:border-red-500'
+                        : emailValid
+                        ? 'border-emerald-400 focus:border-emerald-600'
+                        : 'border-slate-300 focus:border-[#082B61]'
+                    } rounded-xl px-3.5 pr-9 py-3 text-sm font-semibold text-[#082B61] placeholder:text-slate-400 outline-none focus:ring-2 focus:ring-blue-100 transition`}
+                  />
+                  {emailValid && !formErrors.email ? (
+                    <CheckCircle2 size={16} className="text-emerald-500 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                  ) : formErrors.email ? (
+                    <AlertCircle size={16} className="text-red-500 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                  ) : null}
+                </div>
                 {formErrors.email && (
                   <p className="text-[11px] text-red-600 mt-1 font-medium">{formErrors.email}</p>
                 )}

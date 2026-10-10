@@ -32,6 +32,36 @@ class DocumentationServiceApiClient {
   }
 
   /**
+   * Submit a new documentation service application/request
+   */
+  async submitRequest(requestData) {
+    const raw = await apiClient('/documentation-services/requests', {
+      method: 'POST',
+      body: requestData
+    });
+    return raw?.data || raw;
+  }
+
+  /**
+   * Fetch customer's own documentation requests
+   */
+  async getMyRequests(email = null) {
+    const raw = await apiClient('/documentation-services/requests/my', {
+      params: email ? { email } : {}
+    });
+    return Array.isArray(raw) ? raw : raw?.data || [];
+  }
+
+  /**
+   * Fetch a single documentation request by its ID or reference
+   */
+  async getRequestById(id) {
+    if (!id) return null;
+    const raw = await apiClient(`/documentation-services/requests/${encodeURIComponent(id)}`);
+    return raw?.data || raw;
+  }
+
+  /**
    * Create a new documentation service (Admin only)
    */
   async createService(serviceData) {

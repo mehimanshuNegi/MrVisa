@@ -26,6 +26,7 @@ import { visaService, countryService, applicationService, documentService } from
 import PassportPhotoUploadCard from '../../components/visa/PassportPhotoUploadCard';
 import VerifiedFieldBadge from '../../components/common/VerifiedFieldBadge';
 import { validateName } from '../../utils/nameValidator';
+import { validateEmail } from '../../utils/emailValidator';
 import { APPLICATION_STATUS, REQUIRED_ACTION } from '../../constants/status';
 import {
   validatePassportDates,
@@ -178,6 +179,7 @@ export default function VisaApplicationPage() {
 
   // Flag set to true when user presses Continue and there are errors
   const [submittedAttempted, setSubmittedAttempted] = useState(false);
+  const [blurredEmailMap, setBlurredEmailMap] = useState({});
 
   // Upload progress animation states: { [`${travellerId}_${docType}`]: progressNumber (0-100) }
   const [uploadingProgress, setUploadingProgress] = useState({});
@@ -405,7 +407,8 @@ export default function VisaApplicationPage() {
 
     if (field === 'email' && isPrimary) {
       if (!val) return 'Email address is required';
-      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(val)) return 'Enter a valid email address';
+      const check = validateEmail(val);
+      if (!check.isValid) return check.error;
       return null;
     }
 
@@ -418,7 +421,10 @@ export default function VisaApplicationPage() {
 
     if (field === 'passportNumber') {
       if (!val) return 'Passport number is required';
-      if (val.length < 6) return 'Enter a valid passport number';
+      const clean = val.replace(/[\s-]/g, '').toUpperCase();
+      if (clean.length < 6 || clean.length > 12) return 'Passport number must be 6 to 12 characters';
+      if (!/^[A-Z0-9]+$/.test(clean)) return 'Passport number must contain only letters and numbers';
+      if (!/\d/.test(clean)) return 'Passport number must contain at least one number';
       return null;
     }
 
@@ -888,8 +894,9 @@ export default function VisaApplicationPage() {
     if (!nameCheck.isValid) {
       errors.fullName = nameCheck.error;
     }
-    if (!ocrExtractedData.passportNumber || ocrExtractedData.passportNumber.trim().length < 6) {
-      errors.passportNumber = 'Valid passport number is required';
+    const cleanPass = (ocrExtractedData.passportNumber || '').replace(/[\s-]/g, '').toUpperCase();
+    if (!cleanPass || cleanPass.length < 6 || cleanPass.length > 12 || !/^[A-Z0-9]+$/.test(cleanPass) || !/\d/.test(cleanPass)) {
+      errors.passportNumber = 'Valid passport number (6–12 alphanumeric characters) is required';
     }
     if (!ocrExtractedData.dateOfBirth) {
       errors.dateOfBirth = 'Date of birth is required';
@@ -3282,29 +3289,6 @@ export default function VisaApplicationPage() {
                               <label className="text-xs font-bold text-[#082B61] block leading-none">
                                 Email Address *
                               </label>
-                              <VerifiedFieldBadge
-                                target={activeTraveller.email}
-                                type="EMAIL"
-                                isVerified={Boolean(activeTraveller.isEmailVerified)}
-                                onVerified={({ verificationToken }) => {
-                                  setTravellers((prev) =>
-                                    prev.map((t) =>
-                                      t.id === effectiveActiveId
-                                        ? { ...t, isEmailVerified: true, emailVerificationToken: verificationToken }
-                                        : t
-                                    )
-                                  );
-                                }}
-                                onInvalidate={() => {
-                                  setTravellers((prev) =>
-                                    prev.map((t) =>
-                                      t.id === effectiveActiveId
-                                        ? { ...t, isEmailVerified: false, emailVerificationToken: '' }
-                                        : t
-                                    )
-                                  );
-                                }}
-                              />
                             </div>
                             <div className="relative">
                               <input
@@ -3312,20 +3296,26 @@ export default function VisaApplicationPage() {
                                 type="email"
                                 placeholder=""
                                 value={activeTraveller.email}
-                                onChange={(e) => handleFieldChange('email', e.target.value)}
+                                onChange={(e) => {
+                                  handleFieldChange('email', e.target.value);
+                                  setBlurredEmailMap((prev) => ({ ...prev, [effectiveActiveId]: false }));
+                                }}
+                                onBlur={() => {
+                                  setBlurredEmailMap((prev) => ({ ...prev, [effectiveActiveId]: true }));
+                                }}
                                 className={`w-full px-3.5 py-2.5 pr-9 rounded-xl border text-xs sm:text-sm font-medium text-[#082B61] transition-all focus:outline-none ${getFieldStyleClass(
                                   activeTraveller,
                                   'email',
                                   true
                                 )}`}
                               />
-                              {activeTraveller.isEmailVerified ? (
+                              {blurredEmailMap[effectiveActiveId] && validateEmail(activeTraveller.email).isValid ? (
                                 <Check size={14} className="text-emerald-600 stroke-[3] absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-                              ) : submittedAttempted && getFieldError(activeTraveller, 'email', true) ? (
+                              ) : (submittedAttempted || blurredEmailMap[effectiveActiveId]) && getFieldError(activeTraveller, 'email', true) ? (
                                 <AlertCircle size={15} className="text-red-500 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
                               ) : null}
                             </div>
-                            {submittedAttempted && getFieldError(activeTraveller, 'email', true) && (
+                            {(submittedAttempted || blurredEmailMap[effectiveActiveId]) && getFieldError(activeTraveller, 'email', true) && (
                               <span className="text-[11px] font-medium text-red-600 mt-1 block">
                                 {getFieldError(activeTraveller, 'email', true)}
                               </span>

@@ -7,7 +7,14 @@ import {
   toggleDocumentationServiceStatus,
   deleteDocumentationService
 } from '../controllers/documentation.controller.js';
-import { authenticate, authorize } from '../middleware/auth.middleware.js';
+import {
+  createDocumentationRequest,
+  getMyDocumentationRequests,
+  getAllDocumentationRequests,
+  getDocumentationRequestById,
+  updateDocumentationRequestStatus
+} from '../controllers/documentationRequest.controller.js';
+import { authenticate, optionalAuthenticate, authorize } from '../middleware/auth.middleware.js';
 import { validate } from '../middleware/validate.middleware.js';
 import {
   createDocumentationServiceSchema,
@@ -18,6 +25,19 @@ import { ROLES } from '../constants/roles.js';
 
 const router = Router();
 
+// ==========================================
+// CUSTOMER DOCUMENTATION REQUESTS & APPLICATIONS
+// (Must precede /:idOrSlug route!)
+// ==========================================
+router.post('/requests', optionalAuthenticate, createDocumentationRequest);
+router.get('/requests/my', authenticate, getMyDocumentationRequests);
+router.get('/requests', authenticate, authorize(ROLES.ADMIN), getAllDocumentationRequests);
+router.get('/requests/:id', authenticate, getDocumentationRequestById);
+router.patch('/requests/:id/status', authenticate, authorize(ROLES.ADMIN), updateDocumentationRequestStatus);
+
+// ==========================================
+// DOCUMENTATION SERVICE CATALOG
+// ==========================================
 // Public routes
 router.get('/', validate(documentationQuerySchema, 'query'), getAllDocumentationServices);
 router.get('/:idOrSlug', getDocumentationServiceById);

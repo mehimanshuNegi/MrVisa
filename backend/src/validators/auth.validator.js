@@ -1,8 +1,18 @@
 import Joi from 'joi';
 import { validateName } from '../utils/nameValidator.js';
+import { validateEmail } from '../utils/emailValidator.js';
 
 const nameValidatorCustom = (value, helpers) => {
   const result = validateName(value);
+  if (!result.isValid) {
+    return helpers.message(result.error);
+  }
+  return result.normalized;
+};
+
+const emailValidatorCustom = (value, helpers) => {
+  if (!value) return value;
+  const result = validateEmail(value);
   if (!result.isValid) {
     return helpers.message(result.error);
   }
@@ -14,8 +24,7 @@ export const registerSchema = Joi.object({
     'string.empty': 'Full name cannot be empty',
     'any.required': 'Name is required'
   }),
-  email: Joi.string().email().lowercase().trim().required().messages({
-    'string.email': 'Please provide a valid email address',
+  email: Joi.string().trim().custom(emailValidatorCustom).required().messages({
     'any.required': 'Email is required'
   }),
   phone: Joi.string().trim().allow('').optional(),
@@ -32,8 +41,7 @@ export const registerSchema = Joi.object({
 }).options({ stripUnknown: true });
 
 export const loginSchema = Joi.object({
-  email: Joi.string().email().lowercase().trim().required().messages({
-    'string.email': 'Please provide a valid email address',
+  email: Joi.string().trim().custom(emailValidatorCustom).required().messages({
     'any.required': 'Email is required'
   }),
   password: Joi.string().required().messages({

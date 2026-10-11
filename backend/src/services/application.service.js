@@ -16,6 +16,7 @@ import { logger } from '../utils/logger.js';
 import { verificationService } from './verification.service.js';
 import { validatePhone } from '../utils/phoneValidator.js';
 import { validateEmail } from '../utils/emailValidator.js';
+import { validateName, validateFirstName, validateLastName } from '../utils/nameValidator.js';
 
 function isDocumentFulfilled(reqDoc, uploadedDocs) {
   if (!reqDoc) return true;
@@ -168,6 +169,28 @@ class ApplicationService {
             gender: data.gender || 'Male'
           }
         ];
+
+    // 2.2 Strict Name Validation for Travellers
+    for (const [idx, t] of travellers.entries()) {
+      if (t.name) {
+        const nameCheck = validateName(t.name);
+        if (!nameCheck.isValid) {
+          throw ApiError.badRequest(`Traveller ${idx + 1}: ${nameCheck.error}`);
+        }
+      }
+      if (t.firstName) {
+        const fnCheck = validateFirstName(t.firstName);
+        if (!fnCheck.isValid) {
+          throw ApiError.badRequest(`Traveller ${idx + 1} first name: ${fnCheck.error}`);
+        }
+      }
+      if (t.lastName) {
+        const lnCheck = validateLastName(t.lastName);
+        if (!lnCheck.isValid) {
+          throw ApiError.badRequest(`Traveller ${idx + 1} last name: ${lnCheck.error}`);
+        }
+      }
+    }
 
     // 2.5 Strict 10-Year Passport Date Validation for Travellers
     for (const [idx, t] of travellers.entries()) {

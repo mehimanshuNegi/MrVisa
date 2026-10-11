@@ -1,12 +1,30 @@
 import Joi from 'joi';
 import { APPLICATION_STATUS, REQUIRED_ACTION } from '../constants/statuses.js';
-import { validateName } from '../utils/nameValidator.js';
+import { validateName, validateFirstName, validateLastName } from '../utils/nameValidator.js';
 import { validateEmail } from '../utils/emailValidator.js';
 import { validatePhone } from '../utils/phoneValidator.js';
 
 const nameValidatorCustom = (value, helpers) => {
   if (!value) return value;
   const result = validateName(value);
+  if (!result.isValid) {
+    return helpers.message(result.error);
+  }
+  return result.normalized;
+};
+
+const firstNameValidatorCustom = (value, helpers) => {
+  if (!value) return value;
+  const result = validateFirstName(value);
+  if (!result.isValid) {
+    return helpers.message(result.error);
+  }
+  return result.normalized;
+};
+
+const lastNameValidatorCustom = (value, helpers) => {
+  if (!value) return value;
+  const result = validateLastName(value);
   if (!result.isValid) {
     return helpers.message(result.error);
   }
@@ -45,8 +63,8 @@ const travellerInputSchema = Joi.object({
   name: Joi.string().trim().custom(nameValidatorCustom).required().messages({
     'any.required': 'Traveller name is required'
   }),
-  firstName: Joi.string().trim().allow('').optional(),
-  lastName: Joi.string().trim().allow('').optional(),
+  firstName: Joi.string().trim().custom(firstNameValidatorCustom).allow('').optional(),
+  lastName: Joi.string().trim().custom(lastNameValidatorCustom).allow('').optional(),
   email: Joi.string().trim().allow('').custom(emailValidatorCustom).optional(),
   phone: Joi.string().allow('').custom(phoneValidatorCustom).optional(),
   passportNumber: Joi.string().trim().allow('').custom(passportNumberCustom).optional(),

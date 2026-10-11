@@ -24,7 +24,7 @@ import {
 } from 'lucide-react';
 import { visaService, countryService, applicationService, documentService, authService } from '../../services';
 import PassportPhotoUploadCard from '../../components/visa/PassportPhotoUploadCard';
-import { validateName } from '../../utils/nameValidator';
+import { validateName, validateFirstName, validateLastName } from '../../utils/nameValidator';
 import { validateEmail } from '../../utils/emailValidator';
 import { validatePhone } from '../../utils/phoneValidator';
 import { APPLICATION_STATUS, REQUIRED_ACTION } from '../../constants/status';
@@ -192,6 +192,8 @@ export default function VisaApplicationPage() {
   const [isSendingOtp, setIsSendingOtp] = useState(false);
   const [isVerifyingOtp, setIsVerifyingOtp] = useState(false);
   const [otpSessionPhone, setOtpSessionPhone] = useState('');
+  const [phoneVerificationToken, setPhoneVerificationToken] = useState('');
+  const [isPhoneVerified, setIsPhoneVerified] = useState(false);
 
   // Mobile OTP Resend Cooldown Timer
   useEffect(() => {
@@ -411,14 +413,14 @@ export default function VisaApplicationPage() {
     const val = (t[field] || '').trim();
 
     if (field === 'firstName') {
-      if (!val) return 'First name is required';
-      if (val.length < 2) return 'Enter at least 2 characters';
+      const check = validateFirstName(val);
+      if (!check.isValid) return check.error;
       return null;
     }
 
     if (field === 'lastName') {
-      if (!val) return 'Last name is required';
-      if (val.length < 2) return 'Enter at least 2 characters';
+      const check = validateLastName(val);
+      if (!check.isValid) return check.error;
       return null;
     }
 
@@ -1192,6 +1194,12 @@ export default function VisaApplicationPage() {
           if (field === 'phone') {
             updated.isPhoneVerified = false;
             updated.phoneVerificationToken = '';
+            setPhoneVerificationToken('');
+            setIsPhoneVerified(false);
+            setOtpSessionPhone('');
+            setOtpValue('');
+            setOtpError('');
+            setOtpSuccessMsg('');
           }
           return updated;
         }
@@ -1502,13 +1510,13 @@ export default function VisaApplicationPage() {
     }
 
     if (currentStep === 'review') {
-      setCurrentStep('payment');
+      handleContinueToPaymentFromReview();
       return;
     }
   };
 
-  // Stage C: Initiate Mobile OTP verification on explicit user confirmation
-  const handleInitiateFinalConfirmation = async () => {
+  // Stage C: Initiate Mobile OTP verification only on explicit "Continue to Payment" action after review
+  const handleContinueToPaymentFromReview = async () => {
     const primaryTraveller = travellers[0] || {};
     const primaryPhone = (primaryTraveller.phone || '').trim();
     const primaryEmail = (primaryTraveller.email || '').trim();
@@ -1523,6 +1531,12 @@ export default function VisaApplicationPage() {
     if (!emailCheck.isValid || !phoneCheck.isValid) {
       setSubmittedAttempted(true);
       setCurrentStep('travellers');
+      return;
+    }
+
+    // If mobile number has ALREADY been verified in this session and hasn't changed, advance to payment directly!
+    if (isPhoneVerified && phoneVerificationToken && otpSessionPhone === primaryPhone) {
+      setCurrentStep('payment');
       return;
     }
 
@@ -1590,8 +1604,8 @@ export default function VisaApplicationPage() {
     }
   };
 
-  // Stage D: Secure Final Verification and Application Submission
-  const handleVerifyOtpAndSubmit = async (e) => {
+  // Stage D: Verify OTP code on the backend and advance to Payment step (do not create application yet)
+  const handleVerifyOtpCode = async (e) => {
     if (e) e.preventDefault();
     const cleanOtp = otpValue.replace(/\D/g, '');
     if (!cleanOtp || cleanOtp.length !== 6) {
@@ -1603,9 +1617,58 @@ export default function VisaApplicationPage() {
     const primaryPhone = (primaryTraveller.phone || '').trim();
 
     setIsVerifyingOtp(true);
-    setIsSubmitting(true);
     setOtpError('');
 
+    try {
+      const res = await authService.verifyOtp({
+        target: primaryPhone,
+        type: 'PHONE',
+        code: cleanOtp
+      });
+
+      const token = res.verificationToken || res.data?.verificationToken || '';
+      if (!token) {
+        throw new Error('Verification token not received from server.');
+      }
+
+      setPhoneVerificationToken(token);
+      setIsPhoneVerified(true);
+      setOtpSessionPhone(primaryPhone);
+      setShowOtpModal(false);
+      setOtpError('');
+      // Successfully verified! Now proceed to the existing Payment step
+      setCurrentStep('payment');
+    } catch (err) {
+      const msg =
+        err?.response?.data?.message ||
+        err?.data?.message ||
+        err?.message ||
+        'Verification failed. Please check the code and try again.';
+      setOtpError(msg);
+    } finally {
+      setIsVerifyingOtp(false);
+    }
+  };
+
+  // Stage E: On Payment step, validate payment method, ensure OTP was verified, and execute final submission
+  const handleProceedToPayment = async () => {
+    if (!selectedPaymentMethod) {
+      setPaymentErrors({ method: 'Please select a payment method.' });
+      return;
+    }
+    setPaymentErrors({});
+
+    const primaryTraveller = travellers[0] || {};
+    const primaryPhone = (primaryTraveller.phone || '').trim();
+
+    // Security check: Ensure mobile has been verified before completing payment & submission
+    if (!isPhoneVerified || !phoneVerificationToken || otpSessionPhone !== primaryPhone) {
+      setCurrentStep('review');
+      handleContinueToPaymentFromReview();
+      return;
+    }
+
+    setIsSubmitting(true);
     try {
       const newApp = {
         id: applicationId,
@@ -1677,35 +1740,25 @@ export default function VisaApplicationPage() {
         previousVisaRefusal: !!previousVisaRefusal,
         previousVisaRefusalCountry: displayName,
         previousVisaRefusalReason: previousVisaRefusal ? previousVisaRefusalReason.trim() : '',
-        otp: cleanOtp
+        verificationToken: phoneVerificationToken,
+        paymentMethod: selectedPaymentMethod.toUpperCase()
       };
 
       const result = await applicationService.createApplication(newApp);
       const finalRef = result?.referenceNumber || result?.data?.referenceNumber || applicationId;
 
       setReferenceId(finalRef);
-      setShowOtpModal(false);
       setIsSubmitted(true);
     } catch (err) {
       const msg =
         err?.response?.data?.message ||
         err?.data?.message ||
         err?.message ||
-        'Verification or submission failed. Please check the code and try again.';
-      setOtpError(msg);
+        'Submission or payment processing failed. Please try again.';
+      setPaymentErrors({ submit: msg });
     } finally {
-      setIsVerifyingOtp(false);
       setIsSubmitting(false);
     }
-  };
-
-  const handleProceedToPayment = () => {
-    if (!selectedPaymentMethod) {
-      setPaymentErrors({ method: 'Please select a payment method.' });
-      return;
-    }
-    setPaymentErrors({});
-    handleInitiateFinalConfirmation();
   };
 
   // Post-submission feedback submission handler (non-blocking)
@@ -2204,7 +2257,12 @@ export default function VisaApplicationPage() {
                     travellers.every((t, i) => getPersonalInfoStatus(t, i === 0).completed && getPassportInfoStatus(t).completed) &&
                     travellers.every((t) => getDocsStatus(t).completed)
                   ) {
-                    setCurrentStep('payment');
+                    if (isPhoneVerified && phoneVerificationToken) {
+                      setCurrentStep('payment');
+                    } else {
+                      setCurrentStep('review');
+                      handleContinueToPaymentFromReview();
+                    }
                   }
                 }}
                 className={`inline-flex items-center gap-1 sm:gap-1.5 transition-colors ${
@@ -4397,10 +4455,10 @@ export default function VisaApplicationPage() {
 
                       <button
                         type="button"
-                        onClick={handleInitiateFinalConfirmation}
+                        onClick={handleContinueToPaymentFromReview}
                         className="inline-flex items-center gap-2 px-7 py-2.5 rounded-full bg-[#2563EB] hover:bg-[#123B7A] text-white text-xs sm:text-sm font-extrabold shadow-md shadow-[#2563EB]/25 active:scale-98 transition-all cursor-pointer"
                       >
-                        <span>Confirm Details & Submit</span>
+                        <span>Continue to Payment</span>
                         <ArrowRight size={15} strokeWidth={2.5} />
                       </button>
                     </div>
@@ -4440,7 +4498,7 @@ export default function VisaApplicationPage() {
                         </button>
                       </div>
 
-                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+                      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 text-xs">
                         <div>
                           <span className="text-slate-400 block text-[10px] font-bold uppercase tracking-wider">Destination</span>
                           <span className="font-bold text-[#082B61] mt-0.5 block truncate">{displayName}</span>
@@ -4454,7 +4512,14 @@ export default function VisaApplicationPage() {
                           <span className="font-bold text-[#082B61] mt-0.5 block">{travellers.length}</span>
                         </div>
                         <div>
-                          <span className="text-slate-400 block text-[10px] font-bold uppercase tracking-wider">Application ID / Reference</span>
+                          <span className="text-slate-400 block text-[10px] font-bold uppercase tracking-wider">Verified Mobile</span>
+                          <span className="font-bold text-[#082B61] mt-0.5 flex items-center gap-1 truncate">
+                            +91 {travellers[0]?.phone}
+                            <Check size={12} strokeWidth={3} className="text-emerald-600 inline flex-shrink-0" />
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-slate-400 block text-[10px] font-bold uppercase tracking-wider">Application ID</span>
                           <span className="font-mono font-bold text-[#082B61] mt-0.5 block">{applicationId}</span>
                         </div>
                       </div>
@@ -4802,14 +4867,14 @@ export default function VisaApplicationPage() {
                 </button>
               )}
 
-              {/* Step 3: Review -> Confirm Details & Submit */}
+              {/* Step 3: Review -> Continue to Payment */}
               {currentStep === 'review' && (
                 <button
                   type="button"
-                  onClick={handleInitiateFinalConfirmation}
+                  onClick={handleContinueToPaymentFromReview}
                   className="inline-flex items-center gap-2 px-6 sm:px-7 py-2.5 sm:py-3 rounded-full bg-[#2563EB] hover:bg-[#123B7A] text-white text-xs sm:text-sm font-extrabold shadow-md shadow-[#2563EB]/25 active:scale-98 transition-all cursor-pointer"
                 >
-                  <span>Confirm Details & Submit</span>
+                  <span>Continue to Payment</span>
                   <ArrowRight size={15} strokeWidth={2.5} />
                 </button>
               )}
@@ -4990,9 +5055,9 @@ export default function VisaApplicationPage() {
                 </div>
                 <div>
                   <h3 className="text-sm font-black text-[#082B61]">
-                    Confirm Mobile Number
+                    Verify Mobile Number
                   </h3>
-                  <span className="text-[11px] text-slate-400 font-medium">Final Application Security Check</span>
+                  <span className="text-[11px] text-slate-400 font-medium">Verification Required Before Payment</span>
                 </div>
               </div>
               <button
@@ -5011,7 +5076,7 @@ export default function VisaApplicationPage() {
             {/* Explanation */}
             <div className="space-y-1.5">
               <p className="text-xs text-slate-600 font-medium leading-relaxed">
-                To confirm access to your mobile number and protect your application, we sent a 6-digit verification code to:
+                To confirm your mobile number before proceeding to payment, we sent a 6-digit verification code to:
               </p>
               <div className="flex items-center justify-between bg-slate-50 border border-slate-200/80 rounded-2xl px-3.5 py-2">
                 <span className="font-mono font-bold text-xs sm:text-sm text-[#082B61]">
@@ -5031,7 +5096,7 @@ export default function VisaApplicationPage() {
             </div>
 
             {/* Form */}
-            <form onSubmit={handleVerifyOtpAndSubmit} className="space-y-4">
+            <form onSubmit={handleVerifyOtpCode} className="space-y-4">
               <div>
                 <label className="text-xs font-bold text-[#082B61] block mb-1.5">
                   Enter 6-Digit OTP *
@@ -5106,12 +5171,12 @@ export default function VisaApplicationPage() {
                   {isVerifyingOtp ? (
                     <>
                       <Loader2 size={16} className="animate-spin" />
-                      <span>Verifying & Submitting...</span>
+                      <span>Verifying Code...</span>
                     </>
                   ) : (
                     <>
                       <Lock size={15} />
-                      <span>Verify OTP & Submit Application</span>
+                      <span>Verify & Continue to Payment</span>
                     </>
                   )}
                 </button>
@@ -5124,7 +5189,7 @@ export default function VisaApplicationPage() {
                   }}
                   className="w-full py-2 rounded-full text-xs font-bold text-slate-500 hover:text-[#082B61] transition-colors cursor-pointer"
                 >
-                  Cancel & Review Again
+                  Cancel & Review Details
                 </button>
               </div>
             </form>

@@ -25,7 +25,7 @@ const verificationCodeSchema = new mongoose.Schema(
     },
     status: {
       type: String,
-      enum: ['PENDING', 'VERIFIED', 'EXPIRED', 'MAX_ATTEMPTS'],
+      enum: ['PENDING', 'VERIFIED', 'EXPIRED', 'MAX_ATTEMPTS', 'CONSUMED'],
       default: 'PENDING'
     },
     attempts: {

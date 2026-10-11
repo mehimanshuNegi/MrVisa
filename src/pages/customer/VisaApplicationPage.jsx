@@ -22,11 +22,11 @@ import {
   Loader2,
   Star
 } from 'lucide-react';
-import { visaService, countryService, applicationService, documentService } from '../../services';
+import { visaService, countryService, applicationService, documentService, authService } from '../../services';
 import PassportPhotoUploadCard from '../../components/visa/PassportPhotoUploadCard';
-import VerifiedFieldBadge from '../../components/common/VerifiedFieldBadge';
 import { validateName } from '../../utils/nameValidator';
 import { validateEmail } from '../../utils/emailValidator';
+import { validatePhone } from '../../utils/phoneValidator';
 import { APPLICATION_STATUS, REQUIRED_ACTION } from '../../constants/status';
 import {
   validatePassportDates,
@@ -180,6 +180,31 @@ export default function VisaApplicationPage() {
   // Flag set to true when user presses Continue and there are errors
   const [submittedAttempted, setSubmittedAttempted] = useState(false);
   const [blurredEmailMap, setBlurredEmailMap] = useState({});
+  const [blurredPhoneMap, setBlurredPhoneMap] = useState({});
+
+  // Stage C & D: Final Confirmation Mobile OTP states
+  const [showOtpModal, setShowOtpModal] = useState(false);
+  const [otpValue, setOtpValue] = useState('');
+  const [otpError, setOtpError] = useState('');
+  const [otpSuccessMsg, setOtpSuccessMsg] = useState('');
+  const [otpCooldown, setOtpCooldown] = useState(0);
+  const [otpAttempts, setOtpAttempts] = useState(0);
+  const [isSendingOtp, setIsSendingOtp] = useState(false);
+  const [isVerifyingOtp, setIsVerifyingOtp] = useState(false);
+  const [otpSessionPhone, setOtpSessionPhone] = useState('');
+
+  // Mobile OTP Resend Cooldown Timer
+  useEffect(() => {
+    let timer = null;
+    if (otpCooldown > 0) {
+      timer = setInterval(() => {
+        setOtpCooldown((prev) => (prev > 0 ? prev - 1 : 0));
+      }, 1000);
+    }
+    return () => {
+      if (timer) clearInterval(timer);
+    };
+  }, [otpCooldown]);
 
   // Upload progress animation states: { [`${travellerId}_${docType}`]: progressNumber (0-100) }
   const [uploadingProgress, setUploadingProgress] = useState({});
@@ -413,9 +438,11 @@ export default function VisaApplicationPage() {
     }
 
     if (field === 'phone' && isPrimary) {
-      if (!val) return 'Mobile number is required';
-      const cleanPhone = val.replace(/[\s-+]/g, '');
-      if (cleanPhone.length < 10) return 'Enter a valid 10-digit mobile number';
+      const check = validatePhone(val, {
+        nationality: t.nationality,
+        country: destination?.countryName || 'India'
+      });
+      if (!check.isValid) return check.error;
       return null;
     }
 
@@ -1480,134 +1507,205 @@ export default function VisaApplicationPage() {
     }
   };
 
-  // Modular Payment Action (Mock frontend simulation for now, ready for future Razorpay integration)
+  // Stage C: Initiate Mobile OTP verification on explicit user confirmation
+  const handleInitiateFinalConfirmation = async () => {
+    const primaryTraveller = travellers[0] || {};
+    const primaryPhone = (primaryTraveller.phone || '').trim();
+    const primaryEmail = (primaryTraveller.email || '').trim();
+
+    // Verify format of primary traveller contact before initiating OTP
+    const phoneCheck = validatePhone(primaryPhone, {
+      nationality: primaryTraveller.nationality || 'Indian',
+      country: destination?.countryName || 'India'
+    });
+    const emailCheck = validateEmail(primaryEmail);
+
+    if (!emailCheck.isValid || !phoneCheck.isValid) {
+      setSubmittedAttempted(true);
+      setCurrentStep('travellers');
+      return;
+    }
+
+    setShowOtpModal(true);
+    setOtpError('');
+    setOtpValue('');
+
+    // If OTP was already requested for this phone and cooldown is running, do not re-request immediately
+    if (otpSessionPhone === primaryPhone && otpCooldown > 0) {
+      return;
+    }
+
+    setIsSendingOtp(true);
+    try {
+      const res = await authService.sendVerificationOtp({
+        target: primaryPhone,
+        type: 'PHONE'
+      });
+      setOtpSuccessMsg(res.message || `Verification code sent to +91 ${primaryPhone}`);
+      setOtpCooldown(res.cooldownSeconds || 60);
+      setOtpSessionPhone(primaryPhone);
+    } catch (err) {
+      const msg =
+        err?.response?.data?.message ||
+        err?.data?.message ||
+        err?.message ||
+        'Failed to dispatch mobile verification OTP. Please try again.';
+      setOtpError(msg);
+    } finally {
+      setIsSendingOtp(false);
+    }
+  };
+
+  // Resend OTP handler with attempt tracking and cooldown enforcement
+  const handleResendOtp = async () => {
+    if (otpCooldown > 0 || isSendingOtp) return;
+    if (otpAttempts >= 5) {
+      setOtpError('Maximum resend attempts reached. Please return to the form and verify your phone number.');
+      return;
+    }
+
+    const primaryTraveller = travellers[0] || {};
+    const primaryPhone = (primaryTraveller.phone || '').trim();
+
+    setIsSendingOtp(true);
+    setOtpError('');
+    try {
+      const res = await authService.sendVerificationOtp({
+        target: primaryPhone,
+        type: 'PHONE'
+      });
+      setOtpSuccessMsg(res.message || `New code sent to +91 ${primaryPhone}`);
+      setOtpCooldown(res.cooldownSeconds || 60);
+      setOtpAttempts((prev) => prev + 1);
+      setOtpSessionPhone(primaryPhone);
+    } catch (err) {
+      const msg =
+        err?.response?.data?.message ||
+        err?.data?.message ||
+        err?.message ||
+        'Failed to resend code. Please try again.';
+      setOtpError(msg);
+    } finally {
+      setIsSendingOtp(false);
+    }
+  };
+
+  // Stage D: Secure Final Verification and Application Submission
+  const handleVerifyOtpAndSubmit = async (e) => {
+    if (e) e.preventDefault();
+    const cleanOtp = otpValue.replace(/\D/g, '');
+    if (!cleanOtp || cleanOtp.length !== 6) {
+      setOtpError('Please enter the 6-digit numeric verification code.');
+      return;
+    }
+
+    const primaryTraveller = travellers[0] || {};
+    const primaryPhone = (primaryTraveller.phone || '').trim();
+
+    setIsVerifyingOtp(true);
+    setIsSubmitting(true);
+    setOtpError('');
+
+    try {
+      const newApp = {
+        id: applicationId,
+        applicationId: applicationId,
+        userId: 'usr_mock_01',
+        visaId: destination.id,
+        countryId: destination.countryId || destination.id,
+        countryName: displayName,
+        destination: displayName,
+        flagEmoji: flagEmoji || '✈️',
+        visaType: visaType,
+        travellerCount: travellers.length,
+        travellers: travellers.map((t, idx) => ({
+          id: t.id || `trav_${idx + 1}`,
+          travellerId: t.id || `trav_${idx + 1}`,
+          name: `${t.firstName} ${t.lastName}`.trim() || 'Applicant',
+          firstName: t.firstName,
+          lastName: t.lastName,
+          email: t.email || (idx === 0 ? primaryTraveller.email : ''),
+          phone: t.phone || (idx === 0 ? primaryTraveller.phone : ''),
+          passportNumber: t.passportNumber || 'Pending',
+          placeOfIssue: t.placeOfIssue || '—',
+          issueDate: t.issueDate || '—',
+          expiryDate: t.expiryDate || '—',
+          nationality: t.nationality || 'Indian',
+          dob: t.dob || '—',
+          dateOfBirth: t.dob || '—',
+          gender: t.gender || '—',
+          docs: t.docs || {}
+        })),
+        documents: requiredDocs.map((d, idx) => {
+          const docData = getDocForRequirement(primaryTraveller, d);
+          const isUploaded = Boolean(docData && !docData.error);
+          return {
+            id: `doc_${idx + 1}`,
+            documentId: `doc_${idx + 1}`,
+            name: d.title,
+            documentType: d.title,
+            storageKey: docData?.storageKey || '',
+            status: isUploaded ? 'Verified' : 'Pending',
+            verificationStatus: isUploaded ? 'Verified' : 'Pending'
+          };
+        }),
+        passportOcr: {
+          frontStorageKey: ocrUploadedDoc?.storageKey || '',
+          backStorageKey: ocrBackUploadedDoc?.storageKey || '',
+          extractedData: ocrExtractedData,
+          fieldsConfirmed: true,
+          photoStorageKey: passportPhotoDoc?.storageKey || '',
+          photoValidationResult: passportPhotoValidation || null
+        },
+        passportPhoto: passportPhotoDoc ? {
+          documentId: passportPhotoDoc.documentId,
+          storageKey: passportPhotoDoc.storageKey,
+          originalFilename: passportPhotoDoc.originalFilename,
+          fileSize: passportPhotoDoc.fileSize || (passportPhotoFile?.size || 0),
+          mimeType: passportPhotoDoc.mimeType || 'image/jpeg',
+          validationResult: passportPhotoValidation || null
+        } : null,
+        submittedDate: new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }),
+        status: APPLICATION_STATUS.APPLICATION_RECEIVED,
+        requiredAction: REQUIRED_ACTION.NONE,
+        adminMessage: 'Application received and securely registered with consulate queue.',
+        expectedDate: guaranteedDate,
+        expectedCompletion: guaranteedDate,
+        amountPaid: `₹${totalFee.toLocaleString('en-IN')}`,
+        amount: `₹${totalFee.toLocaleString('en-IN')}`,
+        additionalInformation: additionalInformation.trim(),
+        previousVisaRefusal: !!previousVisaRefusal,
+        previousVisaRefusalCountry: displayName,
+        previousVisaRefusalReason: previousVisaRefusal ? previousVisaRefusalReason.trim() : '',
+        otp: cleanOtp
+      };
+
+      const result = await applicationService.createApplication(newApp);
+      const finalRef = result?.referenceNumber || result?.data?.referenceNumber || applicationId;
+
+      setReferenceId(finalRef);
+      setShowOtpModal(false);
+      setIsSubmitted(true);
+    } catch (err) {
+      const msg =
+        err?.response?.data?.message ||
+        err?.data?.message ||
+        err?.message ||
+        'Verification or submission failed. Please check the code and try again.';
+      setOtpError(msg);
+    } finally {
+      setIsVerifyingOtp(false);
+      setIsSubmitting(false);
+    }
+  };
+
   const handleProceedToPayment = () => {
     if (!selectedPaymentMethod) {
       setPaymentErrors({ method: 'Please select a payment method.' });
       return;
     }
-
     setPaymentErrors({});
-    setIsSubmitting(true);
-
-    // =========================================================================
-    // FUTURE RAZORPAY INTEGRATION HOOK:
-    // When integrating Razorpay later, replace this mock timeout with:
-    //
-    // const options = {
-    //   key: 'YOUR_RAZORPAY_KEY_ID',
-    //   amount: totalFee * 100, // paise
-    //   currency: 'INR',
-    //   name: 'NimuFly',
-    //   description: `${displayName} ${visaType} Application (${applicationId})`,
-    //   order_id: backendOrderId,
-    //   prefill: {
-    //     name: `${travellers[0]?.firstName || ''} ${travellers[0]?.lastName || ''}`.trim(),
-    //     email: travellers[0]?.email || '',
-    //     contact: travellers[0]?.phone || ''
-    //   },
-    //   handler: function (response) {
-    //     // On successful payment verification
-    //     setReferenceId(applicationId);
-    //     setIsSubmitting(false);
-    //     setIsSubmitted(true);
-    //   },
-    //   modal: {
-    //     ondismiss: function () {
-    //       setIsSubmitting(false);
-    //     }
-    //   }
-    // };
-    // const rzp = new window.Razorpay(options);
-    // rzp.open();
-    // =========================================================================
-
-    // Current: Simulate fast, successful payment confirmation
-    setTimeout(async () => {
-      setReferenceId(applicationId);
-
-      // Save application record via applicationService
-      try {
-        const primaryTraveller = travellers[0] || {};
-        const newApp = {
-          id: applicationId,
-          applicationId: applicationId,
-          userId: 'usr_mock_01',
-          visaId: destination.id,
-          countryId: destination.countryId || destination.id,
-          countryName: displayName,
-          destination: displayName,
-          flagEmoji: flagEmoji || '✈️',
-          visaType: visaType,
-          travellerCount: travellers.length,
-          travellers: travellers.map((t, idx) => ({
-            id: t.id || `trav_${idx + 1}`,
-            travellerId: t.id || `trav_${idx + 1}`,
-            name: `${t.firstName} ${t.lastName}`.trim() || 'Applicant',
-            firstName: t.firstName,
-            lastName: t.lastName,
-            email: t.email || (idx === 0 ? primaryTraveller.email : ''),
-            phone: t.phone || (idx === 0 ? primaryTraveller.phone : ''),
-            passportNumber: t.passportNumber || 'Pending',
-            placeOfIssue: t.placeOfIssue || '—',
-            issueDate: t.issueDate || '—',
-            expiryDate: t.expiryDate || '—',
-            nationality: t.nationality || 'Indian',
-            dob: t.dob || '—',
-            dateOfBirth: t.dob || '—',
-            gender: t.gender || '—',
-            docs: t.docs || {}
-          })),
-          documents: requiredDocs.map((d, idx) => {
-            const docData = getDocForRequirement(primaryTraveller, d);
-            const isUploaded = Boolean(docData && !docData.error);
-            return {
-              id: `doc_${idx + 1}`,
-              documentId: `doc_${idx + 1}`,
-              name: d.title,
-              documentType: d.title,
-              storageKey: docData?.storageKey || '',
-              status: isUploaded ? 'Verified' : 'Pending',
-              verificationStatus: isUploaded ? 'Verified' : 'Pending'
-            };
-          }),
-          passportOcr: {
-            frontStorageKey: ocrUploadedDoc?.storageKey || '',
-            backStorageKey: ocrBackUploadedDoc?.storageKey || '',
-            extractedData: ocrExtractedData,
-            fieldsConfirmed: true,
-            photoStorageKey: passportPhotoDoc?.storageKey || '',
-            photoValidationResult: passportPhotoValidation || null
-          },
-          passportPhoto: passportPhotoDoc ? {
-            documentId: passportPhotoDoc.documentId,
-            storageKey: passportPhotoDoc.storageKey,
-            originalFilename: passportPhotoDoc.originalFilename,
-            fileSize: passportPhotoDoc.fileSize || (passportPhotoFile?.size || 0),
-            mimeType: passportPhotoDoc.mimeType || 'image/jpeg',
-            validationResult: passportPhotoValidation || null
-          } : null,
-          submittedDate: new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }),
-          status: APPLICATION_STATUS.APPLICATION_RECEIVED,
-          requiredAction: REQUIRED_ACTION.NONE,
-          adminMessage: 'Application received and securely registered with consulate queue.',
-          expectedDate: guaranteedDate,
-          expectedCompletion: guaranteedDate,
-          amountPaid: `₹${totalFee.toLocaleString('en-IN')}`,
-          amount: `₹${totalFee.toLocaleString('en-IN')}`,
-          additionalInformation: additionalInformation.trim(),
-          previousVisaRefusal: !!previousVisaRefusal,
-          previousVisaRefusalCountry: displayName,
-          previousVisaRefusalReason: previousVisaRefusal ? previousVisaRefusalReason.trim() : ''
-        };
-        await applicationService.createApplication(newApp);
-      } catch (e) {
-        console.warn('Failed to save application via service', e);
-      }
-
-      setIsSubmitting(false);
-      setIsSubmitted(true);
-    }, 900);
+    handleInitiateFinalConfirmation();
   };
 
   // Post-submission feedback submission handler (non-blocking)
@@ -1644,8 +1742,11 @@ export default function VisaApplicationPage() {
   const getFieldStyleClass = (t, field, isPrimary = false) => {
     const error = getFieldError(t, field, isPrimary);
     const valid = isFieldValid(t, field, isPrimary);
+    const isBlurred =
+      (field === 'email' && blurredEmailMap[effectiveActiveId]) ||
+      (field === 'phone' && blurredPhoneMap[effectiveActiveId]);
 
-    if (submittedAttempted && error) {
+    if ((submittedAttempted || isBlurred) && error) {
       return 'border-red-400 bg-red-50/15 focus:border-red-500 focus:ring-2 focus:ring-red-100';
     }
     if (valid) {
@@ -3294,11 +3395,10 @@ export default function VisaApplicationPage() {
                               <input
                                 ref={(el) => (fieldRefs.current[`${effectiveActiveId}_email`] = el)}
                                 type="email"
-                                placeholder=""
+                                placeholder="name@example.com"
                                 value={activeTraveller.email}
                                 onChange={(e) => {
                                   handleFieldChange('email', e.target.value);
-                                  setBlurredEmailMap((prev) => ({ ...prev, [effectiveActiveId]: false }));
                                 }}
                                 onBlur={() => {
                                   setBlurredEmailMap((prev) => ({ ...prev, [effectiveActiveId]: true }));
@@ -3309,7 +3409,7 @@ export default function VisaApplicationPage() {
                                   true
                                 )}`}
                               />
-                              {blurredEmailMap[effectiveActiveId] && validateEmail(activeTraveller.email).isValid ? (
+                              {validateEmail(activeTraveller.email).isValid ? (
                                 <Check size={14} className="text-emerald-600 stroke-[3] absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
                               ) : (submittedAttempted || blurredEmailMap[effectiveActiveId]) && getFieldError(activeTraveller, 'email', true) ? (
                                 <AlertCircle size={15} className="text-red-500 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
@@ -3325,52 +3425,39 @@ export default function VisaApplicationPage() {
                           <div>
                             <div className="flex items-center justify-between mb-1.5">
                               <label className="text-xs font-bold text-[#082B61] block leading-none">
-                                Phone Number *
+                                Mobile Number *
                               </label>
-                              <VerifiedFieldBadge
-                                target={activeTraveller.phone}
-                                type="PHONE"
-                                isVerified={Boolean(activeTraveller.isPhoneVerified)}
-                                onVerified={({ verificationToken }) => {
-                                  setTravellers((prev) =>
-                                    prev.map((t) =>
-                                      t.id === effectiveActiveId
-                                        ? { ...t, isPhoneVerified: true, phoneVerificationToken: verificationToken }
-                                        : t
-                                    )
-                                  );
-                                }}
-                                onInvalidate={() => {
-                                  setTravellers((prev) =>
-                                    prev.map((t) =>
-                                      t.id === effectiveActiveId
-                                        ? { ...t, isPhoneVerified: false, phoneVerificationToken: '' }
-                                        : t
-                                    )
-                                  );
-                                }}
-                              />
+                              <span className="text-[11px] text-slate-400 font-medium">10 digits (excluding +91)</span>
                             </div>
                             <div className="relative">
                               <input
                                 ref={(el) => (fieldRefs.current[`${effectiveActiveId}_phone`] = el)}
                                 type="tel"
-                                placeholder=""
+                                placeholder="Enter 10-digit mobile number"
                                 value={activeTraveller.phone}
-                                onChange={(e) => handleFieldChange('phone', e.target.value)}
+                                onChange={(e) => {
+                                  handleFieldChange('phone', e.target.value);
+                                  // Invalidate previous OTP session if phone changes
+                                  if (otpSessionPhone && otpSessionPhone !== e.target.value) {
+                                    setOtpSessionPhone('');
+                                    setOtpValue('');
+                                    setOtpError('');
+                                  }
+                                }}
+                                onBlur={() => {
+                                  setBlurredPhoneMap((prev) => ({ ...prev, [effectiveActiveId]: true }));
+                                }}
                                 className={`w-full px-3.5 py-2.5 pr-9 rounded-xl border text-xs sm:text-sm font-medium text-[#082B61] transition-all focus:outline-none ${getFieldStyleClass(
                                   activeTraveller,
                                   'phone',
                                   true
                                 )}`}
                               />
-                              {activeTraveller.isPhoneVerified ? (
-                                <Check size={14} className="text-emerald-600 stroke-[3] absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-                              ) : submittedAttempted && getFieldError(activeTraveller, 'phone', true) ? (
+                              {(submittedAttempted || blurredPhoneMap[effectiveActiveId]) && getFieldError(activeTraveller, 'phone', true) ? (
                                 <AlertCircle size={15} className="text-red-500 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
                               ) : null}
                             </div>
-                            {submittedAttempted && getFieldError(activeTraveller, 'phone', true) && (
+                            {(submittedAttempted || blurredPhoneMap[effectiveActiveId]) && getFieldError(activeTraveller, 'phone', true) && (
                               <span className="text-[11px] font-medium text-red-600 mt-1 block">
                                 {getFieldError(activeTraveller, 'phone', true)}
                               </span>
@@ -4310,10 +4397,10 @@ export default function VisaApplicationPage() {
 
                       <button
                         type="button"
-                        onClick={() => setCurrentStep('payment')}
+                        onClick={handleInitiateFinalConfirmation}
                         className="inline-flex items-center gap-2 px-7 py-2.5 rounded-full bg-[#2563EB] hover:bg-[#123B7A] text-white text-xs sm:text-sm font-extrabold shadow-md shadow-[#2563EB]/25 active:scale-98 transition-all cursor-pointer"
                       >
-                        <span>Continue to Payment</span>
+                        <span>Confirm Details & Submit</span>
                         <ArrowRight size={15} strokeWidth={2.5} />
                       </button>
                     </div>
@@ -4715,14 +4802,14 @@ export default function VisaApplicationPage() {
                 </button>
               )}
 
-              {/* Step 3: Review -> Continue to Payment */}
+              {/* Step 3: Review -> Confirm Details & Submit */}
               {currentStep === 'review' && (
                 <button
                   type="button"
-                  onClick={() => setCurrentStep('payment')}
+                  onClick={handleInitiateFinalConfirmation}
                   className="inline-flex items-center gap-2 px-6 sm:px-7 py-2.5 sm:py-3 rounded-full bg-[#2563EB] hover:bg-[#123B7A] text-white text-xs sm:text-sm font-extrabold shadow-md shadow-[#2563EB]/25 active:scale-98 transition-all cursor-pointer"
                 >
-                  <span>Continue to Payment</span>
+                  <span>Confirm Details & Submit</span>
                   <ArrowRight size={15} strokeWidth={2.5} />
                 </button>
               )}
@@ -4885,6 +4972,162 @@ export default function VisaApplicationPage() {
               </button>
             </div>
 
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================
+          STAGE C & D: FINAL CONFIRMATION MOBILE OTP MODAL
+          ======================================================== */}
+      {showOtpModal && (
+        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white w-full max-w-md rounded-3xl p-6 sm:p-7 shadow-2xl border border-slate-100 space-y-5 animate-in fade-in zoom-in-95 duration-150 relative">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-full bg-blue-50 text-[#2563EB] flex items-center justify-center">
+                  <Smartphone size={17} />
+                </div>
+                <div>
+                  <h3 className="text-sm font-black text-[#082B61]">
+                    Confirm Mobile Number
+                  </h3>
+                  <span className="text-[11px] text-slate-400 font-medium">Final Application Security Check</span>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowOtpModal(false);
+                  setOtpError('');
+                }}
+                className="text-slate-400 hover:text-slate-600 p-1 rounded-lg cursor-pointer transition-colors"
+                aria-label="Close OTP modal"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Explanation */}
+            <div className="space-y-1.5">
+              <p className="text-xs text-slate-600 font-medium leading-relaxed">
+                To confirm access to your mobile number and protect your application, we sent a 6-digit verification code to:
+              </p>
+              <div className="flex items-center justify-between bg-slate-50 border border-slate-200/80 rounded-2xl px-3.5 py-2">
+                <span className="font-mono font-bold text-xs sm:text-sm text-[#082B61]">
+                  +91 {travellers[0]?.phone}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowOtpModal(false);
+                    setCurrentStep('travellers');
+                  }}
+                  className="text-[11px] font-bold text-[#2563EB] hover:underline cursor-pointer"
+                >
+                  Change Number
+                </button>
+              </div>
+            </div>
+
+            {/* Form */}
+            <form onSubmit={handleVerifyOtpAndSubmit} className="space-y-4">
+              <div>
+                <label className="text-xs font-bold text-[#082B61] block mb-1.5">
+                  Enter 6-Digit OTP *
+                </label>
+                <input
+                  type="text"
+                  maxLength={6}
+                  autoFocus
+                  placeholder="• • • • • •"
+                  value={otpValue}
+                  onChange={(e) => {
+                    const val = e.target.value.replace(/\D/g, '').slice(0, 6);
+                    setOtpValue(val);
+                    if (otpError) setOtpError('');
+                  }}
+                  className="w-full text-center tracking-[0.5em] text-lg font-mono font-black py-2.5 px-3 rounded-2xl border border-slate-200 focus:border-[#2563EB] focus:ring-2 focus:ring-[#2563EB]/15 focus:outline-none text-[#082B61]"
+                />
+              </div>
+
+              {/* Status / Error display */}
+              {otpError && (
+                <div className="flex items-start gap-1.5 p-2.5 rounded-xl bg-red-50 border border-red-200 text-xs text-red-600 font-medium">
+                  <AlertCircle size={15} className="flex-shrink-0 mt-0.5 text-red-500" />
+                  <span>{otpError}</span>
+                </div>
+              )}
+
+              {otpSuccessMsg && !otpError && (
+                <div className="flex items-center gap-1.5 p-2 rounded-xl bg-emerald-50 border border-emerald-200 text-xs text-emerald-700 font-medium">
+                  <Check size={14} className="text-emerald-600 stroke-[3]" />
+                  <span>{otpSuccessMsg}</span>
+                </div>
+              )}
+
+              {/* Resend Cooldown row */}
+              <div className="flex items-center justify-between text-xs pt-1">
+                <span className="text-slate-400 font-medium">
+                  {otpCooldown > 0 ? (
+                    <span className="inline-flex items-center gap-1 text-slate-500">
+                      <Clock size={13} />
+                      Resend available in {otpCooldown}s
+                    </span>
+                  ) : (
+                    <span>Didn't receive code?</span>
+                  )}
+                </span>
+                <button
+                  type="button"
+                  onClick={handleResendOtp}
+                  disabled={otpCooldown > 0 || isSendingOtp}
+                  className={`font-bold transition-colors cursor-pointer ${
+                    otpCooldown > 0 || isSendingOtp
+                      ? 'text-slate-300 cursor-not-allowed'
+                      : 'text-[#2563EB] hover:text-[#123B7A] hover:underline'
+                  }`}
+                >
+                  {isSendingOtp ? 'Sending...' : 'Resend OTP'}
+                </button>
+              </div>
+
+              {/* Action buttons */}
+              <div className="pt-2 space-y-2">
+                <button
+                  type="submit"
+                  disabled={isVerifyingOtp || otpValue.length !== 6}
+                  className={`w-full py-3 rounded-full text-xs sm:text-sm font-extrabold flex items-center justify-center gap-2 transition-all shadow-md ${
+                    isVerifyingOtp || otpValue.length !== 6
+                      ? 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                      : 'bg-[#2563EB] hover:bg-[#123B7A] text-white shadow-[#2563EB]/25 active:scale-98 cursor-pointer'
+                  }`}
+                >
+                  {isVerifyingOtp ? (
+                    <>
+                      <Loader2 size={16} className="animate-spin" />
+                      <span>Verifying & Submitting...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Lock size={15} />
+                      <span>Verify OTP & Submit Application</span>
+                    </>
+                  )}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowOtpModal(false);
+                    setOtpError('');
+                  }}
+                  className="w-full py-2 rounded-full text-xs font-bold text-slate-500 hover:text-[#082B61] transition-colors cursor-pointer"
+                >
+                  Cancel & Review Again
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

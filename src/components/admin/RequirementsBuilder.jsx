@@ -9,10 +9,31 @@ import {
   Check,
   X,
   FileCheck2,
-  Info
+  Info,
+  Type,
+  AlignLeft,
+  Calendar,
+  Hash,
+  List,
+  CheckSquare,
+  Upload,
+  Eye,
+  Sliders,
+  ExternalLink
 } from 'lucide-react';
 
 const COMMON_FORMATS = ['PDF', 'JPG', 'JPEG', 'PNG', 'WEBP', 'DOC', 'DOCX'];
+
+const FIELD_TYPES = [
+  { value: 'file', label: 'File Upload', icon: Upload, desc: 'Applicant uploads a file (PDF, image, document)' },
+  { value: 'text', label: 'Short Text', icon: Type, desc: 'Single-line input (names, numbers, short answers)' },
+  { value: 'textarea', label: 'Long Text', icon: AlignLeft, desc: 'Multi-line text area (descriptions, itineraries, details)' },
+  { value: 'date', label: 'Date', icon: Calendar, desc: 'Date picker input' },
+  { value: 'number', label: 'Number', icon: Hash, desc: 'Numeric quantity or count' },
+  { value: 'select', label: 'Dropdown Select', icon: List, desc: 'Single-choice dropdown menu' },
+  { value: 'multi-select', label: 'Multi-Select', icon: List, desc: 'Multiple selectable options' },
+  { value: 'checkbox', label: 'Checkbox', icon: CheckSquare, desc: 'Yes/No affirmation checkbox' }
+];
 
 /**
  * Normalizes any format/string or object into a standard requirement structure
@@ -25,47 +46,89 @@ export function normalizeRequirement(item) {
     return {
       title: clean,
       name: clean,
+      category: 'Basic Information',
       required: true,
       isRequired: true,
+      inputType: 'file',
+      placeholder: '',
+      options: [],
       acceptedFormats: ['PDF', 'JPG', 'PNG'],
-      description: ''
+      maxSizeMb: 25,
+      description: '',
+      condition: '',
+      conditionField: '',
+      conditionValue: '',
+      displayOrder: 0,
+      isActive: true
     };
   }
+
   const title = (item.title || item.name || '').trim();
   if (!title) return null;
+
   const accepted = Array.isArray(item.acceptedFormats) && item.acceptedFormats.length > 0
     ? item.acceptedFormats.map((f) => String(f).trim().toUpperCase()).filter(Boolean)
     : ['PDF', 'JPG', 'PNG'];
+
   const isReq = item.required !== false && item.isRequired !== false;
+  const inputType = item.inputType || 'file';
+
   return {
+    _id: item._id || item.id,
     title,
     name: title,
+    category: item.category || 'Basic Information',
     required: isReq,
     isRequired: isReq,
+    inputType,
+    placeholder: item.placeholder || '',
+    options: Array.isArray(item.options) ? item.options : [],
     acceptedFormats: accepted,
-    description: (item.description || item.subtitle || '').trim()
+    maxSizeMb: Number(item.maxSizeMb) || 25,
+    description: (item.description || item.subtitle || '').trim(),
+    condition: item.condition || '',
+    conditionField: item.conditionField || '',
+    conditionValue: item.conditionValue || '',
+    displayOrder: Number(item.displayOrder) || 0,
+    isActive: item.isActive !== false
   };
 }
 
 /**
- * Interactive Admin Document Requirements Builder
- * Allows adding, editing, deleting, reordering, toggling Required/Optional,
- * and configuring accepted formats with dynamic custom format support.
+ * Interactive Admin Document & Field Requirements Builder
+ * Supports adding, editing, deleting, reordering, toggling Required/Optional,
+ * field types, dropdown options, conditional logic, and customer form preview.
  */
 export default function RequirementsBuilder({
   requirements = [],
   onChange,
-  helperText = 'Configure the documents customers must upload for this service.'
+  allowFieldTypes = true,
+  previewSlug = '',
+  helperText = 'Configure the required fields and document uploads for this service.'
 }) {
   const [modalOpen, setModalOpen] = useState(false);
   const [editingIndex, setEditingIndex] = useState(null); // null means adding new
 
   // Form state for Modal
   const [title, setTitle] = useState('');
+  const [category, setCategory] = useState('Basic Information');
+  const [inputType, setInputType] = useState('file');
+  const [placeholder, setPlaceholder] = useState('');
   const [description, setDescription] = useState('');
   const [isRequired, setIsRequired] = useState(true);
   const [selectedFormats, setSelectedFormats] = useState(['PDF', 'JPG', 'PNG']);
+  const [maxSizeMb, setMaxSizeMb] = useState(25);
   const [customFormatInput, setCustomFormatInput] = useState('');
+
+  // Dropdown options state
+  const [optionsList, setOptionsList] = useState([]);
+  const [newOptionInput, setNewOptionInput] = useState('');
+
+  // Conditional visibility state
+  const [hasCondition, setHasCondition] = useState(false);
+  const [conditionNote, setConditionNote] = useState('');
+  const [conditionField, setConditionField] = useState('');
+  const [conditionValue, setConditionValue] = useState('');
 
   // Safe normalized list
   const items = Array.isArray(requirements)
@@ -75,10 +138,20 @@ export default function RequirementsBuilder({
   const openAddModal = () => {
     setEditingIndex(null);
     setTitle('');
+    setCategory('Basic Information');
+    setInputType('file');
+    setPlaceholder('');
     setDescription('');
     setIsRequired(true);
     setSelectedFormats(['PDF', 'JPG', 'PNG']);
+    setMaxSizeMb(25);
     setCustomFormatInput('');
+    setOptionsList([]);
+    setNewOptionInput('');
+    setHasCondition(false);
+    setConditionNote('');
+    setConditionField('');
+    setConditionValue('');
     setModalOpen(true);
   };
 
@@ -87,10 +160,21 @@ export default function RequirementsBuilder({
     if (!item) return;
     setEditingIndex(index);
     setTitle(item.title || '');
+    setCategory(item.category || 'Basic Information');
+    setInputType(item.inputType || 'file');
+    setPlaceholder(item.placeholder || '');
     setDescription(item.description || '');
     setIsRequired(item.required !== false && item.isRequired !== false);
     setSelectedFormats(item.acceptedFormats?.length ? [...item.acceptedFormats] : ['PDF', 'JPG', 'PNG']);
+    setMaxSizeMb(item.maxSizeMb || 25);
     setCustomFormatInput('');
+    setOptionsList(Array.isArray(item.options) ? [...item.options] : []);
+    setNewOptionInput('');
+    const hasCond = Boolean(item.condition || item.conditionField || item.conditionValue);
+    setHasCondition(hasCond);
+    setConditionNote(item.condition || '');
+    setConditionField(item.conditionField || '');
+    setConditionValue(item.conditionValue || '');
     setModalOpen(true);
   };
 
@@ -118,18 +202,60 @@ export default function RequirementsBuilder({
     }
   };
 
+  const handleAddOption = (e) => {
+    e?.preventDefault();
+    const clean = newOptionInput.trim();
+    if (clean && !optionsList.includes(clean)) {
+      setOptionsList([...optionsList, clean]);
+      setNewOptionInput('');
+    }
+  };
+
+  const handleRemoveOption = (idx) => {
+    setOptionsList(optionsList.filter((_, i) => i !== idx));
+  };
+
+  // Direct quick toggle for Required / Optional on list item
+  const handleToggleRequired = (index, e) => {
+    e?.stopPropagation();
+    const updated = [...items];
+    const target = updated[index];
+    if (target) {
+      const nextRequired = !(target.required !== false && target.isRequired !== false);
+      updated[index] = {
+        ...target,
+        required: nextRequired,
+        isRequired: nextRequired
+      };
+      onChange(updated);
+    }
+  };
+
   const handleSaveModal = (e) => {
     e?.preventDefault();
     const cleanTitle = title.trim();
     if (!cleanTitle) return;
 
+    const existingId = editingIndex !== null && items[editingIndex]?._id;
+
     const newItem = {
+      ...(existingId ? { _id: existingId } : {}),
       title: cleanTitle,
       name: cleanTitle,
+      category: category.trim() || 'Basic Information',
+      inputType: allowFieldTypes ? inputType : 'file',
+      placeholder: placeholder.trim(),
+      description: description.trim(),
       required: isRequired,
       isRequired,
-      acceptedFormats: selectedFormats.length > 0 ? selectedFormats : ['PDF', 'JPG', 'PNG'],
-      description: description.trim()
+      acceptedFormats: inputType === 'file' ? (selectedFormats.length > 0 ? selectedFormats : ['PDF', 'JPG', 'PNG']) : [],
+      maxSizeMb: inputType === 'file' ? Number(maxSizeMb) || 25 : 25,
+      options: ['select', 'multi-select'].includes(inputType) ? optionsList : [],
+      condition: hasCondition ? conditionNote.trim() : '',
+      conditionField: hasCondition ? conditionField.trim() : '',
+      conditionValue: hasCondition ? conditionValue.trim() : '',
+      displayOrder: editingIndex !== null ? items[editingIndex]?.displayOrder || (editingIndex + 1) : items.length + 1,
+      isActive: true
     };
 
     let updated;
@@ -165,274 +291,538 @@ export default function RequirementsBuilder({
     onChange(updated);
   };
 
+  const getTypeIcon = (type) => {
+    const found = FIELD_TYPES.find((f) => f.value === type);
+    const IconComp = found?.icon || FileText;
+    return <IconComp className="w-3.5 h-3.5" />;
+  };
+
+  const getTypeLabel = (type) => {
+    const found = FIELD_TYPES.find((f) => f.value === type);
+    return found?.label || 'File Upload';
+  };
+
   return (
     <div className="space-y-3">
-      <div className="flex items-center justify-between">
+      {/* Top Header Row with Add & Preview */}
+      <div className="flex items-center justify-between gap-2 flex-wrap">
         <div>
-          <label className="block text-xs font-semibold text-slate-300">
-            Document Requirements ({items.length})
+          <label className="block text-xs font-bold text-[#082B61] dark:text-slate-200">
+            Service Requirements & Form Fields ({items.length})
           </label>
-          {helperText && <p className="text-[11px] text-slate-400 mt-0.5">{helperText}</p>}
+          {helperText && <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">{helperText}</p>}
         </div>
-        <button
-          type="button"
-          onClick={openAddModal}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-teal-500/10 hover:bg-teal-500/20 text-teal-400 border border-teal-500/20 text-xs font-medium transition"
-        >
-          <Plus className="w-3.5 h-3.5" />
-          <span>Add Requirement</span>
-        </button>
+
+        <div className="flex items-center gap-2">
+          {previewSlug && (
+            <a
+              href={`/documentation/${previewSlug}/apply`}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-50 hover:bg-blue-100 text-[#2563EB] border border-blue-200 text-xs font-semibold transition"
+              title="Preview the live dynamic customer form in a new tab"
+            >
+              <Eye className="w-3.5 h-3.5" />
+              <span>Preview Customer Form</span>
+              <ExternalLink className="w-3 h-3 opacity-60" />
+            </a>
+          )}
+
+          <button
+            type="button"
+            onClick={openAddModal}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#2563EB] hover:bg-blue-700 text-white text-xs font-bold transition shadow-xs cursor-pointer"
+          >
+            <Plus className="w-3.5 h-3.5" />
+            <span>Add Requirement</span>
+          </button>
+        </div>
       </div>
 
       {/* Requirements List */}
       {items.length === 0 ? (
-        <div className="p-6 text-center rounded-xl bg-slate-900/40 border border-dashed border-slate-800 text-slate-400 text-xs">
-          <FileText className="w-6 h-6 mx-auto mb-2 text-slate-500 opacity-60" />
-          <p>No document requirements configured yet.</p>
+        <div className="p-8 text-center rounded-2xl bg-slate-50 dark:bg-slate-900/40 border border-dashed border-slate-200 dark:border-slate-800 text-slate-400 text-xs">
+          <FileText className="w-8 h-8 mx-auto mb-2 text-slate-400 opacity-60" />
+          <p className="font-semibold text-slate-600 dark:text-slate-300">No requirements or fields configured yet.</p>
+          <p className="text-[11px] text-slate-400 mt-0.5">Click the button below to add your first document or questionnaire field.</p>
           <button
             type="button"
             onClick={openAddModal}
-            className="mt-2 text-teal-400 hover:text-teal-300 font-medium inline-block text-[11px]"
+            className="mt-3 inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-[#2563EB] text-white hover:bg-blue-700 font-bold text-xs transition cursor-pointer"
           >
-            + Click here to add your first requirement
+            <Plus className="w-3 h-3" />
+            <span>Add Requirement</span>
           </button>
         </div>
       ) : (
         <div className="space-y-2">
-          {items.map((req, idx) => (
-            <div
-              key={idx}
-              className="flex items-center justify-between p-3.5 rounded-xl bg-slate-900/60 border border-slate-800/80 hover:border-slate-700/80 transition group"
-            >
-              {/* Left Details */}
-              <div className="flex items-center gap-3 min-w-0 pr-3">
-                <div className="flex flex-col gap-0.5 shrink-0 text-slate-500">
-                  <button
-                    type="button"
-                    onClick={() => handleMoveUp(idx)}
-                    disabled={idx === 0}
-                    className="p-0.5 hover:text-slate-200 disabled:opacity-20 disabled:hover:text-slate-500 transition"
-                    title="Move up"
-                  >
-                    <ChevronUp className="w-3.5 h-3.5" />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleMoveDown(idx)}
-                    disabled={idx === items.length - 1}
-                    className="p-0.5 hover:text-slate-200 disabled:opacity-20 disabled:hover:text-slate-500 transition"
-                    title="Move down"
-                  >
-                    <ChevronDown className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-
-                <div className="min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="text-xs font-semibold text-slate-100 truncate">
-                      {req.title}
-                    </span>
-                    <span
-                      className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${
-                        req.required
-                          ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
-                          : 'bg-slate-800 text-slate-400 border border-slate-700'
-                      }`}
+          {items.map((req, idx) => {
+            const isReq = req.required !== false && req.isRequired !== false;
+            return (
+              <div
+                key={req._id || idx}
+                className="flex items-center justify-between p-3.5 rounded-2xl bg-white dark:bg-slate-900/80 border border-slate-200/90 dark:border-slate-800 hover:border-blue-300 dark:hover:border-slate-700 transition shadow-2xs group"
+              >
+                {/* Left Details */}
+                <div className="flex items-center gap-3 min-w-0 pr-2">
+                  <div className="flex flex-col gap-0.5 shrink-0 text-slate-400">
+                    <button
+                      type="button"
+                      onClick={() => handleMoveUp(idx)}
+                      disabled={idx === 0}
+                      className="p-0.5 hover:text-slate-700 dark:hover:text-slate-200 disabled:opacity-20 transition cursor-pointer"
+                      title="Move up"
                     >
-                      {req.required ? 'Required' : 'Optional'}
-                    </span>
+                      <ChevronUp className="w-3.5 h-3.5" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleMoveDown(idx)}
+                      disabled={idx === items.length - 1}
+                      className="p-0.5 hover:text-slate-700 dark:hover:text-slate-200 disabled:opacity-20 transition cursor-pointer"
+                      title="Move down"
+                    >
+                      <ChevronDown className="w-3.5 h-3.5" />
+                    </button>
                   </div>
 
-                  <div className="flex items-center gap-2 mt-1 text-[11px] text-slate-400">
-                    <span className="text-slate-500">Formats:</span>
-                    <div className="flex items-center gap-1">
-                      {req.acceptedFormats?.map((fmt) => (
-                        <span
-                          key={fmt}
-                          className="px-1.5 py-0.2 rounded bg-slate-800/90 text-slate-300 font-mono text-[10px]"
-                        >
-                          {fmt}
-                        </span>
-                      ))}
-                    </div>
-                    {req.description && (
-                      <span className="text-slate-500 truncate max-w-[200px]">
-                        • {req.description}
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-xs font-bold text-[#082B61] dark:text-slate-100 truncate">
+                        {req.title}
                       </span>
-                    )}
+
+                      {/* Field Type Badge */}
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-semibold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
+                        {getTypeIcon(req.inputType)}
+                        <span>{getTypeLabel(req.inputType)}</span>
+                      </span>
+
+                      {/* Clickable Quick Toggle Required / Optional Badge */}
+                      <button
+                        type="button"
+                        onClick={(e) => handleToggleRequired(idx, e)}
+                        className={`text-[10px] px-2 py-0.5 rounded-full font-bold transition cursor-pointer ${
+                          isReq
+                            ? 'bg-rose-50 text-rose-600 border border-rose-200 hover:bg-rose-100'
+                            : 'bg-slate-100 text-slate-500 border border-slate-200 hover:bg-slate-200'
+                        }`}
+                        title="Click to toggle Required / Optional"
+                      >
+                        {isReq ? 'Required *' : 'Optional'}
+                      </button>
+
+                      {/* Category Badge */}
+                      {req.category && req.category !== 'Basic Information' && (
+                        <span className="text-[10px] px-2 py-0.5 rounded-full font-medium bg-blue-50 text-blue-600 border border-blue-100">
+                          {req.category}
+                        </span>
+                      )}
+
+                      {/* Conditional Badge */}
+                      {(req.condition || req.conditionField) && (
+                        <span className="text-[10px] px-2 py-0.5 rounded-full font-medium bg-amber-50 text-amber-700 border border-amber-200/60 flex items-center gap-1">
+                          <Sliders className="w-2.5 h-2.5" />
+                          <span>Conditional</span>
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="flex items-center gap-2 mt-1 text-[11px] text-slate-500 flex-wrap">
+                      {req.inputType === 'file' ? (
+                        <>
+                          <span className="text-slate-400">Formats:</span>
+                          <span className="font-mono text-[10px] text-slate-600 dark:text-slate-400">
+                            {req.acceptedFormats?.join(', ') || 'PDF, JPG, PNG'} (Max {req.maxSizeMb || 25}MB)
+                          </span>
+                        </>
+                      ) : ['select', 'multi-select'].includes(req.inputType) ? (
+                        <>
+                          <span className="text-slate-400">Choices:</span>
+                          <span className="text-[11px] text-slate-600 dark:text-slate-400 truncate max-w-[280px]">
+                            {req.options?.join(', ') || 'None defined'}
+                          </span>
+                        </>
+                      ) : req.placeholder ? (
+                        <>
+                          <span className="text-slate-400">Placeholder:</span>
+                          <span className="italic text-slate-500 truncate max-w-[240px]">
+                            "{req.placeholder}"
+                          </span>
+                        </>
+                      ) : null}
+
+                      {req.description && (
+                        <span className="text-slate-400 truncate max-w-[240px]">
+                          • {req.description}
+                        </span>
+                      )}
+                    </div>
                   </div>
                 </div>
-              </div>
 
-              {/* Right Action Buttons */}
-              <div className="flex items-center gap-1.5 shrink-0">
-                <button
-                  type="button"
-                  onClick={() => openEditModal(idx)}
-                  className="p-1.5 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition text-xs font-medium inline-flex items-center gap-1"
-                  title="Edit requirement"
-                >
-                  <Edit2 className="w-3.5 h-3.5" />
-                  <span className="hidden sm:inline">Edit</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleRemove(idx)}
-                  className="p-1.5 rounded-lg text-rose-400 hover:text-rose-300 hover:bg-rose-500/10 transition text-xs font-medium inline-flex items-center gap-1"
-                  title="Remove requirement"
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                  <span className="hidden sm:inline">Remove</span>
-                </button>
+                {/* Right Actions */}
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => openEditModal(idx)}
+                    className="p-1.5 rounded-lg text-slate-500 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-slate-800 transition text-xs font-semibold inline-flex items-center gap-1 cursor-pointer"
+                    title="Edit requirement"
+                  >
+                    <Edit2 className="w-3.5 h-3.5" />
+                    <span className="hidden sm:inline">Edit</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleRemove(idx)}
+                    className="p-1.5 rounded-lg text-rose-500 hover:text-rose-700 hover:bg-rose-50 dark:hover:bg-rose-500/10 transition text-xs font-semibold inline-flex items-center gap-1 cursor-pointer"
+                    title="Remove requirement"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span className="hidden sm:inline">Remove</span>
+                  </button>
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
 
-      {/* Interactive Modal for Add / Edit Requirement */}
+      {/* Add / Edit Requirement Modal */}
       {modalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-in fade-in duration-150">
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl max-w-md w-full overflow-hidden flex flex-col text-slate-100">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-150">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl shadow-2xl max-w-lg w-full max-h-[90vh] overflow-y-auto flex flex-col text-slate-800 dark:text-slate-100">
             {/* Modal Header */}
-            <div className="flex items-center justify-between p-4 border-b border-slate-800">
+            <div className="flex items-center justify-between p-4 sm:p-5 border-b border-slate-100 dark:border-slate-800 sticky top-0 bg-white/95 dark:bg-slate-900/95 backdrop-blur-sm z-10">
               <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-lg bg-teal-500/10 border border-teal-500/20 flex items-center justify-center text-teal-400">
+                <div className="w-8 h-8 rounded-xl bg-blue-50 dark:bg-blue-950/60 border border-blue-200 dark:border-blue-900/40 flex items-center justify-center text-[#2563EB]">
                   <FileCheck2 className="w-4 h-4" />
                 </div>
-                <h3 className="font-semibold text-sm text-slate-100">
-                  {editingIndex !== null ? 'Edit Document Requirement' : 'Add Document Requirement'}
-                </h3>
+                <div>
+                  <h3 className="font-bold text-sm text-[#082B61] dark:text-slate-100">
+                    {editingIndex !== null ? 'Edit Requirement & Field' : 'Add Requirement / Field'}
+                  </h3>
+                  <p className="text-[11px] text-slate-400">
+                    Configure customer input, file uploads, mandatory status, and visibility rules.
+                  </p>
+                </div>
               </div>
               <button
                 type="button"
                 onClick={closeModal}
-                className="p-1 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-slate-800"
+                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
             {/* Modal Body */}
-            <form onSubmit={handleSaveModal} className="p-4 space-y-4 text-xs">
-              {/* Title */}
+            <form onSubmit={handleSaveModal} className="p-4 sm:p-5 space-y-4 text-xs">
+              {/* Title / Label */}
               <div>
-                <label className="block font-medium text-slate-300 mb-1">
-                  Document Title / Name <span className="text-rose-400">*</span>
+                <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
+                  Field Label / Document Title <span className="text-rose-500">*</span>
                 </label>
                 <input
                   type="text"
                   required
                   value={title}
                   onChange={(e) => setTitle(e.target.value)}
-                  placeholder="e.g. Passport Front & Back Scan, Bank Statement"
-                  className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-slate-100 placeholder:text-slate-600 focus:outline-none focus:border-teal-500"
+                  placeholder="e.g. Passport copy, Purpose of travel, Entity Type, Bank account details"
+                  className="w-full px-3.5 py-2 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none focus:border-[#2563EB] text-xs font-semibold"
                 />
               </div>
 
-              {/* Requirement Type (Required vs Optional) */}
+              {/* Requirement Setting (Required vs Optional) */}
               <div>
-                <label className="block font-medium text-slate-300 mb-1.5">Requirement Type</label>
+                <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1.5">
+                  Requirement Setting <span className="text-rose-500">*</span>
+                </label>
                 <div className="grid grid-cols-2 gap-2">
                   <button
                     type="button"
                     onClick={() => setIsRequired(true)}
-                    className={`py-2 px-3 rounded-xl border text-center font-medium transition ${
+                    className={`py-2 px-3 rounded-xl border text-center font-bold text-xs transition cursor-pointer ${
                       isRequired
-                        ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300'
-                        : 'bg-slate-950 border-slate-800 text-slate-400 hover:bg-slate-800/50'
+                        ? 'bg-rose-50 border-rose-300 text-rose-700 dark:bg-rose-950/40 dark:border-rose-900/50 dark:text-rose-300 shadow-2xs'
+                        : 'bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800 text-slate-500 hover:bg-slate-100'
                     }`}
                   >
-                    Mandatory (Required)
+                    Required * (Mandatory)
                   </button>
                   <button
                     type="button"
                     onClick={() => setIsRequired(false)}
-                    className={`py-2 px-3 rounded-xl border text-center font-medium transition ${
+                    className={`py-2 px-3 rounded-xl border text-center font-bold text-xs transition cursor-pointer ${
                       !isRequired
-                        ? 'bg-slate-800 border-slate-700 text-slate-200'
-                        : 'bg-slate-950 border-slate-800 text-slate-400 hover:bg-slate-800/50'
+                        ? 'bg-blue-50 border-blue-300 text-[#2563EB] dark:bg-blue-950/40 dark:border-blue-900/50 dark:text-blue-300 shadow-2xs'
+                        : 'bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800 text-slate-500 hover:bg-slate-100'
                     }`}
                   >
-                    Optional
+                    Optional (If Available)
                   </button>
                 </div>
               </div>
 
-              {/* Accepted Formats */}
-              <div>
-                <label className="block font-medium text-slate-300 mb-1.5">
-                  Accepted File Formats <span className="text-rose-400">*</span>
-                </label>
-                <div className="flex flex-wrap gap-1.5 mb-2">
-                  {COMMON_FORMATS.map((fmt) => {
-                    const active = selectedFormats.includes(fmt);
-                    return (
-                      <button
-                        key={fmt}
-                        type="button"
-                        onClick={() => toggleFormat(fmt)}
-                        className={`px-2.5 py-1 rounded-lg text-xs font-mono font-medium transition border ${
-                          active
-                            ? 'bg-teal-500 text-slate-950 border-teal-400 shadow-sm'
-                            : 'bg-slate-950 text-slate-400 border-slate-800 hover:border-slate-700'
-                        }`}
-                      >
-                        {fmt}
-                      </button>
-                    );
-                  })}
+              {/* Field Type Selector */}
+              {allowFieldTypes && (
+                <div>
+                  <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1.5">
+                    Field Type
+                  </label>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                    {FIELD_TYPES.map((ft) => {
+                      const active = inputType === ft.value;
+                      const IconComp = ft.icon;
+                      return (
+                        <button
+                          key={ft.value}
+                          type="button"
+                          onClick={() => setInputType(ft.value)}
+                          className={`flex flex-col items-center justify-center p-2.5 rounded-xl border text-center transition cursor-pointer ${
+                            active
+                              ? 'bg-blue-50/80 border-[#2563EB] text-[#2563EB] font-bold shadow-2xs'
+                              : 'bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-100'
+                          }`}
+                        >
+                          <IconComp className="w-4 h-4 mb-1" />
+                          <span className="text-[11px] leading-tight">{ft.label}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
+              )}
 
-                {/* Custom Format Input */}
-                <div className="flex gap-2 items-center mt-2">
+              {/* Category & Placeholder */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-semibold text-slate-600 dark:text-slate-400 mb-1">
+                    Section Category
+                  </label>
                   <input
                     type="text"
-                    value={customFormatInput}
-                    onChange={(e) => setCustomFormatInput(e.target.value)}
-                    placeholder="Add custom format (e.g. TIFF)"
-                    className="flex-1 px-3 py-1.5 text-xs rounded-xl bg-slate-950 border border-slate-800 text-slate-100 placeholder:text-slate-600 focus:outline-none focus:border-teal-500"
+                    value={category}
+                    onChange={(e) => setCategory(e.target.value)}
+                    placeholder="e.g. Basic Information, Business Details"
+                    className="w-full px-3 py-1.5 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none focus:border-[#2563EB] text-xs"
                   />
-                  <button
-                    type="button"
-                    onClick={handleAddCustomFormat}
-                    className="px-3 py-1.5 text-xs rounded-xl bg-slate-800 text-slate-200 hover:bg-slate-700 transition"
-                  >
-                    + Add
-                  </button>
                 </div>
-                <p className="text-[11px] text-slate-500 mt-1">
-                  Customer upload component will strictly validate against these formats.
-                </p>
+
+                {inputType !== 'file' && (
+                  <div>
+                    <label className="block font-semibold text-slate-600 dark:text-slate-400 mb-1">
+                      Placeholder Text
+                    </label>
+                    <input
+                      type="text"
+                      value={placeholder}
+                      onChange={(e) => setPlaceholder(e.target.value)}
+                      placeholder="e.g. Enter details..."
+                      className="w-full px-3 py-1.5 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none focus:border-[#2563EB] text-xs"
+                    />
+                  </div>
+                )}
               </div>
 
-              {/* Description / Instructions */}
+              {/* File Upload Configuration */}
+              {inputType === 'file' && (
+                <div className="p-3 bg-slate-50 dark:bg-slate-950 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-3">
+                  <div>
+                    <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1.5">
+                      Accepted File Formats
+                    </label>
+                    <div className="flex flex-wrap gap-1.5 mb-2">
+                      {COMMON_FORMATS.map((fmt) => {
+                        const active = selectedFormats.includes(fmt);
+                        return (
+                          <button
+                            key={fmt}
+                            type="button"
+                            onClick={() => toggleFormat(fmt)}
+                            className={`px-2.5 py-1 rounded-lg text-xs font-mono font-bold transition border cursor-pointer ${
+                              active
+                                ? 'bg-[#2563EB] text-white border-[#2563EB] shadow-2xs'
+                                : 'bg-white dark:bg-slate-900 text-slate-500 border-slate-200 dark:border-slate-700 hover:border-slate-300'
+                            }`}
+                          >
+                            {fmt}
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    <div className="flex gap-2 items-center">
+                      <input
+                        type="text"
+                        value={customFormatInput}
+                        onChange={(e) => setCustomFormatInput(e.target.value)}
+                        placeholder="Custom format (e.g. TIFF)"
+                        className="flex-1 px-3 py-1.5 text-xs rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none focus:border-[#2563EB]"
+                      />
+                      <button
+                        type="button"
+                        onClick={handleAddCustomFormat}
+                        className="px-3 py-1.5 text-xs rounded-xl bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold transition cursor-pointer"
+                      >
+                        + Add Format
+                      </button>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block font-semibold text-slate-600 dark:text-slate-400 mb-1">
+                      Maximum File Size Limit (MB)
+                    </label>
+                    <input
+                      type="number"
+                      min="1"
+                      max="50"
+                      value={maxSizeMb}
+                      onChange={(e) => setMaxSizeMb(Number(e.target.value))}
+                      className="w-28 px-3 py-1.5 text-xs rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-slate-100 font-bold"
+                    />
+                    <span className="text-[11px] text-slate-400 ml-2">Default: 25 MB</span>
+                  </div>
+                </div>
+              )}
+
+              {/* Dropdown Options Builder */}
+              {['select', 'multi-select'].includes(inputType) && (
+                <div className="p-3 bg-slate-50 dark:bg-slate-950 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-2.5">
+                  <label className="block font-bold text-slate-700 dark:text-slate-300">
+                    Dropdown Options List ({optionsList.length})
+                  </label>
+
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={newOptionInput}
+                      onChange={(e) => setNewOptionInput(e.target.value)}
+                      placeholder="Type option title (e.g. Proprietorship, Salaried)..."
+                      className="flex-1 px-3 py-1.5 text-xs rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none focus:border-[#2563EB]"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleAddOption}
+                      className="px-3 py-1.5 text-xs rounded-xl bg-[#2563EB] hover:bg-blue-700 text-white font-bold transition cursor-pointer"
+                    >
+                      + Add Option
+                    </button>
+                  </div>
+
+                  {optionsList.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5 pt-1">
+                      {optionsList.map((opt, i) => (
+                        <span
+                          key={i}
+                          className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 text-xs font-semibold"
+                        >
+                          <span>{opt}</span>
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveOption(i)}
+                            className="text-slate-400 hover:text-rose-500 cursor-pointer"
+                          >
+                            <X className="w-3 h-3" />
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Conditional Visibility Rules */}
+              <div className="p-3 bg-slate-50 dark:bg-slate-950 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <label className="font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+                    <Sliders className="w-3.5 h-3.5 text-[#2563EB]" />
+                    <span>Conditional Display Rules</span>
+                  </label>
+                  <label className="relative inline-flex items-center cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={hasCondition}
+                      onChange={(e) => setHasCondition(e.target.checked)}
+                      className="sr-only peer"
+                    />
+                    <div className="w-8 h-4 bg-slate-300 dark:bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-[#2563EB]"></div>
+                  </label>
+                </div>
+
+                {hasCondition && (
+                  <div className="space-y-2 pt-1 border-t border-slate-200 dark:border-slate-800">
+                    <div>
+                      <label className="block text-[11px] font-semibold text-slate-500 mb-0.5">
+                        Condition Note / Badge (displayed to customer)
+                      </label>
+                      <input
+                        type="text"
+                        value={conditionNote}
+                        onChange={(e) => setConditionNote(e.target.value)}
+                        placeholder="e.g. for business travellers, if applicable, where available"
+                        className="w-full px-3 py-1.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-xs"
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      <div>
+                        <label className="block text-[11px] font-semibold text-slate-500 mb-0.5">
+                          When Field Key Equals
+                        </label>
+                        <input
+                          type="text"
+                          value={conditionField}
+                          onChange={(e) => setConditionField(e.target.value)}
+                          placeholder="e.g. purpose, entityType, incomeType"
+                          className="w-full px-3 py-1.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-xs font-mono"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[11px] font-semibold text-slate-500 mb-0.5">
+                          Target Value(s)
+                        </label>
+                        <input
+                          type="text"
+                          value={conditionValue}
+                          onChange={(e) => setConditionValue(e.target.value)}
+                          placeholder="e.g. Business Travel, Company,LLP"
+                          className="w-full px-3 py-1.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-xs font-mono"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Guidance / Description */}
               <div>
-                <label className="block font-medium text-slate-300 mb-1">
-                  Customer Guidance / Instructions (Optional)
+                <label className="block font-semibold text-slate-600 dark:text-slate-400 mb-1">
+                  Customer Guidance / Description (Optional)
                 </label>
                 <textarea
                   rows={2}
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
-                  placeholder="e.g. Must have at least 6 months validity remaining and 2 blank pages."
-                  className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-slate-100 placeholder:text-slate-600 focus:outline-none focus:border-teal-500 resize-none"
+                  placeholder="e.g. Upload clear copy with all 4 corners visible; min 6 months validity."
+                  className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none focus:border-[#2563EB] resize-none text-xs"
                 />
               </div>
 
               {/* Modal Actions */}
-              <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-800">
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100 dark:border-slate-800">
                 <button
                   type="button"
                   onClick={closeModal}
-                  className="px-3.5 py-1.5 rounded-xl text-slate-400 hover:text-slate-200 bg-slate-800/80 transition"
+                  className="px-4 py-2 rounded-xl text-slate-500 hover:text-slate-800 hover:bg-slate-100 dark:hover:bg-slate-800 font-bold transition cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  disabled={!title.trim() || selectedFormats.length === 0}
-                  className="px-4 py-1.5 rounded-xl font-semibold bg-teal-500 hover:bg-teal-400 text-slate-950 transition shadow-lg shadow-teal-900/20 disabled:opacity-50"
+                  disabled={!title.trim()}
+                  className="px-5 py-2 rounded-xl font-bold bg-[#2563EB] hover:bg-blue-700 text-white transition shadow-xs disabled:opacity-50 cursor-pointer"
                 >
                   {editingIndex !== null ? 'Save Changes' : 'Add Requirement'}
                 </button>

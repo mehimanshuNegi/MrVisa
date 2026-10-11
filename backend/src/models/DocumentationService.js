@@ -39,6 +39,25 @@ const requirementItemSchema = new mongoose.Schema(
       type: [String],
       default: ['PDF', 'JPG', 'JPEG', 'PNG']
     },
+    maxSizeMb: {
+      type: Number,
+      default: 25
+    },
+    placeholder: {
+      type: String,
+      default: '',
+      trim: true
+    },
+    conditionField: {
+      type: String,
+      default: '',
+      trim: true
+    },
+    conditionValue: {
+      type: String,
+      default: '',
+      trim: true
+    },
     displayOrder: {
       type: Number,
       default: 0

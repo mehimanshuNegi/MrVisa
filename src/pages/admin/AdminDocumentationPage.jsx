@@ -733,6 +733,8 @@ export default function AdminDocumentationPage() {
                 <RequirementsBuilder
                   requirements={editFormData.requirements}
                   onChange={(reqs) => setEditFormData({ ...editFormData, requirements: reqs })}
+                  allowFieldTypes={true}
+                  previewSlug={editingService?.slug}
                 />
               </div>
 
@@ -1064,7 +1066,8 @@ export default function AdminDocumentationPage() {
 
                 <RequirementsBuilder
                   requirements={addFormData.requirements}
-                  onChange={(reqs) => setAddFormData({ ...addFormData, requirements: reqs })}
+                  onChange={(reqs) => setAddFormData((prev) => ({ ...prev, requirements: reqs }))}
+                  allowFieldTypes={true}
                 />
               </div>
 

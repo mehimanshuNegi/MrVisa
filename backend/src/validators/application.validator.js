@@ -2,6 +2,7 @@ import Joi from 'joi';
 import { APPLICATION_STATUS, REQUIRED_ACTION } from '../constants/statuses.js';
 import { validateName } from '../utils/nameValidator.js';
 import { validateEmail } from '../utils/emailValidator.js';
+import { validatePhone } from '../utils/phoneValidator.js';
 
 const nameValidatorCustom = (value, helpers) => {
   if (!value) return value;
@@ -21,6 +22,15 @@ const emailValidatorCustom = (value, helpers) => {
   return result.normalized;
 };
 
+const phoneValidatorCustom = (value, helpers) => {
+  if (!value) return value;
+  const result = validatePhone(value);
+  if (!result.isValid) {
+    return helpers.message(result.error);
+  }
+  return result.cleanNumber || result.normalized;
+};
+
 const passportNumberCustom = (value, helpers) => {
   if (!value) return value;
   const clean = String(value).replace(/[\s-]/g, '').toUpperCase();
@@ -38,7 +48,7 @@ const travellerInputSchema = Joi.object({
   firstName: Joi.string().trim().allow('').optional(),
   lastName: Joi.string().trim().allow('').optional(),
   email: Joi.string().trim().allow('').custom(emailValidatorCustom).optional(),
-  phone: Joi.string().allow('').optional(),
+  phone: Joi.string().allow('').custom(phoneValidatorCustom).optional(),
   passportNumber: Joi.string().trim().allow('').custom(passportNumberCustom).optional(),
   placeOfIssue: Joi.string().allow('').optional(),
   issueDate: Joi.string().allow('').optional(),
@@ -61,12 +71,15 @@ export const createApplicationSchema = Joi.object({
   documents: Joi.array().items(Joi.object()).optional(),
   applicantName: Joi.string().trim().optional(),
   applicantEmail: Joi.string().trim().custom(emailValidatorCustom).optional(),
-  applicantPhone: Joi.string().optional(),
+  applicantPhone: Joi.string().allow('').custom(phoneValidatorCustom).optional(),
   additionalInformation: Joi.string().allow('').optional(),
   previousVisaRefusal: Joi.boolean().optional(),
   previousVisaRefusalCountry: Joi.string().allow('').optional(),
   previousVisaRefusalReason: Joi.string().allow('').optional(),
-  passportOcr: Joi.object().optional()
+  passportOcr: Joi.object().optional(),
+  passportPhoto: Joi.object().optional(),
+  otp: Joi.string().allow('').optional(),
+  verificationToken: Joi.string().allow('').optional()
 });
 
 export const updateApplicationSchema = Joi.object({

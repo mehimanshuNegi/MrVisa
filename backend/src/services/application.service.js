@@ -13,12 +13,22 @@ import { validatePassportDates } from '../utils/dateValidator.js';
 import { storageService } from './storage.service.js';
 import { inferDocumentMetadataFromKey } from './document.service.js';
 import { logger } from '../utils/logger.js';
+import { verificationService } from './verification.service.js';
+import { validatePhone } from '../utils/phoneValidator.js';
+import { validateEmail } from '../utils/emailValidator.js';
 
-/**
- * Helper to match a required document rule from the Visa configuration against uploaded documents
- */
 function isDocumentFulfilled(reqDoc, uploadedDocs) {
-  const reqLower = String(reqDoc || '').toLowerCase().trim();
+  if (!reqDoc) return true;
+  if (typeof reqDoc === 'object' && reqDoc !== null) {
+    if (reqDoc.required === false || reqDoc.isRequired === false) {
+      return true;
+    }
+  }
+
+  const rawTitle = typeof reqDoc === 'object' && reqDoc !== null
+    ? (reqDoc.title || reqDoc.name || '')
+    : String(reqDoc || '');
+  const reqLower = rawTitle.toLowerCase().trim();
   if (!reqLower) return true;
 
   return uploadedDocs.some((doc) => {
@@ -203,45 +213,129 @@ class ApplicationService {
       currency
     };
 
-    // 4. Generate unique application reference
-    const referenceNumber = await this._generateUniqueReference();
+    // 3.5 Format validation on primary applicant contact info
+    const primaryTraveller = travellers[0];
+    const applicantPhone = primaryTraveller?.phone || data.applicantPhone || customerUser?.phone || '';
+    const applicantEmail = primaryTraveller?.email || data.applicantEmail || customerUser?.email || '';
+
+    const emailCheck = validateEmail(applicantEmail);
+    if (!emailCheck.isValid) {
+      throw ApiError.badRequest(emailCheck.error || 'A valid email address is required.');
+    }
+
+    const phoneCheck = validatePhone(applicantPhone, {
+      nationality: primaryTraveller?.nationality || 'Indian',
+      country: country?.name || 'India'
+    });
+    if (!phoneCheck.isValid) {
+      throw ApiError.badRequest(phoneCheck.error || 'A valid 10-digit Indian mobile number is required.');
+    }
 
     // Determine initial status: allow client to specify DRAFT or default to APPLICATION_RECEIVED
     const initialStatus = data.status === APPLICATION_STATUS.DRAFT
       ? APPLICATION_STATUS.DRAFT
       : APPLICATION_STATUS.APPLICATION_RECEIVED;
 
-    // 5. Create Application record
-    const application = await Application.create({
-      referenceNumber,
-      customer: customerUser ? customerUser._id : null,
-      visa: visa._id,
-      country: country._id,
-      pricingSnapshot,
-      travellers,
-      additionalInformation,
-      previousVisaRefusal,
-      previousVisaRefusalCountry,
-      previousVisaRefusalReason,
-      status: initialStatus,
-      requiredAction: REQUIRED_ACTION.NONE,
-      paymentStatus: PAYMENT_STATUS.PENDING,
-      adminMessage: initialStatus === APPLICATION_STATUS.DRAFT
-        ? 'Application draft saved.'
-        : 'Application received and securely registered with consulate queue.',
-      expectedCompletionDate: visa.guaranteedDate || '',
-      timeline: [
-        { stage: 'Application Submitted', completed: initialStatus !== APPLICATION_STATUS.DRAFT, current: initialStatus === APPLICATION_STATUS.DRAFT, timestamp: new Date().toISOString() },
-        { stage: 'Documents Verified', completed: false, current: initialStatus !== APPLICATION_STATUS.DRAFT, timestamp: '' },
-        { stage: 'Application Processing', completed: false, current: false, timestamp: '' },
-        { stage: 'Visa Issued', completed: false, current: false, timestamp: '' }
-      ],
-      passportOcr: data.passportOcr || {},
-      passportPhoto: data.passportPhoto || {}
-    });
+    // Stage D: Secure Mobile OTP Verification for final application submission
+    if (initialStatus !== APPLICATION_STATUS.DRAFT) {
+      const otpCode = data.otp ? String(data.otp).trim() : '';
+      const verificationToken = data.verificationToken ? String(data.verificationToken).trim() : '';
+
+      if (!otpCode && !verificationToken) {
+        throw ApiError.badRequest('Mobile number OTP verification is required to submit your visa application.');
+      }
+
+      if (otpCode) {
+        const verifyResult = await verificationService.verifyOtp({
+          target: applicantPhone,
+          type: 'PHONE',
+          code: otpCode,
+          currentUser: customerUser
+        });
+        if (!verifyResult || !verifyResult.isVerified) {
+          throw ApiError.badRequest('Invalid or expired mobile verification code.');
+        }
+        await verificationService.consumeVerificationToken({
+          target: applicantPhone,
+          type: 'PHONE',
+          verificationToken: verifyResult.verificationToken
+        });
+      } else if (verificationToken) {
+        const check = await verificationService.checkVerificationStatus({
+          target: applicantPhone,
+          type: 'PHONE',
+          verificationToken
+        });
+        if (!check.isVerified) {
+          throw ApiError.badRequest('Mobile verification is invalid, expired, or bound to a different mobile number.');
+        }
+        await verificationService.consumeVerificationToken({
+          target: applicantPhone,
+          type: 'PHONE',
+          verificationToken
+        });
+      }
+    }
+
+    // 4. Resolve or generate unique application reference (Prevent duplicate submissions on retry)
+    const clientRef = data.applicationId || data.id;
+    let application = null;
+    if (clientRef && typeof clientRef === 'string') {
+      application = await Application.findOne({ referenceNumber: clientRef.trim().toUpperCase() });
+    }
+
+    if (application) {
+      // Update existing application record idempotently
+      application.status = initialStatus;
+      application.pricingSnapshot = pricingSnapshot;
+      application.travellers = travellers;
+      application.additionalInformation = additionalInformation;
+      application.previousVisaRefusal = previousVisaRefusal;
+      application.previousVisaRefusalCountry = previousVisaRefusalCountry;
+      application.previousVisaRefusalReason = previousVisaRefusalReason;
+      if (data.passportOcr) application.passportOcr = data.passportOcr;
+      if (data.passportPhoto) application.passportPhoto = data.passportPhoto;
+      await application.save();
+    } else {
+      let referenceNumber = '';
+      if (clientRef && /^MV-\d{6}$/i.test(clientRef.trim())) {
+        const existing = await Application.findOne({ referenceNumber: clientRef.trim().toUpperCase() });
+        if (!existing) referenceNumber = clientRef.trim().toUpperCase();
+      }
+      if (!referenceNumber) {
+        referenceNumber = await this._generateUniqueReference();
+      }
+
+      application = await Application.create({
+        referenceNumber,
+        customer: customerUser ? customerUser._id : null,
+        visa: visa._id,
+        country: country._id,
+        pricingSnapshot,
+        travellers,
+        additionalInformation,
+        previousVisaRefusal,
+        previousVisaRefusalCountry,
+        previousVisaRefusalReason,
+        status: initialStatus,
+        requiredAction: REQUIRED_ACTION.NONE,
+        paymentStatus: PAYMENT_STATUS.PENDING,
+        adminMessage: initialStatus === APPLICATION_STATUS.DRAFT
+          ? 'Application draft saved.'
+          : 'Application received and securely registered with consulate queue.',
+        expectedCompletionDate: visa.guaranteedDate || '',
+        timeline: [
+          { stage: 'Application Submitted', completed: initialStatus !== APPLICATION_STATUS.DRAFT, current: initialStatus === APPLICATION_STATUS.DRAFT, timestamp: new Date().toISOString() },
+          { stage: 'Documents Verified', completed: false, current: initialStatus !== APPLICATION_STATUS.DRAFT, timestamp: '' },
+          { stage: 'Application Processing', completed: false, current: false, timestamp: '' },
+          { stage: 'Visa Issued', completed: false, current: false, timestamp: '' }
+        ],
+        passportOcr: data.passportOcr || {},
+        passportPhoto: data.passportPhoto || {}
+      });
+    }
 
     // 6. Link distinct passport and photo documents from application flow
-    const primaryTraveller = travellers[0];
     const travDocs = primaryTraveller?.docs || {};
 
     const frontKey = data.passportOcr?.frontStorageKey || travDocs?.passport?.frontStorageKey || (travDocs?.passport?.storageKey && !travDocs?.passport?.backStorageKey ? travDocs.passport.storageKey : null);
@@ -335,7 +429,7 @@ class ApplicationService {
       action: AUDIT_ACTIONS.CREATE,
       entity: AUDIT_ENTITIES.APPLICATION,
       entityId: application._id,
-      newValues: { referenceNumber, pricingSnapshot, travellerCount, status: initialStatus },
+      newValues: { referenceNumber: application.referenceNumber, pricingSnapshot, travellerCount, status: initialStatus },
       req
     });
 
@@ -655,7 +749,15 @@ class ApplicationService {
         isDeleted: false
       });
 
-      const missingDocs = reqDocs.filter((r) => !isDocumentFulfilled(r, uploadedDocs));
+      const missingDocs = reqDocs
+        .filter((r) => {
+          if (typeof r === 'object' && r !== null && (r.required === false || r.isRequired === false)) {
+            return false;
+          }
+          return !isDocumentFulfilled(r, uploadedDocs);
+        })
+        .map((r) => (typeof r === 'object' && r !== null ? (r.title || r.name || 'Required Document') : String(r)));
+
       if (missingDocs.length > 0) {
         throw ApiError.badRequest(
           `Cannot submit application: missing required documents: ${missingDocs.join(', ')}`,

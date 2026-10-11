@@ -5,6 +5,7 @@ import { Document } from '../models/Document.js';
 import { ApiError } from '../utils/apiError.js';
 import { validateName } from '../utils/nameValidator.js';
 import { validateEmail } from '../utils/emailValidator.js';
+import { validatePhone } from '../utils/phoneValidator.js';
 import { auditService } from './audit.service.js';
 import { AUDIT_ACTIONS, AUDIT_ENTITIES } from '../constants/statuses.js';
 import { logger } from '../utils/logger.js';
@@ -26,10 +27,9 @@ class DocumentationRequestService {
       throw ApiError.badRequest(emailCheck.error || 'Please provide a valid applicant email');
     }
 
-    const rawPhone = String(applicant.phone || '').trim();
-    const cleanPhone = rawPhone.replace(/\D/g, '');
-    if (cleanPhone.length < 10) {
-      throw ApiError.badRequest('Please provide a valid 10-digit mobile number');
+    const phoneCheck = validatePhone(applicant.phone);
+    if (!phoneCheck.isValid) {
+      throw ApiError.badRequest(phoneCheck.error || 'Please provide a valid 10-digit mobile number');
     }
 
     // 2. Resolve documentation service
@@ -68,7 +68,84 @@ class DocumentationRequestService {
         }))
       : [];
 
-    // 5. Create DocumentationRequest in MongoDB
+    // 5. Server-side validation against service configuration requirements
+    const details = data.details || {};
+    const missingFields = [];
+    const missingDocs = [];
+
+    const activeRequirements = Array.isArray(service?.requirements) && service.requirements.length > 0
+      ? service.requirements.filter((r) => r.isActive !== false)
+      : [];
+
+    for (const reqItem of activeRequirements) {
+      // Evaluate conditional visibility/applicability
+      if (reqItem.conditionField && reqItem.conditionValue) {
+        const fieldVal = String(
+          details[reqItem.conditionField] ||
+          details[reqItem.conditionField.toLowerCase()] ||
+          ''
+        ).trim().toLowerCase();
+
+        const targets = reqItem.conditionValue.split(',').map((v) => v.trim().toLowerCase());
+        const matchesCondition = targets.some((target) => fieldVal.includes(target) || target.includes(fieldVal));
+        if (!matchesCondition) {
+          // Condition does not apply to this applicant; skip requirement check
+          continue;
+        }
+      }
+
+      const isRequired = reqItem.required !== false && reqItem.isRequired !== false;
+      if (!isRequired) {
+        // Optional field or optional document: never block submission
+        continue;
+      }
+
+      if (reqItem.inputType === 'file' || !reqItem.inputType) {
+        const reqTitleLower = reqItem.title.toLowerCase().trim();
+        const hasUploaded = documents.some((doc) => {
+          if (!doc.storageKey) return false;
+          const docTypeLower = (doc.documentType || doc.name || '').toLowerCase().trim();
+          return (
+            docTypeLower === reqTitleLower ||
+            docTypeLower.includes(reqTitleLower) ||
+            reqTitleLower.includes(docTypeLower)
+          );
+        });
+
+        if (!hasUploaded) {
+          missingDocs.push(reqItem.title);
+        }
+      } else {
+        const idKey = reqItem._id ? reqItem._id.toString() : (reqItem.id || reqItem.title);
+        const titleKey = reqItem.title;
+        const slugKey = reqItem.title.toLowerCase().replace(/[^a-z0-9]/g, '_');
+
+        const val = details[idKey] ?? details[titleKey] ?? details[slugKey];
+        const valStr = typeof val === 'string' ? val.trim() : (val !== undefined && val !== null ? String(val).trim() : '');
+
+        if (!valStr) {
+          missingFields.push(reqItem.title);
+        }
+      }
+    }
+
+    if (missingFields.length > 0 || missingDocs.length > 0) {
+      const errorParts = [];
+      if (missingFields.length > 0) {
+        errorParts.push(`Required fields missing: ${missingFields.join(', ')}`);
+      }
+      if (missingDocs.length > 0) {
+        errorParts.push(`Required documents missing: ${missingDocs.join(', ')}`);
+      }
+      throw ApiError.badRequest(`Cannot submit documentation application: ${errorParts.join('; ')}`);
+    }
+
+    // 6. Snapshot requirements at the time of submission
+    const requirementsSnapshot = activeRequirements.map((r) =>
+      typeof r.toObject === 'function' ? r.toObject() : { ...r }
+    );
+
+    // 7. Create DocumentationRequest in MongoDB
     const request = await DocumentationRequest.create({
       requestId,
       user: user?._id || user?.id || null,
@@ -78,10 +155,11 @@ class DocumentationRequestService {
       applicant: {
         name: nameCheck.normalized,
         email: emailCheck.normalized,
-        phone: rawPhone
+        phone: phoneCheck.normalized || applicant.phone.trim()
       },
-      details: data.details || {},
+      details,
       documents,
+      requirementsSnapshot,
       price,
       currency: 'INR',
       status: 'PENDING'

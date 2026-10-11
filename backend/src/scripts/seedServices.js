@@ -26,22 +26,23 @@ export const INITIAL_DOCUMENTATION_SERVICES = [
     isActive: true,
     requirements: [
       // Basic Information
-      { title: 'Passport copy', category: 'Basic Information', required: true, inputType: 'file', displayOrder: 1 },
-      { title: 'Visa application form / visa type', category: 'Basic Information', required: true, inputType: 'text', displayOrder: 2 },
-      { title: 'Travel dates', category: 'Basic Information', required: true, inputType: 'date', displayOrder: 3 },
-      { title: 'Purpose of travel', category: 'Basic Information', required: true, inputType: 'text', displayOrder: 4 },
-      { title: 'Destination and cities', category: 'Basic Information', required: true, inputType: 'text', displayOrder: 5 },
+      { title: 'Passport copy', category: 'Basic Information', required: true, inputType: 'file', acceptedFormats: ['PDF', 'JPG', 'PNG'], displayOrder: 1 },
+      { title: 'Visa application form / visa type', category: 'Basic Information', required: true, inputType: 'text', placeholder: 'e.g. Tourist E-Visa, Business Visa, Schengen C-Type', displayOrder: 2 },
+      { title: 'Travel dates', category: 'Basic Information', required: true, inputType: 'text', placeholder: 'e.g. 15 Nov 2026 – 28 Nov 2026', displayOrder: 3 },
+      { title: 'Purpose of travel', category: 'Basic Information', required: true, inputType: 'select', options: ['Tourism', 'Business Travel', 'Family / Friend Visit', 'Conference / Event', 'Other'], displayOrder: 4 },
+      { title: 'Destination and cities', category: 'Basic Information', required: true, inputType: 'text', placeholder: 'e.g. France (Paris, Nice, Lyon)', displayOrder: 5 },
+      { title: 'Employment/business details', category: 'Basic Information', required: true, inputType: 'textarea', placeholder: 'Company name, designation, nature of work, years of experience', displayOrder: 6 },
       // Optional / If Available
-      { title: 'Hotel booking', category: 'Optional / If Available', required: false, inputType: 'file', condition: 'if available', displayOrder: 6 },
-      { title: 'Flight reservation', category: 'Optional / If Available', required: false, inputType: 'file', condition: 'if available', displayOrder: 7 },
-      { title: 'Previous travel/visa history', category: 'Optional / If Available', required: false, inputType: 'text', condition: 'if relevant', displayOrder: 8 },
-      { title: 'Bank/financial details', category: 'Optional / If Available', required: false, inputType: 'file', condition: 'if relevant', displayOrder: 9 },
-      { title: 'Any specific information they want included', category: 'Optional / If Available', required: false, inputType: 'text', displayOrder: 10 },
-      // Employment / Business
-      { title: 'Employment/business details', category: 'Employment / Business', required: false, inputType: 'text', displayOrder: 11 },
-      { title: 'Invitation letter', category: 'Employment / Business', required: false, inputType: 'file', condition: 'for business travellers', displayOrder: 12 },
-      { title: 'Company details', category: 'Employment / Business', required: false, inputType: 'text', condition: 'for business travellers', displayOrder: 13 },
-      { title: 'Meeting/event details', category: 'Employment / Business', required: false, inputType: 'text', condition: 'for business travellers', displayOrder: 14 }
+      { title: 'Hotel booking', category: 'Optional / If Available', required: false, inputType: 'file', condition: 'if available', acceptedFormats: ['PDF', 'JPG', 'PNG'], displayOrder: 7 },
+      { title: 'Flight reservation', category: 'Optional / If Available', required: false, inputType: 'file', condition: 'if available', acceptedFormats: ['PDF', 'JPG', 'PNG'], displayOrder: 8 },
+      { title: 'Bank/financial details', category: 'Optional / If Available', required: false, inputType: 'file', condition: 'if relevant', acceptedFormats: ['PDF', 'JPG', 'PNG'], displayOrder: 9 },
+      { title: 'Previous travel/visa history', category: 'Optional / If Available', required: false, inputType: 'textarea', condition: 'if relevant', placeholder: 'Past visits in last 5–10 years, valid US/UK/Schengen visas', displayOrder: 10 },
+      { title: 'Specific information you want included', category: 'Optional / If Available', required: false, inputType: 'textarea', placeholder: 'Ties to home country, leave approval, sponsors or special circumstances', displayOrder: 11 },
+      // Conditional Business Traveller Section
+      { title: 'Invitation letter', category: 'Business Travel Details', required: false, inputType: 'file', condition: 'for business travellers', conditionField: 'purpose', conditionValue: 'Business Travel', acceptedFormats: ['PDF', 'JPG', 'PNG'], displayOrder: 12 },
+      { title: 'Company details', category: 'Business Travel Details', required: false, inputType: 'text', condition: 'for business travellers', conditionField: 'purpose', conditionValue: 'Business Travel', placeholder: 'Inviting company name, address & contact person', displayOrder: 13 },
+      { title: 'Meeting/event details', category: 'Business Travel Details', required: false, inputType: 'textarea', condition: 'for business travellers', conditionField: 'purpose', conditionValue: 'Business Travel', placeholder: 'Agenda of meeting, conference title, project discussions', displayOrder: 14 },
+      { title: 'Meeting/event dates and location', category: 'Business Travel Details', required: false, inputType: 'text', condition: 'for business travellers', conditionField: 'purpose', conditionValue: 'Business Travel', placeholder: 'Venue and scheduled dates', displayOrder: 15 }
     ]
   },
   {
@@ -74,17 +75,17 @@ export const INITIAL_DOCUMENTATION_SERVICES = [
     ],
     requirements: [
       // Basic Information
-      { title: 'Passport copy', category: 'Basic Information', required: true, inputType: 'file', displayOrder: 1 },
-      { title: 'Destination/country', category: 'Basic Information', required: true, inputType: 'text', displayOrder: 2 },
-      { title: 'Travel dates', category: 'Basic Information', required: true, inputType: 'date', displayOrder: 3 },
-      { title: 'Cities to be visited', category: 'Basic Information', required: true, inputType: 'text', displayOrder: 4 },
-      { title: 'Purpose of travel', category: 'Basic Information', required: true, inputType: 'text', displayOrder: 5 },
-      { title: 'Number of travellers', category: 'Basic Information', required: true, inputType: 'number', displayOrder: 6 },
+      { title: 'Passport copy', category: 'Basic Information', required: true, inputType: 'file', acceptedFormats: ['PDF', 'JPG', 'PNG'], displayOrder: 1 },
+      { title: 'Destination country', category: 'Basic Information', required: true, inputType: 'text', placeholder: 'e.g. Switzerland & Italy', displayOrder: 2 },
+      { title: 'Travel dates', category: 'Basic Information', required: true, inputType: 'text', placeholder: 'e.g. 10 Dec 2026 – 24 Dec 2026', displayOrder: 3 },
+      { title: 'Cities to be visited', category: 'Basic Information', required: true, inputType: 'text', placeholder: 'e.g. Zurich, Lucerne, Interlaken, Milan, Rome', displayOrder: 4 },
+      { title: 'Purpose of travel', category: 'Basic Information', required: true, inputType: 'select', options: ['Tourism & Leisure', 'Honeymoon', 'Business & Sightseeing', 'Cultural / Heritage Tour', 'Family Vacation'], displayOrder: 5 },
+      { title: 'Number of travellers', category: 'Basic Information', required: true, inputType: 'number', placeholder: 'e.g. 2', displayOrder: 6 },
       // Optional / If Available
-      { title: 'Preferred hotels', category: 'Optional / If Available', required: false, inputType: 'file', condition: 'if already booked', displayOrder: 7 },
-      { title: 'Flight details', category: 'Optional / If Available', required: false, inputType: 'file', condition: 'if already booked', displayOrder: 8 },
-      { title: 'Places/activities they want to visit', category: 'Optional / If Available', required: false, inputType: 'text', displayOrder: 9 },
-      { title: 'Any fixed appointments/events', category: 'Optional / If Available', required: false, inputType: 'text', displayOrder: 10 }
+      { title: 'Preferred hotels or existing bookings', category: 'Optional / If Available', required: false, inputType: 'file', condition: 'if already booked or preferred', acceptedFormats: ['PDF', 'JPG', 'PNG'], displayOrder: 7 },
+      { title: 'Existing flight details or reservations', category: 'Optional / If Available', required: false, inputType: 'file', condition: 'if already booked', acceptedFormats: ['PDF', 'JPG', 'PNG'], displayOrder: 8 },
+      { title: 'Preferred places and activities', category: 'Optional / If Available', required: false, inputType: 'textarea', placeholder: 'Must-visit attractions (e.g. Eiffel Tower, Jungfraujoch, Colosseum, city tours)', displayOrder: 9 },
+      { title: 'Fixed appointments or events', category: 'Optional / If Available', required: false, inputType: 'textarea', placeholder: 'Any scheduled concerts, train journeys, conferences, or specific appointment dates', displayOrder: 10 }
     ]
   },
   {
@@ -109,15 +110,27 @@ export const INITIAL_DOCUMENTATION_SERVICES = [
     isActive: true,
     conditionPrompt: 'What type of income do you have?',
     conditionOptions: [
-      'Salaried',
-      'Business / Self-Employed',
-      'Professionals / Freelancers',
-      'Capital Gains & Other Income'
+      'Salaried individual',
+      'Business / professional or self-employed',
+      'Other income',
+      'Multiple income sources'
     ],
     requirements: [
-      { title: 'PAN card', category: 'Basic Information', required: true, inputType: 'file', displayOrder: 1 },
-      { title: 'Aadhaar card', category: 'Basic Information', required: true, inputType: 'file', displayOrder: 2 },
-      { title: 'Mobile number', category: 'Basic Information', required: true, inputType: 'text', displayOrder: 3 }
+      { title: 'Income Category', category: 'Income Classification', required: true, inputType: 'select', options: ['Salaried individual', 'Business / professional or self-employed', 'Other income', 'Multiple income sources'], displayOrder: 1 },
+      { title: 'PAN card', category: 'Identity & Tax Credentials', required: true, inputType: 'file', acceptedFormats: ['PDF', 'JPG', 'PNG'], displayOrder: 2 },
+      { title: 'Aadhaar card', category: 'Identity & Tax Credentials', required: true, inputType: 'file', acceptedFormats: ['PDF', 'JPG', 'PNG'], displayOrder: 3 },
+      { title: 'Mobile number', category: 'Identity & Tax Credentials', required: true, inputType: 'text', placeholder: '10-digit Aadhaar/PAN linked mobile', displayOrder: 4 },
+      { title: 'Assessment Year / Financial Year', category: 'Tax Period', required: true, inputType: 'select', options: ['AY 2025-26 (FY 2024-25)', 'AY 2024-25 (FY 2023-24)', 'AY 2023-24 (FY 2022-23)', 'Multiple Years (2-3 Years for Visa)'], displayOrder: 5 },
+      // Conditional Salaried
+      { title: 'Employer details', category: 'Employment Details', required: false, inputType: 'text', condition: 'for salaried individual', conditionField: 'incomeType', conditionValue: 'Salaried individual', placeholder: 'Employer name, designation, city', displayOrder: 6 },
+      { title: 'Form 16 / Salary slips', category: 'Income Documents', required: false, inputType: 'file', condition: 'Form 16 or last 3 months salary slips', conditionField: 'incomeType', conditionValue: 'Salaried individual', acceptedFormats: ['PDF', 'JPG', 'PNG'], displayOrder: 7 },
+      // Conditional Business
+      { title: 'Business/firm details', category: 'Business Details', required: false, inputType: 'text', condition: 'for business / self-employed', conditionField: 'incomeType', conditionValue: 'Business / professional or self-employed', placeholder: 'Trade/firm name, nature of business/profession', displayOrder: 8 },
+      { title: 'Business bank statements / financials', category: 'Business Documents', required: false, inputType: 'file', condition: 'business account statement or financials', conditionField: 'incomeType', conditionValue: 'Business / professional or self-employed', acceptedFormats: ['PDF', 'JPG', 'PNG'], displayOrder: 9 },
+      // Conditional Other / Multiple
+      { title: 'Details of income sources', category: 'Other Income', required: false, inputType: 'textarea', condition: 'for other or multiple income sources', conditionField: 'incomeType', conditionValue: 'Other income,Multiple income sources', placeholder: 'Rental income, capital gains, consultancy, interest, etc.', displayOrder: 10 },
+      // Configurable optional financial documents
+      { title: 'Bank statement / financial proof', category: 'Optional Documents', required: false, inputType: 'file', condition: 'as relevant for visa', acceptedFormats: ['PDF', 'JPG', 'PNG'], displayOrder: 11 }
     ]
   },
   {
@@ -142,17 +155,19 @@ export const INITIAL_DOCUMENTATION_SERVICES = [
     isActive: true,
     requirements: [
       // Identity & Contact
-      { title: 'PAN card', category: 'Identity & Contact', required: true, inputType: 'file', displayOrder: 1 },
-      { title: 'Aadhaar/identity proof', category: 'Identity & Contact', required: true, inputType: 'file', displayOrder: 2 },
-      { title: 'Mobile number', category: 'Identity & Contact', required: true, inputType: 'text', displayOrder: 3 },
-      { title: 'Email ID', category: 'Identity & Contact', required: true, inputType: 'text', displayOrder: 4 },
+      { title: 'Entity Type', category: 'Entity Selection', required: true, inputType: 'select', options: ['Proprietorship', 'Partnership', 'Company', 'LLP'], displayOrder: 1 },
+      { title: 'PAN card', category: 'Identity & Contact', required: true, inputType: 'file', acceptedFormats: ['PDF', 'JPG', 'PNG'], description: 'Individual PAN for Proprietorship, Entity PAN for Firm/Company', displayOrder: 2 },
+      { title: 'Aadhaar/identity proof', category: 'Identity & Contact', required: true, inputType: 'file', acceptedFormats: ['PDF', 'JPG', 'PNG'], description: 'Proprietor / Partner / Director identity proof', displayOrder: 3 },
+      { title: 'Mobile number', category: 'Identity & Contact', required: true, inputType: 'text', placeholder: '10-digit mobile number', displayOrder: 4 },
+      { title: 'Email ID', category: 'Identity & Contact', required: true, inputType: 'text', placeholder: 'official@company.com', displayOrder: 5 },
       // Business & Entity Proof
-      { title: 'Business/proprietorship/company details', category: 'Business & Entity Proof', required: true, inputType: 'text', displayOrder: 5 },
-      { title: 'Business address proof', category: 'Business & Entity Proof', required: true, inputType: 'file', displayOrder: 6 },
-      { title: 'Bank account details', category: 'Business & Entity Proof', required: true, inputType: 'text', displayOrder: 7 },
-      { title: 'Cancelled cheque / bank proof', category: 'Business & Entity Proof', required: false, inputType: 'file', condition: 'as applicable', displayOrder: 8 },
-      { title: 'DSC (Digital Signature Certificate)', category: 'Business & Entity Proof', required: false, inputType: 'file', condition: 'where applicable for the entity type', displayOrder: 9 },
-      { title: 'Company/LLP incorporation documents', category: 'Business & Entity Proof', required: false, inputType: 'file', condition: 'if applicable', displayOrder: 10 }
+      { title: 'Business/proprietorship/company details', category: 'Business Details', required: true, inputType: 'text', placeholder: 'Trade name, date of inception', displayOrder: 6 },
+      { title: 'Business address proof', category: 'Business Proof', required: true, inputType: 'file', acceptedFormats: ['PDF', 'JPG', 'PNG'], description: 'Electricity bill / Rent agreement / Property deed', displayOrder: 7 },
+      { title: 'Bank account details', category: 'Banking Information', required: true, inputType: 'text', placeholder: 'Bank Account Number, Bank Name, IFSC code', displayOrder: 8 },
+      { title: 'Cancelled cheque / bank proof', category: 'Banking Information', required: false, inputType: 'file', condition: 'as applicable', acceptedFormats: ['PDF', 'JPG', 'PNG'], displayOrder: 9 },
+      // Conditional for Company/LLP
+      { title: 'Company/LLP incorporation documents', category: 'Corporate Documents', required: false, inputType: 'file', condition: 'if Company, LLP or Partnership', conditionField: 'entityType', conditionValue: 'Company,LLP,Partnership', acceptedFormats: ['PDF', 'JPG', 'PNG'], displayOrder: 10 },
+      { title: 'DSC (Digital Signature Certificate)', category: 'Corporate Documents', required: false, inputType: 'file', condition: 'where applicable for entity type', conditionField: 'entityType', conditionValue: 'Company,LLP', acceptedFormats: ['PDF', 'JPG', 'PNG'], displayOrder: 11 }
     ]
   },
   {
@@ -176,15 +191,16 @@ export const INITIAL_DOCUMENTATION_SERVICES = [
     displayOrder: 5,
     isActive: true,
     requirements: [
-      { title: 'Aadhaar', category: 'For Proprietorship', required: true, inputType: 'file', displayOrder: 1 },
-      { title: 'PAN', category: 'For Proprietorship', required: true, inputType: 'file', displayOrder: 2 },
-      { title: 'Mobile number', category: 'For Proprietorship', required: true, inputType: 'text', displayOrder: 3 },
-      { title: 'Business name', category: 'For Proprietorship', required: true, inputType: 'text', displayOrder: 4 },
-      { title: 'Business address', category: 'For Proprietorship', required: true, inputType: 'text', displayOrder: 5 },
-      { title: 'Business activity/nature of business', category: 'For Proprietorship', required: true, inputType: 'text', displayOrder: 6 },
-      { title: 'Bank account details', category: 'For Proprietorship', required: true, inputType: 'text', displayOrder: 7 },
-      { title: 'Number of employees', category: 'For Proprietorship', required: true, inputType: 'number', displayOrder: 8 },
-      { title: 'Investment/turnover information', category: 'For Proprietorship', required: false, inputType: 'text', condition: 'where required', displayOrder: 9 }
+      { title: 'Aadhaar', category: 'Identity & Authentication', required: true, inputType: 'file', acceptedFormats: ['PDF', 'JPG', 'PNG'], description: 'Aadhaar of Proprietor / Director / Partner', displayOrder: 1 },
+      { title: 'PAN', category: 'Identity & Authentication', required: true, inputType: 'file', acceptedFormats: ['PDF', 'JPG', 'PNG'], description: 'PAN of Proprietor or Business Enterprise', displayOrder: 2 },
+      { title: 'Mobile number', category: 'Identity & Authentication', required: true, inputType: 'text', placeholder: '10-digit mobile number linked with Aadhaar', displayOrder: 3 },
+      { title: 'Business name', category: 'Enterprise Details', required: true, inputType: 'text', placeholder: 'Official legal trade name of the enterprise', displayOrder: 4 },
+      { title: 'Business address', category: 'Enterprise Details', required: true, inputType: 'textarea', placeholder: 'Complete plant / office address including pincode', displayOrder: 5 },
+      { title: 'Business activity/nature of business', category: 'Enterprise Details', required: true, inputType: 'select', options: ['Manufacturing', 'Services', 'Trading'], displayOrder: 6 },
+      { title: 'Bank account details', category: 'Banking Information', required: true, inputType: 'text', placeholder: 'Bank Account Number & IFSC code', displayOrder: 7 },
+      { title: 'Number of employees', category: 'Operations & Scale', required: true, inputType: 'number', placeholder: 'Total employees (male + female)', displayOrder: 8 },
+      { title: 'Investment/turnover information', category: 'Operations & Scale', required: false, inputType: 'text', condition: 'where required', placeholder: 'Approximate investment in plant & machinery and turnover', displayOrder: 9 },
+      { title: 'Additional business document / electricity bill', category: 'Optional Documents', required: false, inputType: 'file', condition: 'optional / if available', acceptedFormats: ['PDF', 'JPG', 'PNG'], displayOrder: 10 }
     ]
   }
 ];

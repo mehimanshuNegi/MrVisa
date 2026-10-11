@@ -17,11 +17,14 @@ class SmsService {
     if (process.env.FAST2SMS_API_KEY) {
       return 'fast2sms';
     }
+    if (process.env.NODE_ENV === 'test' || process.env.ALLOW_SMS_SIMULATION === 'true') {
+      return 'simulation';
+    }
     return 'none';
   }
 
   isConfigured() {
-    return this.provider !== 'none';
+    return this._detectProvider() !== 'none';
   }
 
   /**
@@ -29,7 +32,8 @@ class SmsService {
    * If unconfigured, clearly returns error so backend never displays false success.
    */
   async sendOtpSms({ phone, code }) {
-    if (this.provider === 'none') {
+    const provider = this._detectProvider();
+    if (provider === 'none') {
       logger.warn(`[SmsService] Attempted to send SMS OTP to ${phone}, but no SMS provider is configured in environment.`);
       return {
         delivered: false,
@@ -38,8 +42,13 @@ class SmsService {
       };
     }
 
+    if (provider === 'simulation') {
+      logger.info(`[SmsService:SIMULATED] SMS OTP for ${phone} is ${code}`);
+      return { delivered: true, provider: 'simulation', simulated: true };
+    }
+
     try {
-      if (this.provider === 'twilio') {
+      if (provider === 'twilio') {
         const sid = process.env.TWILIO_ACCOUNT_SID;
         const auth = Buffer.from(`${sid}:${process.env.TWILIO_AUTH_TOKEN}`).toString('base64');
         const params = new URLSearchParams();
@@ -64,7 +73,7 @@ class SmsService {
         return { delivered: true, provider: 'twilio' };
       }
 
-      if (this.provider === 'fast2sms') {
+      if (provider === 'fast2sms') {
         const res = await fetch('https://www.fast2sms.com/dev/bulkV2', {
           method: 'POST',
           headers: {

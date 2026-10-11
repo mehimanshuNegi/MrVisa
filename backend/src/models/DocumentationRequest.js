@@ -98,6 +98,10 @@ const documentationRequestSchema = new mongoose.Schema(
       type: [requestedDocumentSchema],
       default: []
     },
+    requirementsSnapshot: {
+      type: [mongoose.Schema.Types.Mixed],
+      default: []
+    },
     price: {
       type: Number,
       default: 999,

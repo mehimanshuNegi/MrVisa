@@ -6,6 +6,8 @@ import { smsService } from './sms.service.js';
 import { ApiError } from '../utils/apiError.js';
 import { env } from '../config/environment.js';
 import { logger } from '../utils/logger.js';
+import { validatePhone } from '../utils/phoneValidator.js';
+import { validateEmail } from '../utils/emailValidator.js';
 
 class VerificationService {
   _normalizeTarget(target, type) {
@@ -14,7 +16,10 @@ class VerificationService {
       return String(target).trim().toLowerCase();
     }
     if (type === 'PHONE') {
-      // Clean to digits with optional leading +
+      const res = validatePhone(target);
+      if (res.isValid && res.normalized) {
+        return res.normalized;
+      }
       const raw = String(target).trim();
       const hasPlus = raw.startsWith('+');
       const digits = raw.replace(/\D/g, '');
@@ -38,22 +43,21 @@ class VerificationService {
       throw ApiError.badRequest('Invalid verification type. Must be EMAIL or PHONE.');
     }
 
+    if (type === 'EMAIL') {
+      const emailCheck = validateEmail(rawTarget);
+      if (!emailCheck.isValid) {
+        throw ApiError.badRequest(emailCheck.error);
+      }
+    } else {
+      const phoneCheck = validatePhone(rawTarget);
+      if (!phoneCheck.isValid) {
+        throw ApiError.badRequest(phoneCheck.error);
+      }
+    }
+
     const target = this._normalizeTarget(rawTarget, type);
     if (!target) {
       throw ApiError.badRequest(`${type === 'EMAIL' ? 'Email address' : 'Phone number'} is required.`);
-    }
-
-    // Format validation
-    if (type === 'EMAIL') {
-      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-      if (!emailRegex.test(target)) {
-        throw ApiError.badRequest('Please enter a valid email address.');
-      }
-    } else {
-      const phoneDigits = target.replace(/\D/g, '');
-      if (phoneDigits.length < 8 || phoneDigits.length > 15) {
-        throw ApiError.badRequest('Please enter a valid phone number (8–15 digits).');
-      }
     }
 
     // Check 60-second cooldown on existing pending record
@@ -218,9 +222,53 @@ class VerificationService {
     }
 
     const record = await VerificationCode.findOne(query).sort({ verifiedAt: -1 });
+    if (!record) return { isVerified: false };
+
+    if (new Date() > new Date(record.expiresAt)) {
+      record.status = 'EXPIRED';
+      await record.save();
+      return { isVerified: false };
+    }
+
     return {
-      isVerified: Boolean(record && record.verifiedAt)
+      isVerified: true,
+      verificationToken: record.verificationToken
     };
+  }
+
+  /**
+   * Consumes a verification token upon successful submission to prevent replay attacks
+   */
+  async consumeVerificationToken({ target: rawTarget, type: rawType, verificationToken }) {
+    const type = String(rawType || '').toUpperCase();
+    const target = this._normalizeTarget(rawTarget, type);
+    if (!target || !verificationToken) return false;
+
+    const record = await VerificationCode.findOne({
+      target,
+      type,
+      verificationToken,
+      status: 'VERIFIED'
+    });
+
+    if (!record) return false;
+    record.status = 'CONSUMED';
+    await record.save();
+    return true;
+  }
+
+  /**
+   * Invalidates any active/pending OTPs for a target (e.g. when mobile number is edited)
+   */
+  async invalidateOtp({ target: rawTarget, type: rawType }) {
+    const type = String(rawType || '').toUpperCase();
+    const target = this._normalizeTarget(rawTarget, type);
+    if (!target) return;
+
+    await VerificationCode.updateMany(
+      { target, type, status: { $in: ['PENDING', 'VERIFIED'] } },
+      { $set: { status: 'EXPIRED' } }
+    );
   }
 }
 

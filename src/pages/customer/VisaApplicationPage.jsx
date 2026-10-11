@@ -3481,22 +3481,22 @@ export default function VisaApplicationPage() {
                           </div>
 
                           <div>
-                            <div className="flex items-center justify-between mb-1.5">
-                              <label className="text-xs font-bold text-[#082B61] block leading-none">
-                                Mobile Number *
-                              </label>
-                              <span className="text-[11px] text-slate-400 font-medium">10 digits (excluding +91)</span>
-                            </div>
+                            <label className="text-xs font-bold text-[#082B61] block leading-none mb-1.5">
+                              Phone Number *
+                            </label>
                             <div className="relative">
                               <input
                                 ref={(el) => (fieldRefs.current[`${effectiveActiveId}_phone`] = el)}
                                 type="tel"
-                                placeholder="Enter 10-digit mobile number"
+                                inputMode="numeric"
+                                maxLength={10}
+                                placeholder="Enter 10-digit phone number"
                                 value={activeTraveller.phone}
                                 onChange={(e) => {
-                                  handleFieldChange('phone', e.target.value);
+                                  const digitsOnly = e.target.value.replace(/\D/g, '').slice(0, 10);
+                                  handleFieldChange('phone', digitsOnly);
                                   // Invalidate previous OTP session if phone changes
-                                  if (otpSessionPhone && otpSessionPhone !== e.target.value) {
+                                  if (otpSessionPhone && otpSessionPhone !== digitsOnly) {
                                     setOtpSessionPhone('');
                                     setOtpValue('');
                                     setOtpError('');
